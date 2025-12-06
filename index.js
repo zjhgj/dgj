@@ -275,7 +275,7 @@ BotActivityFilter(conn);
   "120363418144382782@newsletter",	  
   "120363418144382782@newsletter"
 ];
-  const emojis = ["❤️", "👍", "😮", "😎", "💀"];
+  const emojis = ["❤️", "👍", "😮", "😎", "💛"];
 
   if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
     try {
@@ -381,7 +381,7 @@ BotActivityFilter(conn);
 // owner react
 
 if (senderNumber.includes("923195068309") && !isReact) {
-  const reactions = ["👑", "🦢", "💀", "🫜", "🫩", "🪾", "🪉", "🪏", "🗿", "🫟"];
+  const reactions = ["😂", "👻", "🥵", "🫜", "🫩", "🧡", "🙂", "♥️", "💙", "🫟"];
   const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
   m.react(randomReaction);
 }	  
