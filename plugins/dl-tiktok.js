@@ -1,135 +1,91 @@
 const { cmd } = require('../command');
 const axios = require('axios');
-const crypto = require('crypto');
 const Buffer = require('buffer').Buffer;
+// const { toPTT } = require('../function/converter.js'); // NOTE: Removed unsupported external function
+// Global config is assumed to be available
+const config = require('../config'); 
 
-// --- Encryption/Decryption Keys (Provided by user) ---
-const KEY_MAP = {
-  "enc": "GJvE5RZIxrl9SuNrAtgsvCfWha3M7NGC",
-  "dec": "H3quWdWoHLX5bZSlyCYAnvDFara25FIu"
-};
+// --- API Endpoints ---
+const DOWNLOAD_API = `https://www.restwave.my.id/download/tiktok?url=`; // User's requested API
 
-// --- Core Cryptography Function (Adapted for CJS/Buffer) ---
-const cryptoProc = (type, data) => {
-    // Keys must be exactly 32 bytes (256 bits) for aes-256-cbc.
-    // IV must be 16 bytes. We use the key itself and slice for IV.
-    const key = Buffer.from(KEY_MAP[type], 'utf8');
-    const iv = Buffer.from(KEY_MAP[type].slice(0, 16), 'utf8');
-
-    // Ensure key length is exactly 32 for AES-256
-    if (key.length !== 32) {
-        throw new Error(`Invalid key length for AES-256 (${key.length}). Must be 32.`);
-    }
-
-    const algorithm = 'aes-256-cbc';
-    const cipher = (type === 'enc' ? crypto.createCipheriv : crypto.createDecipheriv)(algorithm, key, iv);
+let handler = async (conn, mek, m, { q, reply, usedPrefix, command, from, args }) => {
     
-    let rchipher;
-    if (type === 'enc') {
-        rchipher = cipher.update(data, 'utf8', 'base64');
-        rchipher += cipher.final('base64');
-    } else {
-        rchipher = cipher.update(data, 'base64', 'utf8');
-        rchipher += cipher.final('utf8');
-    }
-    
-    return rchipher;
-};
+    const url = args[0] || q; // Get URL from q or args[0]
 
+    if (!url || !url.match(/tiktok\.com|vt\.tiktok/)) 
+        return reply(`❌ Kripya TikTok link dein!\n\n*Udaharan:* ${usedPrefix + command} https://vt.tiktok.com/ZS8abc123/`);
 
-// --- Core API Downloader ---
-async function tiktokDl(url) {
+    await conn.sendMessage(from, { react: { text: "⏱️", key: m.key } });
+    await reply('⏳ Video aur Audio data laaya jaa raha hai...');
+
     try {
-        if (!/tiktok\.com/.test(url)) throw new Error('Invalid url.');
-        
-        // 1. Encrypt URL
-        const encryptedData = cryptoProc('enc', url);
-        
-        // 2. Post to Savetik.app API
-        const { data } = await axios.post('https://savetik.app/requests', {
-            bdata: encryptedData
-        }, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.86 Safari/537.36',
-                'Content-Type': 'application/json'
-            },
-            timeout: 25000
-        });
-        
-        if (!data || data.status !== 'success') throw new Error(data.message || 'API fetch failed.');
+        // 1. Fetch data from the API
+        const { data } = await axios.get(`https://www.restwave.my.id/download/tiktok?url=${encodeURIComponent(url)}`, { timeout: 25000 });
 
-        // 3. Decrypt Video Link
-        if (!data.data) throw new Error('API se encrypted video link nahi mila.');
-        
-        const decryptedVideoUrl = cryptoProc('dec', data.data);
+        if (!data.status || !data.result) throw new Error('API ERROR: Link invalid hai ya server error.');
 
-        return {
-            author: data.username || 'Unknown Author',
-            thumbnail: data.thumbnailUrl || null,
-            video: decryptedVideoUrl,
-            audio: data.mp3 || null // Audio link is often provided directly
-        };
-    } catch (error) {
-        throw new Error(`Video link laane mein vifal rahe: ${error.message}`);
-    }
-}
+        const res = data.result.data || data.result;
 
+        const videoUrl = res.hdplay || res.wmplay || res.play || res.video;
+        const musicUrl = res.music;
 
-// --- MAIN COMMAND HANDLER ---
-cmd({
-    pattern: "tt",
-    alias: ["tt2", "tiktok"],
-    desc: "Encrypted API (savetik.app) se TikTok video download karta hai.", // Downloads TikTok video using encrypted API.
-    category: "download",
-    react: "🔐",
-    filename: __filename
-}, async (conn, mek, m, { q, reply, prefix, command, from }) => {
-    try {
-        if (!q || !/tiktok\.com/.test(q)) {
-            return reply(`❌ Kripya sahi TikTok video ka URL dein.\n\n*Udaharan:* ${prefix + command} [Link Hian]`);
-        }
-        
-        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
-        await reply("⏳ TikTok link ko encrypt karke video link laaya jaa raha hai...");
-
-        // 1. Perform the download process
-        const videoData = await tiktokDl(q);
-        
-        if (!videoData.video) {
-            return reply("❌ Video link decryption ke baad bhi nahi mil paya.");
-        }
-        
-        // 2. Send the video
         const caption = `
-🎬 *TikTok Downloaded* (Encrypted API)
+*🎬 TIKTOK DOWNLOADED*
 ----------------------------------------
-👤 *Author:* ${videoData.author}
-📌 *Title:* Unknown (API doesn't provide title)
+ᴜsᴇʀ : ${res.author?.nickname || 'N/A'} (@${res.author?.unique_id || 'N/A'})
+ᴊᴜᴅᴜʟ : ${res.title?.trim() || 'No Title'}
+❤️ : ${Number(res.digg_count).toLocaleString('en-US') || 0}
+💬 : ${Number(res.comment_count).toLocaleString('en-US') || 0}
+🔗 : ${url}
 `;
-
-        await conn.sendMessage(from, {
-            video: { url: videoData.video },
-            mimetype: 'video/mp4',
-            caption: caption,
-            thumbnail: { url: videoData.thumbnail || 'https://i.imgur.com/empty.png' }
-        }, { quoted: mek });
         
-        // 3. Send audio if available
-        if (videoData.audio) {
-            await conn.sendMessage(from, {
-                audio: { url: videoData.audio },
-                mimetype: 'audio/mpeg',
-                caption: '🎵 Audio Extracted',
-                ptt: false,
+        // --- 2. Send Video ---
+        if (videoUrl) {
+            await conn.sendMessage(m.chat, {
+                video: { url: videoUrl },
+                caption: caption,
+                mimetype: 'video/mp4',
+                fileName: `tiktok_${res.author?.unique_id}.mp4`
             }, { quoted: mek });
+        } else {
+            await reply('⚠️ Video link uplabdh nahi hai.');
+        }
+
+        // --- 3. Send Audio (Standard MP3, as PTT converter is removed) ---
+        if (musicUrl) {
+            const audioBuffer = (await axios.get(musicUrl, { responseType: 'arraybuffer' })).data;
+
+            await conn.sendMessage(m.chat, {
+                audio: Buffer.from(audioBuffer),
+                mimetype: 'audio/mpeg',
+                // PTT (Voice Note) removed for stability. Sending as standard audio.
+                ptt: false, 
+                fileName: `music_${res.author?.unique_id}.mp3`,
+                caption: '🎵 Audio Extracted'
+            }, { quoted: mek });
+        } else {
+             await reply('⚠️ Audio link bhi uplabdh nahi hai.');
         }
 
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
     } catch (e) {
-        console.error("TikTok Crypto Error:", e.message);
-        reply(`⚠️ Download karte samay truti aayi: ${e.message}`);
+        console.error('TikTok TT Error:', e);
+        m.reply(`❌ Download fail ho gaya: ${e.message}. Link check karein ya server error hai.`);
         await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
     }
-});
-    
+}
+
+// Final command properties
+cmd({
+    pattern: "tt",
+    alias: ["tiktok", "tiktok2"],
+    help: ['tiktok <url>'],
+    tags: ['download'],
+    command: /^(tiktok|tt|tik)$/i,
+    limit: true,
+    filename: __filename
+}, handler);
+
+module.exports = handler;
+          
