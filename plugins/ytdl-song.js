@@ -1,115 +1,218 @@
-const fetch = require("node-fetch");
-const yts = require("yt-search");
 const { cmd } = require("../command");
+const yts = require("yt-search");
+const axios = require("axios");
 
-const youtubeRegexID = /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([a-zA-Z0-9_-]{11})/;
+// NOTE: This file is a universal downloader that prompts the user for 4 distinct options (Audio/Video x Standard/Document).
 
-// ===== PLAY / YT DOWNLOAD PLUGIN =====
-cmd({
-    pattern: "play7",
-    alias: ["yta2", "play", "playaudio", "play6", "ytv2", "ytmp4", "mp4"],
-    react: "🎶",
-    desc: "Play or download YouTube songs and videos.",
-    category: "downloads",
-    use: ".play <song name / YouTube link>",
-    filename: __filename
-},
-async (conn, mek, m, { from, q, command, reply }) => {
-    try {
-        if (!q) return reply("❀ Please enter the name of the music or a YouTube link.");
+const cache = new Map(); // Caching search results
 
-        // Detect YouTube ID from URL
-        let videoIdToFind = q.match(youtubeRegexID) || null;
-        let ytResult = await yts(videoIdToFind === null ? q : `https://youtu.be/${videoIdToFind[1]}`);
+// --- Helper Functions ---
 
-        // Pick correct video
-        if (videoIdToFind) {
-            const videoId = videoIdToFind[1];
-            ytResult = ytResult.all.find(item => item.videoId === videoId) || ytResult.videos.find(item => item.videoId === videoId);
-        }
-        ytResult = ytResult.all?.[0] || ytResult.videos?.[0] || ytResult;
+function normalizeYouTubeUrl(url) {
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/.*[?&]v=)([a-zA-Z0-9_-]{11})/);
+  return match ? `https://youtube.com/watch?v=${match[1]}` : null;
+}
 
-        if (!ytResult || ytResult.length === 0) return reply("✧ No results found for your search.");
+function getVideoId(url) {
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/.*[?&]v=)([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
 
-        let { title, thumbnail, timestamp, views, ago, url, author } = ytResult;
-        const channel = author?.name || "Unknown";
+// Function to fetch base data and links (used for fallback and metadata)
+async function fetchBaseData(url, retries = 2) {
+  const cacheKey = `baseData:${getVideoId(url)}`;
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey);
+  }
 
-        const formattedViews = formatViews(views);
-        const infoMessage = `
-「✦」Downloading *${title || "Unknown"}*
+  try {
+    const apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
+    const response = await axios.get(apiUrl, { timeout: 15000 });
+    const data = response.data;
 
-> ✧ Channel   » *${channel}*
-> ✰ Views     » *${formattedViews || "Unknown"}*
-> ⴵ Duration  » *${timestamp || "Unknown"}*
-> ✐ Published » *${ago || "Unknown"}*
-> 🜸 Link      » ${url}
-        `.trim();
-
-        // Send info preview with externalAdReply
-        await conn.sendMessage(from, {
-            text: infoMessage,
-            contextInfo: {
-                externalAdReply: {
-                    title: "KAMRAN-MD Player",
-                    body: "Powered by Andbad Organisation",
-                    mediaType: 1,
-                    sourceUrl: url,
-                    thumbnailUrl: thumbnail,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: mek });
-
-        // Handle Audio
-        if (["play", "yta", "ytmp3", "playaudio"].includes(command)) {
-            try {
-                const api = await (await fetch(`https://api.vreden.my.id/api/v1/download/youtube/audio?url=${url}&quality=128`)).json();
-                const result = api?.result?.download?.url;
-
-                if (!result) throw new Error("⚠ Failed to fetch audio link.");
-
-                await conn.sendMessage(from, {
-                    audio: { url: result },
-                    fileName: `${api.result.title}.mp3`,
-                    mimetype: "audio/mpeg"
-                }, { quoted: mek });
-            } catch (e) {
-                return reply("⚠︎ Could not send the audio. Try again later.");
-            }
-        }
-
-        // Handle Video
-        else if (["play6", "ytv2", "ytmp4", "mp4"].includes(command)) {
-            try {
-                const response = await fetch(`https://gtech-api-xtp1.onrender.com/api/video/yt?apikey=APIKEY&url=${url}&type=video&quality=480p&apikey=GataDios`);
-                const json = await response.json();
-
-                if (!json?.data?.url) throw new Error("⚠ Failed to fetch video link.");
-
-                await conn.sendMessage(from, {
-                    video: { url: json.data.url },
-                    caption: title
-                }, { quoted: mek });
-            } catch (e) {
-                return reply("⚠︎ Could not send the video. Try again later.");
-            }
-        }
-
-    } catch (error) {
-        console.error(error);
-        return reply(`⚠︎ An error occurred: ${error.message}`);
+    if (data.status === true && data.result) {
+      const downloadData = data.result;
+      
+      const result = {
+        download_url_mp4: downloadData.mp4, // Video link
+        download_url_mp3: downloadData.mp3, // Audio link (fallback)
+        title: downloadData.title || "",
+        thumbnail: `https://i.ytimg.com/vi/${getVideoId(url)}/hqdefault.jpg`,
+      };
+      cache.set(cacheKey, result);
+      setTimeout(() => cache.delete(cacheKey), 3600000);
+      return result;
     }
-});
+    throw new Error("API status failure or result missing.");
+  } catch (error) {
+    console.error(`Base Data fetch failed: ${error.message}`);
+    if (retries > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      return fetchBaseData(url, retries - 1);
+    }
+    return null;
+  }
+}
 
-// ===== Function to format view counts =====
-function formatViews(views) {
-    if (!views) return "Unknown";
+async function searchYouTube(query, maxResults = 1) {
+  try {
+    const searchResults = await yts({ query, pages: 1 });
+    return searchResults.videos.slice(0, maxResults);
+  } catch (error) {
+    console.error(`Search error: ${error.message}`);
+    return [];
+  }
+}
 
-    if (views >= 1_000_000_000) return `${(views / 1_000_000_000).toFixed(1)}B (${views.toLocaleString()})`;
-    if (views >= 1_000_000) return `${(views / 1_000_000).toFixed(1)}M (${views.toLocaleString()})`;
-    if (views >= 1_000) return `${(views / 1_000).toFixed(1)}K (${views.toLocaleString()})`;
+// --- MAIN COMMAND ---
+cmd(
+  {
+    pattern: "play3", 
+    alias: ["play2", "sania", "song", "audvid"],
+    react: "🎧",
+    desc: "Download media as Audio/Video or Document.",
+    category: "download",
+    filename: __filename,
+  },
+  async (robin, mek, m, { from, q, reply }) => {
+    try {
+      if (!q) return reply("Kripya video ka naam ya URL dein aur phir menu se select karein."); 
 
-    return views.toString();
+      await robin.sendMessage(from, { react: { text: "🔍", key: mek.key } });
+
+      const url = normalizeYouTubeUrl(q);
+      let ytdata;
+
+      if (url) {
+        const searchResults = await searchYouTube(url);
+        if (!searchResults.length) return reply("❌ Video not found!");
+        ytdata = searchResults[0];
+      } else {
+        const searchResults = await searchYouTube(q);
+        if (!searchResults.length) return reply("❌ No videos found matching your query!");
+        ytdata = searchResults[0];
+      }
+
+      // --- Simplified Menu for User (4 Options) ---
+      let desc = `
+ 👑 *KAMRAN MD DOWNLOADER* 👑
+
+📌 *Title:* ${ytdata.title}
+⏱️ *Duration:* ${ytdata.timestamp}
+
+🔢 *Kripya format select karne ke liye number se reply karein:*
+1 - MP3 (AUDIO) 🎧
+2 - MP4 (VIDEO) 🎥
+3 - DOCUMENT (MP3) 📁
+4 - DOCUMENT (MP4) 📄
+   
+> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ ᴍᴅ`; 
+
+      // Send the menu message
+      const vv = await robin.sendMessage(
+        from,
+        { image: { url: ytdata.thumbnail }, caption: desc },
+        { quoted: mek }
+      );
+
+      await robin.sendMessage(from, { react: { text: "✅", key: mek.key } });
+
+      // --- LISTEN FOR USER'S REPLY ---
+      robin.ev.on("messages.upsert", async (msgUpdate) => {
+        const msg = msgUpdate.messages[0];
+        
+        // Ensure the message is a reply to the menu we just sent
+        if (
+          !msg.message || 
+          !msg.message.extendedTextMessage || 
+          msg.message.extendedTextMessage.contextInfo.stanzaId !== vv.key.id
+        ) return;
+
+        const selectedOption = msg.message.extendedTextMessage.text.trim();
+        
+        try {
+            
+          const validOptions = ["1", "2", "3", "4"]; 
+          if (!validOptions.includes(selectedOption)) {
+            await robin.sendMessage(from, { react: { text: "❓", key: msg.key } });
+            return reply("Kripya sahi option (1, 2, 3 ya 4) se reply karein."); 
           }
 
+          await robin.sendMessage(from, { react: { text: "⏳", key: msg.key } });
+
+          // Determine parameters based on selection
+          const isAudio = selectedOption === "1" || selectedOption === "3";
+          const sendAsDocument = selectedOption === "3" || selectedOption === "4";
+          
+          let downloadUrl;
+          let formatText;
+          let fileExtension;
+          let mimeType;
+          let mediaKey;
+
+          const data = await fetchBaseData(ytdata.url);
+
+          if (isAudio) {
+              formatText = sendAsDocument ? "MP3 Document" : "MP3 Audio";
+              mediaKey = sendAsDocument ? 'document' : 'audio';
+              fileExtension = 'mp3';
+              mimeType = 'audio/mpeg';
+              
+              // Use the dedicated /download/audio endpoint for reliability
+              const audioApiUrl = `https://jawad-tech.vercel.app/download/audio?url=${encodeURIComponent(ytdata.url)}`;
+              try {
+                  const audioRes = await axios.get(audioApiUrl, { timeout: 15000 });
+                  if (audioRes.data.status === true && audioRes.data.result) {
+                      downloadUrl = audioRes.data.result;
+                  } else {
+                      throw new Error("Dedicated Audio API failed.");
+                  }
+              } catch (audioApiError) {
+                  console.error("Dedicated Audio API Failed. Falling back to /ytdl link:", audioApiError.message);
+                  downloadUrl = data?.download_url_mp3; 
+              }
+          } else {
+              // Video (MP4) Logic
+              formatText = sendAsDocument ? "MP4 Document" : "MP4 Video";
+              mediaKey = sendAsDocument ? 'document' : 'video';
+              fileExtension = 'mp4';
+              mimeType = 'video/mp4';
+              downloadUrl = data?.download_url_mp4;
+          }
+
+          if (!data || !downloadUrl) {
+            await robin.sendMessage(from, { react: { text: "❌", key: msg.key } });
+            return reply("❌ Download link nahi mil paaya! Kripya dobara koshish karein."); 
+          }
+          
+          // Send the final media
+          await robin.sendMessage(
+            from,
+            {
+              [mediaKey]: { url: downloadUrl },
+              mimetype: mimeType,
+              // CRITICAL FIX: Explicitly setting ptt: false for audio to prevent corruption error
+              ptt: mediaKey === 'audio' ? false : undefined, 
+              fileName: `${ytdata.title}_${formatText}.${fileExtension}`,
+              caption: `✅ *${ytdata.title}* Downloaded Successfully!\n*Format:* ${formatText}`,
+            },
+            { quoted: msg }
+          );
+          
+          // Final success reaction
+          await robin.sendMessage(from, { react: { text: "✅", key: msg.key } });
+
+        } catch (error) {
+          console.error("Download error:", error);
+          await robin.sendMessage(from, { react: { text: "❌", key: msg.key } });
+          reply(`⚠️ Download karte samay truti aayi: ${error.message}`);
+        }
+      });
+    } catch (e) {
+      console.error("Command error:", e);
+      await robin.sendMessage(from, { react: { text: "❌", key: mek.key } });
+      reply(`⚠️ *Error:* ${e.message || "Anjaan truti hui"}`);
+    }
+  }
+);
     
