@@ -9,7 +9,7 @@ const izumi = {
 };
 
 cmd({
-    pattern: "video",
+    pattern: "vido",
     alias: ["ytmp4"],
     react: "🎥",
     desc: "Download video from YouTube",
@@ -80,7 +80,7 @@ cmd({
             video: { url: videoData.download },
             mimetype: 'video/mp4',
             fileName: `${videoData.title || videoTitle || 'video'}.mp4`,
-            caption: `*${videoData.title || videoTitle || 'Video'}*\n\n> *_POWERED BY KHAN-MD_*`
+            caption: `*${videoData.title || videoTitle || 'Video'}*\n\n> *_POWERED BY KAMRAN-MD_*`
         }, { quoted: mek });
 
     } catch (error) {
@@ -90,20 +90,21 @@ cmd({
 });
 
 cmd({
-    pattern: "video2",
+    pattern: "video",
     alias: ["ytv"],
     desc: "Download YouTube videos",
     category: "download",
     react: "📹",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
-    try {
-        if (!q) return await reply("📺 Please provide video name or URL!\n\nExample: .video funny cat");
+    try  
+         i  !!q  retur  awai  reply("📺 Please provide video name or URL\n\nnExample: .video funny cat";
 
-        // Search on YouTube if query is not a link
-        let url = q;
-        if (!q.includes("youtube.com") && !q.includes("youtu.be")) {
-            const { videos } = await yts(q);
+         // Search on YouTube if query is not a lin
+         le  ur =  ;
+         i  !!..includes("youtube.com" && !!..includes("youtu.be")  
+             cons    video   =  awai  yts(q;
+
             if (!videos || videos.length === 0) return await reply("❌ No results found!");
             url = videos[0].url;
         }
@@ -134,7 +135,7 @@ cmd({
         // Success reaction
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
-    } catch (e) {
+   )} catch (e) {
         console.error("Error in .video:", e);
         await reply("❌ Error occurred, try again later!");
         await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
