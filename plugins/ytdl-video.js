@@ -91,7 +91,7 @@ cmd({
 
 cmd({
     pattern: "episode",
-    alias: ["video3", "video", "ytv"],
+    alias: ["video3", "videro", "ytv"],
     desc: "Download YouTube videos",
     category: "download",
     react: "♻️",
