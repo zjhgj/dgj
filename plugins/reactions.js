@@ -21,7 +21,7 @@ cmd(
                 ? `${sender} is crying over @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} is crying!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/cry";
             let res = await axios.get(apiUrl);
@@ -61,7 +61,7 @@ cmd(
                 ? `${sender} cuddled @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} is cuddling everyone!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/cuddle";
             let res = await axios.get(apiUrl);
@@ -101,7 +101,7 @@ cmd(
                 ? `${sender} is bullying @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} is bullying everyone!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/bully";
             let res = await axios.get(apiUrl);
@@ -141,7 +141,7 @@ cmd(
                 ? `${sender} hugged @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} is hugging everyone!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/hug";
             let res = await axios.get(apiUrl);
@@ -182,7 +182,7 @@ cmd(
                 ? `${sender} awoos at @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} is awooing everyone!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/awoo";
             let res = await axios.get(apiUrl);
@@ -257,7 +257,7 @@ cmd(
                 ? `${sender} patted @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} is patting everyone!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/pat";
             let res = await axios.get(apiUrl);
@@ -297,7 +297,7 @@ cmd(
                 ? `${sender} is smug at @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} is feeling smug!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/smug";
             let res = await axios.get(apiUrl);
@@ -337,7 +337,7 @@ cmd(
                 ? `${sender} bonked @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} is bonking everyone!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/bonk";
             let res = await axios.get(apiUrl);
@@ -378,7 +378,7 @@ cmd(
                 ? `${sender} yeeted @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} is yeeting everyone!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/yeet";
             let res = await axios.get(apiUrl);
@@ -418,7 +418,7 @@ cmd(
                 ? `${sender} is blushing at @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} is blushing!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/blush";
             let res = await axios.get(apiUrl);
@@ -458,7 +458,7 @@ cmd(
                 ? `${sender} is holding hands with @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} wants to hold hands with everyone!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/handhold";
             let res = await axios.get(apiUrl);
@@ -499,7 +499,7 @@ cmd(
                 ? `${sender} gave a high-five to @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} is high-fiving everyone!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/highfive";
             let res = await axios.get(apiUrl);
@@ -539,7 +539,7 @@ cmd(
                 ? `${sender} is nomming @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} is nomming everyone!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/nom";
             let res = await axios.get(apiUrl);
@@ -579,479 +579,6 @@ cmd(
                 ? `${sender} waved at @${mentionedUser.split("@")[0]}`
                 : isGroup
                 ? `${sender} is waving at everyone!`
-                : `> © Powered By JawadTechX 🖤`;
+                : `> © Powered By DR KAMRAN 🖤`;
 
             const apiUrl = "https://api.waifu.pics/sfw/wave";
-            let res = await axios.get(apiUrl);
-            let gifUrl = res.data.url;
-
-            let gifBuffer = await fetchGif(gifUrl);
-            let videoBuffer = await gifToVideo(gifBuffer);
-
-            await conn.sendMessage(
-                mek.chat,
-                { video: videoBuffer, caption: message, gifPlayback: true, mentions: [mek.sender, mentionedUser].filter(Boolean) },
-                { quoted: mek }
-            );
-        } catch (error) {
-            console.error("❌ Error in .wave command:", error);
-            reply(`❌ *Error in .wave command:*\n\`\`\`${error.message}\`\`\``);
-        }
-    }
-);
-
-cmd(
-    {
-        pattern: "smile",
-        desc: "Send a smile reaction GIF.",
-        category: "fun",
-        react: "😁",
-        filename: __filename,
-        use: "@tag (optional)",
-    },
-    async (conn, mek, m, { args, q, reply }) => {
-        try {
-            let sender = `@${mek.sender.split("@")[0]}`;
-            let mentionedUser = m.mentionedJid[0] || (mek.quoted && mek.quoted.sender);
-            let isGroup = m.isGroup;
-
-            let message = mentionedUser
-                ? `${sender} smiled at @${mentionedUser.split("@")[0]}`
-                : isGroup
-                ? `${sender} is smiling at everyone!`
-                : `> © Powered By JawadTechX 🖤`;
-
-            const apiUrl = "https://api.waifu.pics/sfw/smile";
-            let res = await axios.get(apiUrl);
-            let gifUrl = res.data.url;
-
-            let gifBuffer = await fetchGif(gifUrl);
-            let videoBuffer = await gifToVideo(gifBuffer);
-
-            await conn.sendMessage(
-                mek.chat,
-                { video: videoBuffer, caption: message, gifPlayback: true, mentions: [mek.sender, mentionedUser].filter(Boolean) },
-                { quoted: mek }
-            );
-        } catch (error) {
-            console.error("❌ Error in .smile command:", error);
-            reply(`❌ *Error in .smile command:*\n\`\`\`${error.message}\`\`\``);
-        }
-    }
-);
-
-cmd(
-    {
-        pattern: "wink",
-        desc: "Send a wink reaction GIF.",
-        category: "fun",
-        react: "😉",
-        filename: __filename,
-        use: "@tag (optional)",
-    },
-    async (conn, mek, m, { args, q, reply }) => {
-        try {
-            let sender = `@${mek.sender.split("@")[0]}`;
-            let mentionedUser = m.mentionedJid[0] || (mek.quoted && mek.quoted.sender);
-            let isGroup = m.isGroup;
-
-            let message = mentionedUser
-                ? `${sender} winked at @${mentionedUser.split("@")[0]}`
-                : isGroup
-                ? `${sender} is winking at everyone!`
-                : `> © Powered By JawadTechX 🖤`;
-
-            const apiUrl = "https://api.waifu.pics/sfw/wink";
-            let res = await axios.get(apiUrl);
-            let gifUrl = res.data.url;
-
-            let gifBuffer = await fetchGif(gifUrl);
-            let videoBuffer = await gifToVideo(gifBuffer);
-
-            await conn.sendMessage(
-                mek.chat,
-                { video: videoBuffer, caption: message, gifPlayback: true, mentions: [mek.sender, mentionedUser].filter(Boolean) },
-                { quoted: mek }
-            );
-        } catch (error) {
-            console.error("❌ Error in .wink command:", error);
-            reply(`❌ *Error in .wink command:*\n\`\`\`${error.message}\`\`\``);
-        }
-    }
-);
-
-cmd(
-    {
-        pattern: "happy",
-        desc: "Send a happy reaction GIF.",
-        category: "fun",
-        react: "😊",
-        filename: __filename,
-        use: "@tag (optional)",
-    },
-    async (conn, mek, m, { args, q, reply }) => {
-        try {
-            let sender = `@${mek.sender.split("@")[0]}`;
-            let mentionedUser = m.mentionedJid[0] || (mek.quoted && mek.quoted.sender);
-            let isGroup = m.isGroup;
-
-            let message = mentionedUser
-                ? `${sender} is happy with @${mentionedUser.split("@")[0]}`
-                : isGroup
-                ? `${sender} is happy with everyone!`
-                : `> © Powered By JawadTechX 🖤`;
-
-            const apiUrl = "https://api.waifu.pics/sfw/happy";
-            let res = await axios.get(apiUrl);
-            let gifUrl = res.data.url;
-
-            let gifBuffer = await fetchGif(gifUrl);
-            let videoBuffer = await gifToVideo(gifBuffer);
-
-            await conn.sendMessage(
-                mek.chat,
-                { video: videoBuffer, caption: message, gifPlayback: true, mentions: [mek.sender, mentionedUser].filter(Boolean) },
-                { quoted: mek }
-            );
-        } catch (error) {
-            console.error("❌ Error in .happy command:", error);
-            reply(`❌ *Error in .happy command:*\n\`\`\`${error.message}\`\`\``);
-        }
-    }
-);
-
-cmd(
-    {
-        pattern: "glomp",
-        desc: "Send a glomp reaction GIF.",
-        category: "fun",
-        react: "🤗",
-        filename: __filename,
-        use: "@tag (optional)",
-    },
-    async (conn, mek, m, { args, q, reply }) => {
-        try {
-            let sender = `@${mek.sender.split("@")[0]}`;
-            let mentionedUser = m.mentionedJid[0] || (mek.quoted && mek.quoted.sender);
-            let isGroup = m.isGroup;
-
-            let message = mentionedUser
-                ? `${sender} glomped @${mentionedUser.split("@")[0]}`
-                : isGroup
-                ? `${sender} is glomping everyone!`
-                : `> © Powered By JawadTechX 🖤`;
-
-            const apiUrl = "https://api.waifu.pics/sfw/glomp";
-            let res = await axios.get(apiUrl);
-            let gifUrl = res.data.url;
-
-            let gifBuffer = await fetchGif(gifUrl);
-            let videoBuffer = await gifToVideo(gifBuffer);
-
-            await conn.sendMessage(
-                mek.chat,
-                { video: videoBuffer, caption: message, gifPlayback: true, mentions: [mek.sender, mentionedUser].filter(Boolean) },
-                { quoted: mek }
-            );
-        } catch (error) {
-            console.error("❌ Error in .glomp command:", error);
-            reply(`❌ *Error in .glomp command:*\n\`\`\`${error.message}\`\`\``);
-        }
-    }
-);
-
-cmd(
-    {
-        pattern: "bite",
-        desc: "Send a bite reaction GIF.",
-        category: "fun",
-        react: "🦷",
-        filename: __filename,
-        use: "@tag (optional)",
-    },
-    async (conn, mek, m, { args, q, reply }) => {
-        try {
-            let sender = `@${mek.sender.split("@")[0]}`;
-            let mentionedUser = m.mentionedJid[0] || (mek.quoted && mek.quoted.sender);
-            let isGroup = m.isGroup;
-
-            let message = mentionedUser
-                ? `${sender} bit @${mentionedUser.split("@")[0]}`
-                : isGroup
-                ? `${sender} is biting everyone!`
-                : `> © Powered By JawadTechX 🖤`;
-
-            const apiUrl = "https://api.waifu.pics/sfw/bite";
-            let res = await axios.get(apiUrl);
-            let gifUrl = res.data.url;
-
-            let gifBuffer = await fetchGif(gifUrl);
-            let videoBuffer = await gifToVideo(gifBuffer);
-
-            await conn.sendMessage(
-                mek.chat,
-                { video: videoBuffer, caption: message, gifPlayback: true, mentions: [mek.sender, mentionedUser].filter(Boolean) },
-                { quoted: mek }
-            );
-        } catch (error) {
-            console.error("❌ Error in .bite command:", error);
-            reply(`❌ *Error in .bite command:*\n\`\`\`${error.message}\`\`\``);
-        }
-    }
-);
-
-cmd(
-    {
-        pattern: "poke",
-        desc: "Send a poke reaction GIF.",
-        category: "fun",
-        react: "👉",
-        filename: __filename,
-        use: "@tag (optional)",
-    },
-    async (conn, mek, m, { args, q, reply }) => {
-        try {
-            let sender = `@${mek.sender.split("@")[0]}`;
-            let mentionedUser = m.mentionedJid[0] || (mek.quoted && mek.quoted.sender);
-            let isGroup = m.isGroup;
-
-            let message = mentionedUser
-                ? `${sender} poked @${mentionedUser.split("@")[0]}`
-                : isGroup
-                ? `${sender} poked everyone`
-                : `> © Powered By JawadTechX 🖤`;
-
-            const apiUrl = "https://api.waifu.pics/sfw/poke";
-            let res = await axios.get(apiUrl);
-            let gifUrl = res.data.url;
-
-            let gifBuffer = await fetchGif(gifUrl);
-            let videoBuffer = await gifToVideo(gifBuffer);
-
-            await conn.sendMessage(
-                mek.chat,
-                { video: videoBuffer, caption: message, gifPlayback: true, mentions: [mek.sender, mentionedUser].filter(Boolean) },
-                { quoted: mek }
-            );
-        } catch (error) {
-            console.error("❌ Error in .poke command:", error);
-            reply(`❌ *Error in .poke command:*\n\`\`\`${error.message}\`\`\``);
-        }
-    }
-);
-  
-  
-cmd(
-    {
-        pattern: "cringe",
-        desc: "Send a cringe reaction GIF.",
-        category: "fun",
-        react: "😬",
-        filename: __filename,
-        use: "@tag (optional)",
-    },
-    async (conn, mek, m, { args, q, reply }) => {
-        try {
-            let sender = `@${mek.sender.split("@")[0]}`;
-            let mentionedUser = m.mentionedJid[0] || (mek.quoted && mek.quoted.sender);
-            let isGroup = m.isGroup;
-
-            let message = mentionedUser
-                ? `${sender} thinks @${mentionedUser.split("@")[0]} is cringe`
-                : isGroup
-                ? `${sender} finds everyone cringe`
-                : `> © Powered By JawadTechX 🖤`;
-
-            const apiUrl = "https://api.waifu.pics/sfw/cringe";
-            let res = await axios.get(apiUrl);
-            let gifUrl = res.data.url;
-
-            let gifBuffer = await fetchGif(gifUrl);
-            let videoBuffer = await gifToVideo(gifBuffer);
-
-            await conn.sendMessage(
-                mek.chat,
-                { video: videoBuffer, caption: message, gifPlayback: true, mentions: [mek.sender, mentionedUser].filter(Boolean) },
-                { quoted: mek }
-            );
-        } catch (error) {
-            console.error("❌ Error in .cringe command:", error);
-            reply(`❌ *Error in .cringe command:*\n\`\`\`${error.message}\`\`\``);
-        }
-    }
-);
-
-
-cmd(
-    {
-        pattern: "dance",
-        desc: "Send a dance reaction GIF.",
-        category: "fun",
-        react: "💃",
-        filename: __filename,
-        use: "@tag (optional)",
-    },
-    async (conn, mek, m, { args, q, reply }) => {
-        try {
-            let sender = `@${mek.sender.split("@")[0]}`;
-            let mentionedUser = m.mentionedJid[0] || (mek.quoted && mek.quoted.sender);
-            let isGroup = m.isGroup;
-
-            let message = mentionedUser
-                ? `${sender} danced with @${mentionedUser.split("@")[0]}`
-                : isGroup
-                ? `${sender} is dancing with everyone`
-                : `> © Powered By JawadTechX 🖤`;
-
-            const apiUrl = "https://api.waifu.pics/sfw/dance";
-            let res = await axios.get(apiUrl);
-            let gifUrl = res.data.url;
-
-            let gifBuffer = await fetchGif(gifUrl);
-            let videoBuffer = await gifToVideo(gifBuffer);
-
-            await conn.sendMessage(
-                mek.chat,
-                { video: videoBuffer, caption: message, gifPlayback: true, mentions: [mek.sender, mentionedUser].filter(Boolean) },
-                { quoted: mek }
-            );
-        } catch (error) {
-            console.error("❌ Error in .dance command:", error);
-            reply(`❌ *Error in .dance command:*\n\`\`\`${error.message}\`\`\``);
-        }
-    }
-);
-
-
-  
-cmd(
-    {
-        pattern: "kill",
-        desc: "Send a kill reaction GIF.",
-        category: "fun",
-        react: "🔪",
-        filename: __filename,
-        use: "@tag (optional)",
-    },
-    async (conn, mek, m, { args, q, reply }) => {
-        try {
-            let sender = `@${mek.sender.split("@")[0]}`;
-            let mentionedUser = m.mentionedJid[0] || (mek.quoted && mek.quoted.sender);
-            let isGroup = m.isGroup;
-
-            let message;
-            if (mentionedUser) {
-                let target = `@${mentionedUser.split("@")[0]}`;
-                message = `${sender} killed ${target}`;
-            } else if (isGroup) {
-                message = `${sender} killed everyone`;
-            } else {
-                message = `> © Powered By JawadTechX 🖤`;
-            }
-
-            const apiUrl = "https://api.waifu.pics/sfw/kill";
-            let res = await axios.get(apiUrl);
-            let gifUrl = res.data.url;
-
-            let gifBuffer = await fetchGif(gifUrl);
-            let videoBuffer = await gifToVideo(gifBuffer);
-
-            await conn.sendMessage(
-                mek.chat,
-                { video: videoBuffer, caption: message, gifPlayback: true, mentions: [mek.sender, mentionedUser].filter(Boolean) },
-                { quoted: mek }
-            );
-        } catch (error) {
-            console.error("❌ Error in .kill command:", error);
-            reply(`❌ *Error in .kill command:*\n\`\`\`${error.message}\`\`\``);
-        }
-    }
-);
-
-cmd(
-    {
-        pattern: "slap",
-        desc: "Send a slap reaction GIF.",
-        category: "fun",
-        react: "✊",
-        filename: __filename,
-        use: "@tag (optional)",
-    },
-    async (conn, mek, m, { args, q, reply }) => {
-        try {
-            let sender = `@${mek.sender.split("@")[0]}`;
-            let mentionedUser = m.mentionedJid[0] || (mek.quoted && mek.quoted.sender);
-            let isGroup = m.isGroup;
-
-            let message;
-            if (mentionedUser) {
-                let target = `@${mentionedUser.split("@")[0]}`;
-                message = `${sender} slapped ${target}`;
-            } else if (isGroup) {
-                message = `${sender} slapped everyone`;
-            } else {
-                message = `> © Powered By JawadTechX 🖤`;
-            }
-
-            const apiUrl = "https://api.waifu.pics/sfw/slap";
-            let res = await axios.get(apiUrl);
-            let gifUrl = res.data.url;
-
-            let gifBuffer = await fetchGif(gifUrl);
-            let videoBuffer = await gifToVideo(gifBuffer);
-
-            await conn.sendMessage(
-                mek.chat,
-                { video: videoBuffer, caption: message, gifPlayback: true, mentions: [mek.sender, mentionedUser].filter(Boolean) },
-                { quoted: mek }
-            );
-        } catch (error) {
-            console.error("❌ Error in .slap command:", error);
-            reply(`❌ *Error in .slap command:*\n\`\`\`${error.message}\`\`\``);
-        }
-    }
-);
-
-cmd(
-    {
-        pattern: "kiss",
-        desc: "Send a kiss reaction GIF.",
-        category: "fun",
-        react: "💋",
-        filename: __filename,
-        use: "@tag (optional)",
-    },
-    async (conn, mek, m, { args, q, reply }) => {
-        try {
-            let sender = `@${mek.sender.split("@")[0]}`;
-            let mentionedUser = m.mentionedJid[0] || (mek.quoted && mek.quoted.sender);
-            let isGroup = m.isGroup;
-
-            let message;
-            if (mentionedUser) {
-                let target = `@${mentionedUser.split("@")[0]}`;
-                message = `${sender} kissed ${target}`;
-            } else if (isGroup) {
-                message = `${sender} kissed everyone`;
-            } else {
-                message = `> © Powered By JawadTechX 🖤`;
-            }
-
-            const apiUrl = "https://api.waifu.pics/sfw/kiss";
-            let res = await axios.get(apiUrl);
-            let gifUrl = res.data.url;
-
-            let gifBuffer = await fetchGif(gifUrl);
-            let videoBuffer = await gifToVideo(gifBuffer);
-
-            await conn.sendMessage(
-                mek.chat,
-                { video: videoBuffer, caption: message, gifPlayback: true, mentions: [mek.sender, mentionedUser].filter(Boolean) },
-                { quoted: mek }
-            );
-        } catch (error) {
-            console.error("❌ Error in .kiss command:", error);
-            reply(`❌ *Error in .kiss command:*\n\`\`\`${error.message}\`\`\``);
-        }
-    }
-);
