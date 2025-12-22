@@ -1,4 +1,3 @@
-const fs = require('fs');
 const config = require('../config');
 const { cmd, commands } = require('../command');
 const { runtime } = require('../lib/functions');
@@ -7,37 +6,33 @@ const axios = require('axios');
 cmd({
     pattern: "menu",
     desc: "Show interactive menu system",
-    category: "menu5",
+    category: "menu",
     react: "🧾",
     filename: __filename
 }, async (conn, mek, m, { from, reply }) => {
     try {
-        // Count total commands
-        const totalCommands = Object.keys(commands).length;
-        
-        const menuCaption = `╭━━━〔 *👑ᴋᴀᴍʀᴀɴ-ᴍᴅ👑* 〕━━━┈⊷
-│ ✓ 𝐎ᴡɴᴇʀ : *ᴋᴀᴍʀᴀɴ*
-│ ✓ 𝐁ᴀɪʟᴇʏꜱ : *Multi Device*
-│ ✓ 𝐓ʏᴘᴇ : *NodeJs*
-│ ✓ 𝐏ʟᴀᴛꜰᴏʀᴍ : *Heroku*
-│ ✓ 𝐌ᴏᴅᴇ : *[${config.MODE}]*
-│ ✓ 𝐏ʀᴇꜰɪx : *[${config.PREFIX}]*
-│ ✓ 𝐕ᴇʀꜱɪᴏɴ : *10.4.5 Bᴇᴛᴀ*
-│ ✓ 𝐂ᴏᴍᴍᴀɴᴅꜱ : *352*
+        const menuCaption = `╭━━━〔 *${config.BOT_NAME}* 〕━━━┈⊷
+┃★╭──────────────
+┃★│ 👑 Owner : *${config.OWNER_NAME}*
+┃★╰──────────────
 ╰━━━━━━━━━━━━━━━┈⊷
-╭━━〔 *🧚‍♂️ᴋᴀᴍʀᴀɴ-ᴍᴅ🧚‍♂️*  ━┈⊷
-││❯❯ 01 *𝐃ᴏᴡɴʟᴏᴀᴅ ᴍᴇɴᴜ*
-││❯❯ 02 *𝐆ʀᴏᴜᴘ ᴍᴇɴᴜ*
-││❯❯ 03 *𝐅ᴜɴ ᴍᴇɴᴜ*
-││❯❯ 04 *𝐎ᴡɴᴇʀ ᴍᴇɴᴜ*
-││❯❯ 05 *𝐀ɪ ᴍᴇɴᴜ*
-││❯❯ 06 *𝐀ɴɪᴍᴇ ᴍᴇɴᴜ*
-││❯❯ 07 *𝐂ᴏɴᴠᴇʀᴛ ᴍᴇɴᴜ*
-││❯❯ 08 *𝐎ᴛʜᴇʀ ᴍᴇɴᴜ*
-││❯❯ 09 *𝐑ᴇᴀᴄᴛɪᴏɴꜱ ᴍᴇɴᴜ*
-││❯❯ 10 *𝐌ᴀɪɴ ᴍᴇɴᴜ*
-╰──────────────┈⊷
-> *🔍ᴋᴀᴍʀᴀɴ-ᴍᴅ🔎*}`;
+📋 *ᴄʜᴏᴏsᴇ ᴀ ᴄᴀᴛᴇɢᴏʀʏ ᴛᴏ ᴇxᴘʟᴏʀᴇ:*
+> _ʀᴇᴘʟʏ ᴡɪᴛʜ ᴛʜᴇ ᴍᴀᴛᴄʜɪɴɢ ɴᴜᴍʙᴇʀ ᴛᴏ ᴏᴘᴇɴ ᴛʜᴇ ᴍᴇɴᴜ_
+ ➦✧ -〘 *ʙᴏᴛ ᴍᴇɴᴜ* 〙 -  ✧━┈⊷
+┃✧ ➦♦⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆✧━┈⊷
+┃✧│  ❶  *ᴅᴏᴡɴʟᴏᴅᴇᴅ ᴍᴇɴᴜ*
+┃✧│  ❷ *ɢʀᴏᴜᴘ ᴍᴇɴᴜ*
+┃✧│  ❸ *ғᴜɴ ᴍᴇɴᴜ*
+┃✧│  ❹  *ᴏᴡɴᴇʀ ᴍᴇɴᴜ*
+┃✧│  ❺  *ᴀɪ ᴍᴇɴᴜ*
+┃✧│  ❻  *ᴀɴɪᴍᴇ ᴍᴇɴᴜ*
+┃✧│  ❼  *ᴄᴏɴᴠᴇʀᴛ ᴍᴇɴᴜ*
+┃✧│  ❽  *ᴏᴛʜᴇʀ ᴍᴇɴᴜ*
+┃✧│  ❾  *ʀᴇᴀᴄʏ ᴍᴇɴᴜ*
+┃✧│  ❿  *ᴍᴀɪɴ ᴍᴇɴᴜ*
+┃✧ ➥ ⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆✧━┈⊷
+ ➥⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆✧━┈⊷
+> ${config.DESCRIPTION}`;
 
         const contextInfo = {
             mentionedJid: [m.sender],
@@ -46,7 +41,7 @@ cmd({
             forwardedNewsletterMessageInfo: {
                 newsletterJid: '120363418144382782@newsletter',
                 newsletterName: config.OWNER_NAME,
-                serverMessageId: 1590
+                serverMessageId: 143
             }
         };
 
@@ -56,7 +51,7 @@ cmd({
                 return await conn.sendMessage(
                     from,
                     {
-                        image: { url: config.MENU_IMAGE_URL || 'https://files.catbox.moe/so68jp.jpg' },
+                        image: { url: config.MENU_IMAGE_URL || 'https://files.catbox.moe/ly6553.jpg' },
                         caption: menuCaption,
                         contextInfo: contextInfo
                     },
@@ -71,21 +66,43 @@ cmd({
                 );
             }
         };
-
-        // Send image with timeout
+        // Function to send menu audio with timeout
+        const sendMenuAudio = async () => {
+            try {
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Small delay after image
+                await conn.sendMessage(from, {
+                    audio: { url: 'https://files.catbox.moe/etattc.mp3' },
+                    mimetype: 'audio/mp4',
+                    ptt: false,
+                }, { quoted: mek });
+            } catch (e) {
+                console.log('Audio send failed, continuing without it');
+            }
+        };
+        
+        // Send image first, then audio sequentially
         let sentMsg;
         try {
+            // Send image with 10s timeout
             sentMsg = await Promise.race([
                 sendMenuImage(),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('Image send timeout')), 10000))
             ]);
+            
+            // Then send audio with 1s delay and 8s timeout
+            await Promise.race([
+                sendMenuAudio(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Audio send timeout')), 8000))
+            ]);
         } catch (e) {
             console.log('Menu send error:', e);
-            sentMsg = await conn.sendMessage(
-                from,
-                { text: menuCaption, contextInfo: contextInfo },
-                { quoted: mek }
-            );
+            if (!sentMsg) {
+                sentMsg = await conn.sendMessage(
+                    from,
+                    { text: menuCaption, contextInfo: contextInfo },
+                    { quoted: mek }
+                );
+            }
         }
         
         const messageID = sentMsg.key.id;
@@ -112,20 +129,16 @@ cmd({
 ┃★╰──────────────
 ┃★╭──────────────
 ┃★│ 🎵 *Music/Video*
-┃★│ • music [name]
-┃★│ • aisong [name]
-┃★│ • sora [name]
 ┃★│ • spotify [query]
 ┃★│ • play [song]
-┃★│ • song0 [query]
 ┃★│ • play2-10 [song]
 ┃★│ • audio [url]
-┃★│ • video [name]
+┃★│ • video [url]
 ┃★│ • video2-10 [url]
 ┃★│ • ytmp3 [url]
 ┃★│ • ytmp4 [url]
 ┃★│ • song [name]
-┃★│ • drama [name]
+┃★│ • darama [name]
 ┃★╰──────────────
 ╰━━━━━━━━━━━━━━━┈⊷
 > ${config.DESCRIPTION}`,
@@ -208,7 +221,7 @@ cmd({
 ┃★│ • restart
 ┃★│ • shutdown
 ┃★│ • updatecmd
-┃★╰──────────────
+┃★╰───────────���──
 ┃★╭──────────────
 ┃★│ ℹ️ *Info Tools*
 ┃★│ • gjid
@@ -405,7 +418,7 @@ cmd({
                                 await conn.sendMessage(
                                     senderID,
                                     {
-                                        image: { url: config.MENU_IMAGE_URL || 'https://files.catbox.moe/so68jp.jpg' },
+                                        image: { url: config.MENU_IMAGE_URL || 'https://files.catbox.moe/ly6553.jpg' },
                                         caption: selectedMenu.content,
                                         contextInfo: contextInfo
                                     },
@@ -469,5 +482,4 @@ cmd({
         }
     }
 });
-              
-
+                
