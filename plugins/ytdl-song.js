@@ -1,48 +1,115 @@
-const axios = require("axios");
+const fetch = require("node-fetch");
 const yts = require("yt-search");
-const config = require("../config");
 const { cmd } = require("../command");
 
+const youtubeRegexID = /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([a-zA-Z0-9_-]{11})/;
+
+// ===== PLAY / YT DOWNLOAD PLUGIN =====
 cmd({
-  pattern: "play",
-  alias: ["play3", "play4", "sania"],   
-  desc: "Download YouTube audio by title",
-  category: "download",
-  react: "🎵",
-  filename: __filename
-}, async (conn, mek, m, { from, args, q, reply }) => {
-  try {
-    if (!q) return reply("❌ Please give me a song name.");
+    pattern: "play7",
+    alias: ["yta2", "play", "playaudio", "play6", "ytv2", "ytmp4", "mp4"],
+    react: "🎶",
+    desc: "Play or download YouTube songs and videos.",
+    category: "downloads",
+    use: ".play <song name / YouTube link>",
+    filename: __filename
+},
+async (conn, mek, m, { from, q, command, reply }) => {
+    try {
+        if (!q) return reply("❀ Please enter the name of the music or a YouTube link.");
 
-    // 1. Search video on YouTube
-    let search = await yts(q);
-    let video = search.videos[0];
-    if (!video) return reply("❌ No results found.");
+        // Detect YouTube ID from URL
+        let videoIdToFind = q.match(youtubeRegexID) || null;
+        let ytResult = await yts(videoIdToFind === null ? q : `https://youtu.be/${videoIdToFind[1]}`);
 
-    // 2. Call your API with video URL
-    let apiUrl = `https://jawad-tech.vercel.app/download/audio?url=${encodeURIComponent(video.url)}`;
-    let res = await axios.get(apiUrl);
+        // Pick correct video
+        if (videoIdToFind) {
+            const videoId = videoIdToFind[1];
+            ytResult = ytResult.all.find(item => item.videoId === videoId) || ytResult.videos.find(item => item.videoId === videoId);
+        }
+        ytResult = ytResult.all?.[0] || ytResult.videos?.[0] || ytResult;
 
-    if (!res.data.status) {
-      return reply("❌ Failed to fetch audio. Try again later.");
+        if (!ytResult || ytResult.length === 0) return reply("✧ No results found for your search.");
+
+        let { title, thumbnail, timestamp, views, ago, url, author } = ytResult;
+        const channel = author?.name || "Unknown";
+
+        const formattedViews = formatViews(views);
+        const infoMessage = `
+「✦」Downloading *${title || "Unknown"}*
+
+> ✧ Channel   » *${channel}*
+> ✰ Views     » *${formattedViews || "Unknown"}*
+> ⴵ Duration  » *${timestamp || "Unknown"}*
+> ✐ Published » *${ago || "Unknown"}*
+> 🜸 Link      » ${url}
+        `.trim();
+
+        // Send info preview with externalAdReply
+        await conn.sendMessage(from, {
+            text: infoMessage,
+            contextInfo: {
+                externalAdReply: {
+                    title: "KAMRAN-MD Player",
+                    body: "Powered by Andbad Organisation",
+                    mediaType: 1,
+                    sourceUrl: url,
+                    thumbnailUrl: thumbnail,
+                    renderLargerThumbnail: true
+                }
+            }
+        }, { quoted: mek });
+
+        // Handle Audio
+        if (["play", "yta", "ytmp3", "playaudio"].includes(command)) {
+            try {
+                const api = await (await fetch(`https://api.vreden.my.id/api/v1/download/youtube/audio?url=${url}&quality=128`)).json();
+                const result = api?.result?.download?.url;
+
+                if (!result) throw new Error("⚠ Failed to fetch audio link.");
+
+                await conn.sendMessage(from, {
+                    audio: { url: result },
+                    fileName: `${api.result.title}.mp3`,
+                    mimetype: "audio/mpeg"
+                }, { quoted: mek });
+            } catch (e) {
+                return reply("⚠︎ Could not send the audio. Try again later.");
+            }
+        }
+
+        // Handle Video
+        else if (["play6", "ytv2", "ytmp4", "mp4"].includes(command)) {
+            try {
+                const response = await fetch(`https://gtech-api-xtp1.onrender.com/api/video/yt?apikey=APIKEY&url=${url}&type=video&quality=480p&apikey=GataDios`);
+                const json = await response.json();
+
+                if (!json?.data?.url) throw new Error("⚠ Failed to fetch video link.");
+
+                await conn.sendMessage(from, {
+                    video: { url: json.data.url },
+                    caption: title
+                }, { quoted: mek });
+            } catch (e) {
+                return reply("⚠︎ Could not send the video. Try again later.");
+            }
+        }
+
+    } catch (error) {
+        console.error(error);
+        return reply(`⚠︎ An error occurred: ${error.message}`);
     }
-
-    // 3. Send audio file first
-    await conn.sendMessage(from, {
-      audio: { url: res.data.result },
-      mimetype: "audio/mpeg",
-      ptt: false,
-      contextInfo: { forwardingScore: 999, isForwarded: true }
-    }, { quoted: mek });
-
-    // 4. Then reply with success message
-    await reply(`✅ *${video.title}* Downloaded Successfully KAMRAN-MD!`);
-
-  } catch (e) {
-    console.error("play2 error:", e);
-    reply("❌ Error while downloading audio.");
-  }
 });
 
-        
-        
+// ===== Function to format view counts =====
+function formatViews(views) {
+    if (!views) return "Unknown";
+
+    if (views >= 1_000_000_000) return `${(views / 1_000_000_000).toFixed(1)}B (${views.toLocaleString()})`;
+    if (views >= 1_000_000) return `${(views / 1_000_000).toFixed(1)}M (${views.toLocaleString()})`;
+    if (views >= 1_000) return `${(views / 1_000).toFixed(1)}K (${views.toLocaleString()})`;
+
+    return views.toString();
+          }
+
+    
