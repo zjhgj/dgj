@@ -1,58 +1,47 @@
-const config = require('../config');
-const { cmd } = require('../command');
-const axios = require('axios');
-
-// Text to Music API configuration
-const textToMusicAPI = {
-    baseURL: "https://api.privatezia.biz.id/api/ai/texttomusic"
-};
+const axios = require("axios");
+const yts = require("yt-search");
+const config = require("../config");
+const { cmd } = require("../command");
 
 cmd({
-    pattern: "aisong",
-    alias: ["texttomusic", "ttm", "aimusic"],
-    react: "🎵",
-    desc: "Generate music from text prompt",
-    category: "AI",
-    use: ".music <prompt>",
-    filename: __filename
-}, async (conn, m, mek, { from, q, reply }) => {
-    try {
-        if (!q) return await reply("❌ Please provide a text prompt to generate music!\nExample: .music sad piano melody 30 seconds");
+  pattern: "play",
+  alias: ["play3", "play4", "sania"],   
+  desc: "Download YouTube audio by title",
+  category: "download",
+  react: "🎵",
+  filename: __filename
+}, async (conn, mek, m, { from, args, q, reply }) => {
+  try {
+    if (!q) return reply("❌ Please give me a song name.");
 
-        // ⏳ React - processing
-        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
-        
-        await reply("🎵 Generating your music... Please wait!");
+    // 1. Search video on YouTube
+    let search = await yts(q);
+    let video = search.videos[0];
+    if (!video) return reply("❌ No results found.");
 
-        // Generate music from text prompt
-        const apiUrl = `${textToMusicAPI.baseURL}?prompt=${encodeURIComponent(q)}`;
-        
-        const res = await axios.get(apiUrl, {
-            timeout: 60000, // Longer timeout for music generation
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'accept': '*/*'
-            }
-        });
+    // 2. Call your API with video URL
+    let apiUrl = `https://jawad-tech.vercel.app/download/audio?url=${encodeURIComponent(video.url)}`;
+    let res = await axios.get(apiUrl);
 
-        if (!res.data || !res.data.status || !res.data.result || !res.data.result.url) {
-            return await reply("❌ Failed to generate music. Please try again with a different prompt.");
-        }
-
-        const musicData = res.data.result;
-
-        // Send the generated music
-        await conn.sendMessage(from, {
-            audio: { url: musicData.url },
-            mimetype: 'audio/mpeg',
-            fileName: `generated_music_${Date.now()}.mp3`
-        }, { quoted: mek });
-
-        // ✅ React - success
-        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
-
-    } catch (error) {
-        console.error('[TEXT_TO_MUSIC] Command Error:', error?.message || error);
-        await reply("❌ Music generation failed: " + (error?.message || 'Unknown error'));
+    if (!res.data.status) {
+      return reply("❌ Failed to fetch audio. Try again later.");
     }
+
+    // 3. Send audio file first
+    await conn.sendMessage(from, {
+      audio: { url: res.data.result },
+      mimetype: "audio/mpeg",
+      ptt: false,
+      contextInfo: { forwardingScore: 999, isForwarded: true }
+    }, { quoted: mek });
+
+    // 4. Then reply with success message
+    await reply(`✅ *${video.title}* Downloaded Successfully KAMRAN-MD!`);
+
+  } catch (e) {
+    console.error("play2 error:", e);
+    reply("❌ Error while downloading audio.");
+  }
 });
+
+
