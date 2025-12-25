@@ -9,7 +9,7 @@ const izumi = {
 };
 
 cmd({
-    pattern: "video",
+    pattern: "video4",
     alias: ["ytmp4"],
     react: "🎥",
     desc: "Download video from YouTube",
