@@ -1,94 +1,144 @@
-const axios = require("axios");
 const { cmd } = require("../command");
+const getFBInfo = require("@xaviabot/fb-downloader");
+const config = require("../config");
+const fs = require("fs");
+const path = require("path");
 
-// Facebook Downloader v1 (basic)
-cmd({
-  pattern: "fb",
-  alias: ["facebook", "fbdl"],
-  react: '📥',
-  desc: "Download videos from Facebook (Basic API)",
-  category: "download",
-  use: ".fb <Facebook video URL>",
-  filename: __filename
-}, async (conn, mek, m, { from, reply, args }) => {
-  try {
-    const fbUrl = args[0];
-    if (!fbUrl || !fbUrl.includes("facebook.com")) {
-      return reply('Please provide a valid Facebook video URL. Example: `.fb https://facebook.com/...`');
+// Quoted Contact Message (Popkids Verified)
+const quotedContact = {
+  key: {
+    fromMe: false,
+    participant: `0@s.whatsapp.net`,
+    remoteJid: "status@broadcast"
+  },
+  message: {
+    contactMessage: {
+      displayName: "KAMRAN MD VERIFIED ✅",
+      vcard: `BEGIN:VCARD
+VERSION:3.0
+FN:POP KIDS VERIFIED ✅
+ORG:DR KAMRAN BOT;
+TEL;type=CELL;type=VOICE;waid=${config.OWNER_NUMBER || '0000000000'}:+${config.OWNER_NUMBER || '0000000000'}
+END:VCARD`
     }
-
-    await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
-
-    const apiUrl = `https://apis.davidcyriltech.my.id/facebook?url=${encodeURIComponent(fbUrl)}`;
-    const response = await axios.get(apiUrl);
-
-    if (!response.data || !response.data.status || !response.data.result || !response.data.result.downloads) {
-      return reply('❌ Unable to fetch the video. Please check the URL and try again.');
-    }
-
-    const { title, downloads } = response.data.result;
-    const downloadLink = downloads.hd?.url || downloads.sd.url;
-    const quality = downloads.hd ? "HD" : "SD";
-
-    await reply('Downloading video... Please wait.📥');
-
-    await conn.sendMessage(from, {
-      video: { url: downloadLink },
-      caption: `> Powered By DR KAMRAN 💜`
-    }, { quoted: mek });
-
-    await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
-  } catch (error) {
-    console.error('Error:', error);
-    reply('❌ Unable to download the video. Please try again later.');
-    await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
   }
-});
+};
 
 cmd({
-  pattern: "fb2",
-  alias: ["facebook2", "fbdl2"],
-  react: '📥',
-  desc: "Download videos from Facebook (API v4)",
-  category: "download",
-  use: ".fb4 <Facebook video URL>",
-  filename: __filename
-}, async (conn, mek, m, { from, reply, args }) => {
-  try {
-    const fbUrl = args[0];
-    if (!fbUrl || !fbUrl.includes("facebook.com")) {
-      return reply('❌ Please provide a valid Facebook video URL.\n\nExample:\n.fb4 https://facebook.com/...');
+    pattern: "fb",
+    alias: ["facebook", "facebook1", "fb1"],
+    desc: "Download Facebook videos/audios",
+    category: "download",
+    react: "📽️",
+    filename: __filename
+},
+async (conn, mek, m, { from, q, reply }) => {
+    try {
+        const fbUrl = q && q.trim();
+        if (!fbUrl) return reply("Please send a Facebook video link!");
+        if (!fbUrl.includes("https://") || !fbUrl.includes("facebook.com"))
+            return reply("Please send a valid Facebook video link.");
+
+        const videoData = await getFBInfo(fbUrl);
+
+        if (!videoData || !videoData.sd)
+            return reply("Failed to fetch video. The link might be private or invalid.");
+
+        const caption = `
+*${config.BOT || 'Facebook Downloader'} Facebook Downloader*
+|__________________________
+|       *𝐓𝐈𝐓𝐋𝐄*  
+       ${videoData.title || 'No title available'}
+|_________________________
+| REPLY WITH A NUMBER BELOW
+|_________________________
+|____  *𝐕𝐈𝐃𝐄𝐎*  ____
+|-᳆  1. SD Quality
+|-᳆  2. HD Quality
+|_________________________
+|____  *𝐀𝐔𝐃𝐈𝐎*  ____
+|-᳆  3. Audio Only
+|-᳆  4. As Document
+|-᳆  5. As Voice Message
+|__________________________|
+`;
+
+        const sentMsg = await conn.sendMessage(from, {
+            image: { url: videoData.thumbnail || "" },
+            caption,
+            contextInfo: {
+                forwardingScore: 999,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: "120363418144382782@newsletter",
+                    newsletterName: "KAMRAN-MD",
+                    serverMessageId: Math.floor(100000 + Math.random() * 900000),
+                }
+            }
+        }, { quoted: quotedContact }); // <-- Use verified contact here
+
+        // Reply handler: listen for reply with option
+        conn.ev.on("messages.upsert", async update => {
+            const msg = update.messages[0];
+            if (!msg.message?.extendedTextMessage) return;
+            const text = msg.message.extendedTextMessage.text.trim();
+            if (msg.message.extendedTextMessage.contextInfo?.stanzaId === sentMsg.key.id) {
+                await conn.sendMessage(from, { react: { text: "⬇️", key: msg.key } });
+
+                switch (text) {
+                    case "1":
+                        await conn.sendMessage(from, {
+                            video: { url: videoData.sd },
+                            caption: `*${config.BOT || "Facebook Downloader"}* - SD Quality`
+                        }, { quoted: msg });
+                        break;
+                    case "2":
+                        if (videoData.hd) {
+                            await conn.sendMessage(from, {
+                                video: { url: videoData.hd },
+                                caption: `*${config.BOT || "Facebook Downloader"}* - HD Quality`
+                            }, { quoted: msg });
+                        } else {
+                            await conn.sendMessage(from, { text: "HD not available. Sending SD.", quoted: msg });
+                            await conn.sendMessage(from, {
+                                video: { url: videoData.sd },
+                                caption: `*${config.BOT || "Facebook Downloader"}* - SD Quality`
+                            }, { quoted: msg });
+                        }
+                        break;
+                    case "3":
+                        await conn.sendMessage(from, {
+                            audio: { url: videoData.sd },
+                            mimetype: "audio/mpeg",
+                            caption: `*${config.BOT || "Facebook Downloader"}* - Audio`
+                        }, { quoted: msg });
+                        break;
+                    case "4":
+                        await conn.sendMessage(from, {
+                            document: { url: videoData.sd },
+                            mimetype: "video/mp4",
+                            fileName: `${config.BOT || "Facebook"}_${Date.now()}.mp4`,
+                            caption: `*${config.BOT || "Facebook Downloader"}* - Video Document`
+                        }, { quoted: msg });
+                        break;
+                    case "5":
+                        await conn.sendMessage(from, {
+                            audio: { url: videoData.sd },
+                            mimetype: "audio/ogg; codecs=opus",
+                            ptt: true,
+                            caption: `*${config.BOT || "Facebook Downloader"}* - Voice Message`
+                        }, { quoted: msg });
+                        break;
+                    default:
+                        await conn.sendMessage(from, { text: "Please choose a number (1-5) only." }, { quoted: msg });
+                        break;
+                }
+                await conn.sendMessage(from, { react: { text: "✅", key: msg.key } });
+            }
+        });
+
+    } catch (error) {
+        await reply(`Failed to download video. Error: ${error.message}\nTry another link or make sure the video is public.`);
     }
-
-    await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
-
-    const apiUrl = `https://jawad-tech.vercel.app/downloader?url=${encodeURIComponent(fbUrl)}`;
-    const response = await axios.get(apiUrl);
-
-    const data = response.data;
-
-    if (!data.status || !data.result || !Array.isArray(data.result)) {
-      return reply('❌ Unable to fetch the video. Please check the URL and try again.');
-    }
-
-    // Prefer HD, fallback to SD
-    const hd = data.result.find(v => v.quality === "HD");
-    const sd = data.result.find(v => v.quality === "SD");
-    const video = hd || sd;
-
-    if (!video) return reply("❌ Video not found in the response.");
-
-    await reply(`Downloading video Please wait`);
-
-    await conn.sendMessage(from, {
-      video: { url: video.url },
-      caption: `🎥 *Facebook Video Downloader*\n\n> Quality: ${video.quality}\n\n> Powered By DR KAMRAN 💜`
-    }, { quoted: mek });
-
-    await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
-  } catch (error) {
-    console.error('FB4 Error:', error);
-    reply('❌ Failed to download the video. Please try again later.');
-    await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-  }
 });
+       
