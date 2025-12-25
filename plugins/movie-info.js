@@ -1,78 +1,97 @@
-const axios = require('axios');
-const { cmd } = require('../command');
+const axios = require('axios')
+const { cmd } = require('../command')
+
+global.movieCache = global.movieCache || {}
 
 cmd({
     pattern: "movie",
-    desc: "Fetch detailed information about a movie.",
-    category: "utility",
+    alias: ["film"],
+    category: "download",
     react: "🎬",
     filename: __filename
-},
-async (conn, mek, m, { from, reply, sender, args }) => {
-    try {
-        // Properly extract the movie name from arguments
-        const movieName = args.length > 0 ? args.join(' ') : m.text.replace(/^[\.\#\$\!]?movie\s?/i, '').trim();
-        
-        if (!movieName) {
-            return reply("📽️ Please provide the name of the movie.\nExample: .movie Iron Man");
-        }
+}, async (conn, mek, m, { from, args, reply }) => {
 
-        const apiUrl = `https://apis.davidcyriltech.my.id/imdb?query=${encodeURIComponent(movieName)}`;
-        const response = await axios.get(apiUrl);
+    // STEP 1 — SEARCH
+    if (args.length > 0) {
+        const query = args.join(" ")
+        const url = `https://api.srihub.store/movie/sinhalasub?apikey=dew_5H5Dbuh4v7NbkNRmI0Ns2u2ZK240aNnJ9lnYQXR9&q=${encodeURIComponent(query)}`
 
-        if (!response.data.status || !response.data.movie) {
-            return reply("🚫 Movie not found. Please check the name and try again.");
-        }
+        const { data } = await axios.get(url)
+        if (!data?.result) return reply("❌ No results found")
 
-        const movie = response.data.movie;
-        
-        // Format the caption
-        const dec = `
-🎬 *${movie.title}* (${movie.year}) ${movie.rated || ''}
+        // Save movie to cache
+        global.movieCache[from] = data.result
 
-⭐ *IMDb:* ${movie.imdbRating || 'N/A'} | 🍅 *Rotten Tomatoes:* ${movie.ratings.find(r => r.source === 'Rotten Tomatoes')?.value || 'N/A'} | 💰 *Box Office:* ${movie.boxoffice || 'N/A'}
+        let searchText = `
+🔎 *KAMRAN MD SEARCH*
 
-📅 *Released:* ${new Date(movie.released).toLocaleDateString()}
-⏳ *Runtime:* ${movie.runtime}
-🎭 *Genre:* ${movie.genres}
+📱 Input   : ${query}
+🍒 Results : 1
 
-📝 *Plot:* ${movie.plot}
+🎬 *Movies*
+01. ${data.result.title}
+        `.trim()
 
-🎥 *Director:* ${movie.director}
-✍️ *Writer:* ${movie.writer}
-🌟 *Actors:* ${movie.actors}
-
-🌍 *Country:* ${movie.country}
-🗣️ *Language:* ${movie.languages}
-🏆 *Awards:* ${movie.awards || 'None'}
-
-[View on IMDb](${movie.imdbUrl})
-`;
-
-        // Send message with the requested format
-        await conn.sendMessage(
-            from,
-            {
-                image: { 
-                    url: movie.poster && movie.poster !== 'N/A' ? movie.poster : 'https://files.catbox.moe/7zfdcq.jpg'
-                },
-                caption: dec,
-                contextInfo: {
-                    mentionedJid: [sender],
-                    forwardingScore: 999,
-                    isForwarded: true,
-                    forwardedNewsletterMessageInfo: {
-                        newsletterJid: '120363354023106228@newsletter',
-                        newsletterName: 'JawadTechX',
-                        serverMessageId: 143
-                    }
-                }
-            },
-            { quoted: mek }
-        );
-
-    } catch (e) {
-        console.error('Movie command error:', e);
-        reply(`❌ Error: ${e.message}`);
+        return conn.sendMessage(from, {
+            image: { url: data.result.image },
+            caption: searchText
+        }, { quoted: mek })
     }
-});
+
+    // STEP 2 — USER REPLY (NUMBERS)
+    const choice = parseInt(m.text)
+    const movie = global.movieCache[from]
+    if (!movie || isNaN(choice)) return
+
+    // SHOW MOVIE DOWNLOAD MENU
+    if (choice === 1) {
+        let menu = `
+╭──────────────────╮
+│ *KAMRAN MD MOVIE DOWNLOAD*
+╰──────────────────╯
+
+➠ *Title* : ${movie.title}
+➠ *Site*  : SinhalaSub.lk
+─────────────────────
+
+01 || Send Details
+02 || Send Images
+
+03 || FHD 1080p [ PIXELDRAIN ]
+04 || HD 720p  [ PIXELDRAIN ]
+05 || SD 480p  [ PIXELDRAIN ]
+
+06 || FHD 1080p [ SINHALASUB ]
+07 || HD 720p  [ SINHALASUB ]
+08 || SD 480p  [ SINHALASUB ]
+
+09 || FHD 1080p [ MIRROR ]
+10 || HD 720p  [ MIRROR ]
+11 || SD 480p  [ MIRROR ]
+
+> powered by DR KAMRAN
+        `.trim()
+
+        return conn.sendMessage(from, {
+            image: { url: movie.image },
+            caption: menu
+        }, { quoted: mek })
+    }
+
+    // STEP 3 — 🔥 NUMBER 11 (SD 480P VIDEO)
+    if (choice === 11) {
+        const sd480 =
+            movie.downloads?.sinhalasub?.find(v => v.quality.includes("480")) ||
+            movie.downloads?.pixeldrain?.find(v => v.quality.includes("480"))
+
+        if (!sd480) return reply("❌ SD 480p not available")
+
+        return conn.sendMessage(from, {
+            video: { url: sd480.link },   // ✅ VIDEO, NOT DOCUMENT
+            caption: `🎬 *${movie.title}*\n\n📀 Quality : SD 480p\n📦 Size    : ${sd480.size}\n\n> powered by DR KAMRAN`,
+            mimetype: 'video/mp4'
+        }, { quoted: mek })
+    }
+})
+
+
