@@ -11,7 +11,7 @@ cmd({
     pattern: "repo",
     alias: ["sc", "script", "repository"],
     desc: "Fetch information about a GitHub repository.",
-    react: "📂",
+    react: "✅",
     category: "info",
     filename: __filename,
 },
@@ -29,26 +29,19 @@ async (conn, mek, m, { from, reply }) => {
 
         // Format the repository information in new stylish format
         const formattedInfo = `
-╭─〔 *KAMRAN-MD REPOSITORY* 〕
-│
-├─ *📌 Repository Name:* ${repoData.name}
-├─ *👑 Owner:* DR KAMRAN 
-├─ *⭐ Stars:* ${repoData.stargazers_count}
-├─ *⑂ Forks:* ${repoData.forks_count}
-├─ *📝 Description:* ${repoData.description || 'World Best WhatsApp Bot powered by DR KAMRAN'}
-│
-├─ *🔗 GitHub Link:*
-│   ${repoData.html_url}
-│
-├─ *🌐 Join Channel:*
-│   https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O
-│
-╰─ *⚡ Powered by KAMRAN-MD*
+*┏────〘 *DR* 〙───⊷*
+*┃* *📌 Repository Name:* ${repoData.name}
+*┃* *👑 Owner:* ᴋᴀᴍʀᴀɴ ᴍᴅ
+*┃* *⭐ Stars:* ${repoData.stargazers_count}
+*┃* *⑂ Forks:* ${repoData.forks_count}
+*┃* *📝 Description:* ${repoData.description || '*World Best WhatsApp Bot powered by KAMRAN-MD*'}
+*┃* *🔗 GitHub Link:* ${repoData.html_url}
+*┗──────────────⊷*
 `.trim();
 
         // Send an image with the formatted info as a caption
         await conn.sendMessage(from, {
-            image: { url: `https://files.catbox.moe/ly6553.jpg` }, // Replace with your image URL
+            image: { url: `https://files.catbox.moe/tt88qy.jpg` }, // Replace with your image URL
             caption: formattedInfo,
             contextInfo: { 
                 mentionedJid: [m.sender],
@@ -56,20 +49,20 @@ async (conn, mek, m, { from, reply }) => {
                 isForwarded: true,
                 forwardedNewsletterMessageInfo: {
                     newsletterJid: '120363418144382782@newsletter',
-                    newsletterName: 'KAMRAN-MD',
+                    newsletterName: 'DR KAMRAN',
                     serverMessageId: 143
                 }
             }
         }, { quoted: mek });
 
         // Send audio voice message after sending repo info
-        const audioPath = path.join(__dirname, '../assets/menu.m4a');
+        const audioPath = path.join(__dirname, '../assets/menux.m4a');
         
         if (fs.existsSync(audioPath)) {
             await conn.sendMessage(from, {
                 audio: { url: audioPath },
                 mimetype: 'audio/mp4',
-                ptt: false
+                ptt: true
             }, { quoted: mek });
         } else {
             console.error("Audio file not found at path:", audioPath);
@@ -80,4 +73,4 @@ async (conn, mek, m, { from, reply }) => {
         reply("❌ Sorry, something went wrong while fetching the repository information. Please try again later.");
     }
 });
-
+                       
