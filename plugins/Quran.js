@@ -55,15 +55,15 @@ ${translatedTafsirEnglish.text}`;
     await conn.sendMessage(
       from,
       {
-        image: { url: `https://files.catbox.moe/8fy6up.jpg` },
+        image: { url: `https://files.catbox.moe/kiy0hl.jpg` },
         caption: quranSurah,
         contextInfo: {
           mentionedJid: [m.sender], 
           forwardingScore: 999,  
           isForwarded: true,   
           forwardedNewsletterMessageInfo: {
-            newsletterJid: '120363354023106228@newsletter', 
-            newsletterName: 'JawadTechX', 
+            newsletterJid: '120363418144382782@newsletter', 
+            newsletterName: 'KAMRAN MD', 
             serverMessageId: 143
           }
         }
@@ -75,7 +75,7 @@ ${translatedTafsirEnglish.text}`;
       await conn.sendMessage(from, {
         audio: { url: json.data.recitation.full },
         mimetype: 'audio/mpeg',  
-        ptt: true
+        ptt: false
       }, { quoted: mek });
     }
 
@@ -444,15 +444,15 @@ async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, isGroup, sen
         await conn.sendMessage(
             from,
             {
-                image: { url: `https://files.catbox.moe/8fy6up.jpg` },
+                image: { url: `https://files.catbox.moe/kiy0hl.jpg` },
                 caption: dec,
                 contextInfo: {
                     mentionedJid: [m.sender],
                     forwardingScore: 999,
                     isForwarded: true,
                     forwardedNewsletterMessageInfo: {
-                        newsletterJid: '120363354023106228@newsletter',
-                        newsletterName: 'JawadTechX',
+                        newsletterJid: '120363418144382782@newsletter',
+                        newsletterName: 'KAMRAN-MD',
                         serverMessageId: 143
                     }
                 }
@@ -467,3 +467,4 @@ async (conn, mek, m, { from, quoted, body, isCmd, command, args, q, isGroup, sen
 });
 
 
+      
