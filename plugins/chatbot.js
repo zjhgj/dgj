@@ -24,7 +24,7 @@ cmd({ on: "body" }, async (client, message, chat, { from, body, isGroup, isCmd }
 
         // 4. Send the smart reply with your brand styling
         await client.sendMessage(from, {
-          text: `${aiReply}\n\n> © ᴘᴏᴘᴋɪᴅ ᴍᴅ ᴀɪ 🤖`,
+          text: `${aiReply}\n\n> © ᴋᴀᴍʀᴀɴ ᴍᴅ ᴀɪ 🤖`,
           contextInfo: {
             forwardingScore: 999,
             isForwarded: true,
@@ -130,4 +130,4 @@ _𝙆𝘼𝙈𝙍𝘼𝙉 𝙈𝘿🌟_
     }, { quoted: message });
   }
 });
-        
+      
