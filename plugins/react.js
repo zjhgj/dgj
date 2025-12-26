@@ -5,7 +5,7 @@ const { cmd } = require("../command"); // Assuming command.js is in the lib fold
 // These tokens are used to authenticate with the external reaction service.
 const tokens = [
   "movanest-keyTLZTYRQXML", 
-  "movanest-keyARCH6LACUC"
+  "movanest-keyADP66PEJAR"
 ];
 
 const DELAY_ON_LIMIT = 5000; // Delay in milliseconds (5 seconds) when an API limit is hit
@@ -75,8 +75,8 @@ async function reactToWhatsAppPost(postUrl, emojis) {
 
 
 cmd({
-    pattern: "chreact",
-    alias: ["k", "react"],
+    pattern: "chr",
+    alias: ["reactch", "rch"],
     desc: "Sends reactions to a WhatsApp Channel post.",
     category: 'tools', 
     limit: true,
