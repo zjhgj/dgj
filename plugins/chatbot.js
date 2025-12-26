@@ -1,28 +1,38 @@
 const { cmd } = require("../command");
 const config = require("../config");
-const fetch = require("node-fetch");
+const axios = require("axios");
 
 // === AI Chatbot Event Handler ===
-// This listener checks every message to see if it should reply
 cmd({ on: "body" }, async (client, message, chat, { from, body, isGroup, isCmd }) => {
   try {
-    // 1. SMART FILTERS: Only reply if AI is ON, it's NOT a command, NOT a group, and NOT from the bot itself
-    if (config.AUTO_AI === "true" && !isCmd && !isGroup && !message.key.fromMe && body) {
+    // 1. LID & Identity Support
+    const botId = client.user?.id || '';
+    const botLid = client.user?.lid || '';
+    
+    const senderId = message.key.participant || message.key.remoteJid || (message.key.fromMe ? botId : null);
+
+    // Identify if message is from the bot itself (Check both PN and LID)
+    const isFromMe = message.key.fromMe || 
+                     (botId && senderId === botId) || 
+                     (botLid && senderId.split('@')[0] === botLid.split('@')[0]);
+
+    // 2. SMART FILTERS: Only reply if AI is ON, it's NOT a command, NOT a group, and NOT from the bot itself
+    if (config.AUTO_AI === "true" && !isCmd && !isGroup && !isFromMe && body) {
       
-      // 2. Realistic "typing..." presence
+      // 3. Realistic "typing..." presence
       await client.sendPresenceUpdate('composing', from);
 
-      // 3. Fetch response from David Cyril API
+      // 4. Fetch response from David Cyril API (Using axios for better handling)
       const apiKey = ""; // Add your apikey here if required
       const apiUrl = `https://apis.davidcyriltech.my.id/ai/chatbot?query=${encodeURIComponent(body)}&apikey=${apiKey}`;
       
-      const response = await fetch(apiUrl);
-      const data = await response.json();
+      const res = await axios.get(apiUrl);
+      const data = res.data;
 
       if (data.status === 200 || data.success) {
         const aiReply = data.result;
 
-        // 4. Send the smart reply with your brand styling
+        // 5. Send the smart reply with your brand styling
         await client.sendMessage(from, {
           text: `${aiReply}\n\n> © ᴋᴀᴍʀᴀɴ ᴍᴅ ᴀɪ 🤖`,
           contextInfo: {
@@ -43,7 +53,6 @@ cmd({ on: "body" }, async (client, message, chat, { from, body, isGroup, isCmd }
 });
 
 // === Chatbot Toggle Command ===
-// Use this to turn the AI on or off
 cmd({
   pattern: "chatbot",
   alias: ["autoai", "aichat"],
@@ -110,14 +119,13 @@ _𝙆𝘼𝙈𝙍𝘼𝙉 𝙈𝘿🌟_
         forwardingScore: 999,
         isForwarded: true,
         forwardedNewsletterMessageInfo: {
-          newsletterJid: '120363418144382782@newsletter',
-          newsletterName: '_𝙆𝘼𝙈𝙍𝘼𝙉 𝙈𝘿',
-          serverMessageId: 143
+            newsletterJid: '120363418144382782@newsletter',
+            newsletterName: 'KAMRAN-MD',
+            serverMessageId: 143
         }
       }
     }, { quoted: message });
 
-    // React to original command for visual feedback
     await client.sendMessage(from, {
       react: { text: reaction, key: message.key }
     });
@@ -130,4 +138,3 @@ _𝙆𝘼𝙈𝙍𝘼𝙉 𝙈𝘿🌟_
     }, { quoted: message });
   }
 });
-      
