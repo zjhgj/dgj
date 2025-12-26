@@ -1,7 +1,7 @@
 //---------------------------------------------------------------------------
 //           KAMRAN-MD  
 //---------------------------------------------------------------------------
-//  ⚠️ LID & NEWSLETTER SUPPORT INTEGRATED - FULL VERSION ⚠️  
+//  ⚠️ LID FIXED & NEWSLETTER SUPPORT INTEGRATED ⚠️  
 //---------------------------------------------------------------------------
 const { cmd, commands } = require('../command');
 const config = require('../config');
@@ -18,6 +18,7 @@ const { setConfig, getConfig } = require("../lib/configdb");
 
 /**
  * Advanced Admin Status Check with LID & PN Support
+ * Fixes issues where bot fails to recognize admins with hidden numbers
  */
 async function checkAdminStatus(conn, chatId, senderId) {
     try {
@@ -49,7 +50,7 @@ async function checkAdminStatus(conn, chatId, senderId) {
     }
 }
 
-// Newsletter Context for professional branding
+// Global Newsletter Context for Branding
 const newsletterContext = {
     forwardingScore: 999,
     isForwarded: true,
@@ -60,56 +61,38 @@ const newsletterContext = {
     }
 };
 
-// --- CORE OWNER SETTINGS (IMAGE, NAME, PREFIX) ---
+// --- SETTINGS (BOT IMAGE, PREFIX, NAME) ---
 
 cmd({
   pattern: "setbotimage",
   alias: ["botdp", "botpic", "botimage"],
-  desc: "Set the bot's image URL",
   category: "owner",
   react: "✅",
   filename: __filename
 }, async (conn, mek, m, { args, isCreator, reply }) => {
-  try {
-    if (!isCreator) return reply("❗ Only the bot owner can use this command.");
-    let imageUrl = args[0];
-    if (!imageUrl && m.quoted) {
-      const quotedMsg = m.quoted;
-      const mimeType = (quotedMsg.msg || quotedMsg).mimetype || '';
-      if (!mimeType.startsWith("image")) return reply("❌ Please reply to an image.");
-      const mediaBuffer = await quotedMsg.download();
-      const tempFilePath = path.join(os.tmpdir(), `botimg_${Date.now()}.jpg`);
-      fs.writeFileSync(tempFilePath, mediaBuffer);
-      const form = new FormData();
-      form.append("fileToUpload", fs.createReadStream(tempFilePath), `botimage.jpg`);
-      form.append("reqtype", "fileupload");
-      const response = await axios.post("https://catbox.moe/user/api.php", form, { headers: form.getHeaders() });
-      fs.unlinkSync(tempFilePath);
-      imageUrl = response.data;
-    }
-    if (!imageUrl || !imageUrl.startsWith("http")) return reply("❌ Invalid Image URL.");
-    await setConfig("MENU_IMAGE_URL", imageUrl);
-    await reply(`✅ Bot image updated.\n*URL:* ${imageUrl}\n♻️ Restarting...`);
-    setTimeout(() => exec("pm2 restart all"), 2000);
-  } catch (err) { reply(`❌ Error: ${err.message}`); }
-});
-
-cmd({
-  pattern: "setprefix",
-  alias: ["prefix"],
-  category: "owner",
-  react: "✅",
-  filename: __filename
-}, async (conn, mek, m, { args, isCreator, reply }) => {
-  if (!isCreator) return reply("❗ Owner only.");
-  const newPrefix = args[0]?.trim();
-  if (!newPrefix || newPrefix.length > 2) return reply("❌ Invalid Prefix.");
-  await setConfig("PREFIX", newPrefix);
-  await reply(`✅ Prefix updated to: *${newPrefix}*\n♻️ Restarting...`);
+  if (!isCreator) return reply("❗ Only the owner can use this.");
+  let imageUrl = args[0];
+  if (!imageUrl && m.quoted) {
+    const quotedMsg = m.quoted;
+    const mimeType = (quotedMsg.msg || quotedMsg).mimetype || '';
+    if (!mimeType.startsWith("image")) return reply("❌ Reply to an image.");
+    const mediaBuffer = await quotedMsg.download();
+    const tempFilePath = path.join(os.tmpdir(), `botimg_${Date.now()}.jpg`);
+    fs.writeFileSync(tempFilePath, mediaBuffer);
+    const form = new FormData();
+    form.append("fileToUpload", fs.createReadStream(tempFilePath), `botimage.jpg`);
+    form.append("reqtype", "fileupload");
+    const response = await axios.post("https://catbox.moe/user/api.php", form, { headers: form.getHeaders() });
+    fs.unlinkSync(tempFilePath);
+    imageUrl = response.data;
+  }
+  if (!imageUrl) return reply("❌ Provide a URL or reply to an image.");
+  await setConfig("MENU_IMAGE_URL", imageUrl);
+  await reply(`✅ Image updated.\n♻️ Restarting...`);
   setTimeout(() => exec("pm2 restart all"), 2000);
 });
 
-// --- SETTINGS TOGGLES (ARRAY DRIVEN FOR CLEANER CODE) ---
+// --- TOGGLES WITH LID PROTECTION ---
 
 const toggleFeatures = [
     { pattern: "welcome", configKey: "WELCOME", react: "👋" },
@@ -117,17 +100,10 @@ const toggleFeatures = [
     { pattern: "anti-call", configKey: "ANTI_CALL", react: "📞" },
     { pattern: "autotyping", configKey: "AUTO_TYPING", react: "⌨️" },
     { pattern: "alwaysonline", configKey: "ALWAYS_ONLINE", react: "🌐" },
-    { pattern: "autorecoding", configKey: "AUTO_RECORDING", react: "🎙️" },
     { pattern: "autostatusreact", configKey: "AUTO_STATUS_REACT", react: "❤️" },
     { pattern: "autostatusview", configKey: "AUTO_STATUS_SEEN", react: "👀" },
     { pattern: "read-message", configKey: "READ_MESSAGE", react: "📖" },
-    { pattern: "antibad", configKey: "ANTI_BAD_WORD", react: "🚭" },
-    { pattern: "autosticker", configKey: "AUTO_STICKER", react: "✨" },
-    { pattern: "autoreply", configKey: "AUTO_REPLY", react: "🤖" },
-    { pattern: "autoreact", configKey: "AUTO_REACT", react: "⚡" },
-    { pattern: "autostatusreply", configKey: "AUTO_STATUS_REPLY", react: "💬" },
-    { pattern: "mention-reply", configKey: "MENTION_REPLY", react: "mee" },
-    { pattern: "admin-events", configKey: "ADMIN_ACTION", react: "⚙️" },
+    { pattern: "mention-reply", configKey: "MENTION_REPLY", react: "💬" },
     { pattern: "ownerreact", configKey: "OWNER_REACT", react: "👑" },
     { pattern: "customreact", configKey: "CUSTOM_REACT", react: "😎" }
 ];
@@ -135,8 +111,8 @@ const toggleFeatures = [
 toggleFeatures.forEach(feat => {
     cmd({
         pattern: feat.pattern,
-        alias: [feat.pattern.replace("-", ""), feat.react],
         category: "settings",
+        react: feat.react,
         filename: __filename
     }, async (conn, mek, m, { args, isCreator, reply }) => {
         if (!isCreator) return reply("*📛 OWNER ONLY!*");
@@ -149,52 +125,52 @@ toggleFeatures.forEach(feat => {
     });
 });
 
-// --- GROUP SECURITY SETTINGS (LID PROTECTED) ---
+// --- GROUP SECURITY (FULL LID FIX) ---
 
-const groupFeatures = [
+const groupProt = [
     { pattern: "antilink", configKey: "ANTI_LINK", name: "Anti-Link" },
     { pattern: "antibot", configKey: "ANTI_BOT", name: "Anti-Bot" },
+    { pattern: "antilinkkick", configKey: "ANTI_LINK_KICK", name: "Anti-Link Kick" },
     { pattern: "deletelink", configKey: "DELETE_LINKS", name: "Delete-Link" }
 ];
 
-groupFeatures.forEach(gfeat => {
+groupProt.forEach(prot => {
     cmd({
-        pattern: gfeat.pattern,
+        pattern: prot.pattern,
         category: "group",
         react: "🚫",
         filename: __filename
     }, async (conn, mek, m, { from, isGroup, args, sender, reply }) => {
         if (!isGroup) return reply('❌ Groups only.');
         const { isBotAdmin, isSenderAdmin } = await checkAdminStatus(conn, from, sender);
-        if (!isBotAdmin) return reply('❌ Bot must be Admin.');
-        if (!isSenderAdmin) return reply('❌ You must be Admin.');
-        
+        if (!isBotAdmin) return reply('❌ Bot needs Admin privileges.');
+        if (!isSenderAdmin) return reply('❌ Only Admins can use this.');
+
         const status = args[0]?.toLowerCase();
         if (status === "on" || status === "off") {
-            config[gfeat.configKey] = status === "on" ? "true" : "false";
+            config[prot.configKey] = status === "on" ? "true" : "false";
             await conn.sendMessage(from, { 
-                text: `✅ ${gfeat.name} is now ${status.toUpperCase()}.`,
+                text: `✅ ${prot.name} is now ${status.toUpperCase()}.`,
                 contextInfo: newsletterContext 
             }, { quoted: mek });
         } else {
-            reply(`Usage: .${gfeat.pattern} on/off`);
+            reply(`Usage: .${prot.pattern} on/off`);
         }
     });
 });
 
-// --- CUSTOM EMOJIS ---
+// --- CUSTOM EMOJIS & MODE ---
 
 cmd({
   pattern: "setreacts",
-  alias: ["emojis", "cemojis"],
-  desc: "Set custom reaction emojis",
+  alias: ["emojis"],
   category: "owner",
   react: "🌈",
   filename: __filename
 }, async (conn, mek, m, { args, isCreator, reply }) => {
   if (!isCreator) return reply("❗ Owner only.");
   const emojiList = args.join(" ").trim();
-  if (!emojiList) return reply("❌ Provide emojis (comma separated).\nExample: .setreacts ❤️,🔥,✨");
+  if (!emojiList) return reply("❌ Provide emojis (comma separated).");
   await setConfig("CUSTOM_REACT_EMOJIS", emojiList);
   await reply(`✅ Custom emojis updated.\n♻️ Restarting...`);
   setTimeout(() => exec("pm2 restart all"), 2000);
@@ -202,7 +178,6 @@ cmd({
 
 cmd({
     pattern: "mode",
-    alias: ["setmode"],
     category: "settings",
     filename: __filename,
 }, async (conn, mek, m, { args, isCreator, reply }) => {
