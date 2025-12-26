@@ -18,7 +18,7 @@ cmd({
             },
             message: {
                 contactMessage: {
-                    displayName: `𝗞𝗛𝗔𝗡-𝗠𝗗`,
+                    displayName: `𝙆𝘼𝙈𝙍𝘼𝙉-𝙈𝘿`,
                     vcard: `BEGIN:VCARD\nVERSION:3.0\nN:;a,;;;\nFN:'jawadED'\nitem1.TEL;waid=${m.sender.split("@")[0]}:${m.sender.split("@")[0]}\nitem1.X-ABLabel:Ponsel\nEND:VCARD`
                 }
             }
@@ -53,7 +53,7 @@ cmd({
         let msg = `
 👥 *Group:* ${groupMetadata.subject}
 🔗 *Invite Link:* ${inviteLink}
-✨ Powered by 𝗞𝗛𝗔𝗡-𝗠𝗗
+✨ Powered by 𝙆𝘼𝙈𝙍𝘼𝙉-𝙈𝘿
         `;
 
         return await conn.sendMessage(from, { text: msg }, { quoted: jawad });
