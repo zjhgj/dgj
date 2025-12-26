@@ -166,40 +166,45 @@ async function connectToWA() {
             console.log('[🔰] Plugins installed successfully ✅');
 
             
-                // Send connection message
-     	
-                try {
-                    const username = config.REPO.split('/').slice(3, 4)[0];
-                    const mrfrank = `https://github.com/${username}`;
-                    
-                    const upMessage = `╭─〔 *🤖KAMRAN-MD BOT* 〕  
-├─▸ *Ultra Super Fast Powerfull ⚠️*  
-│     *World Best BOT KAMRAN-MD* 
-╰─➤ *Your Smart WhatsApp Bot is Ready To use 🍁!*  
+// --- Updated Connection Message for KAMRAN-MD ---
 
-- *🖤 Thank You for Choosing KAMRAN-MD!* 
-
-╭──〔 🔗 *Information* 〕  
-├─ 🧩 *Prefix:* = ${prefix}
-├─ 📢 *Join Channel:*  
-│    https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O  
-├─ 🌟 *Star the Repo:*  
-│    https://github.com/KAMRAN-SMD/KAMRAN-MD  
+try {
+    const botId = conn.user.id;
+    const botLid = conn.user.lid || 'No LID detected'; // Fetching LID for connection logs
+    const username = config.REPO ? config.REPO.split('/').slice(3, 4)[0] : 'KAMRAN-SMD';
+    const prefix = config.PREFIX || '.';
+    
+    const upMessage = `╭─〔 *🤖 KAMRAN-MD BOT* 〕  
+├─▸ *Status:* Connected ✅
+├─▸ *LID:* ${botLid.split('@')[0]}
+├─▸ *Speed:* Ultra Super Fast ⚠️  
+│     *World Best BOT KAMRAN-MD* ╰─➤ *Your Smart WhatsApp Bot is Ready To use 🍁!* - *🖤 Thank You for Choosing KAMRAN-MD!* ╭──〔 🔗 *Information* 〕  
+├─ 🧩 *Prefix:* [ ${prefix} ]
+├─ 📢 *Join Channel:* │    https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O  
+├─ 🌟 *Star the Repo:* │    https://github.com/${username}/KAMRAN-MD  
 ╰─🚀 *Powered by DR KAMRAN*`;
-                    
-                    await conn.sendMessage(conn.user.id, { 
-                        image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
-                        caption: upMessage 
-                    });
-                    
-                } catch (sendError) {
-                    console.error('[🔰] Error sending messages:', sendError);
-                }
+    
+    // Sending message to bot's own number
+    await conn.sendMessage(conn.user.id, { 
+        image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
+        caption: upMessage,
+        contextInfo: {
+            forwardingScore: 999,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+                newsletterJid: '120363418144382782@newsletter',
+                newsletterName: 'KAMRAN-MD',
+                serverMessageId: 143
             }
-
-        if (qr) {
-            console.log('[🔰] Scan the QR code to connect or use session ID');
         }
+    });
+
+    console.log(`[🔰] KAMRAN-MD Connected Successfully!`);
+    console.log(`[🔰] Bot LID: ${botLid}`);
+    
+} catch (sendError) {
+    console.error('[🔰] Error sending connection messages:', sendError);
+}
     });
 
     conn.ev.on('creds.update', saveCreds);
