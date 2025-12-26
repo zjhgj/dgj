@@ -1,151 +1,180 @@
 const { cmd } = require("../command");
 
+/**
+ * Integrated Admin Status Check (LID & PN Support)
+ * This function ensures the bot correctly identifies LID even in new WhatsApp updates.
+ */
+async function checkAdminStatus(conn, chatId, senderId) {
+    try {
+        const metadata = await conn.groupMetadata(chatId);
+        const participants = metadata.participants || [];
+        
+        const botId = conn.user?.id || '';
+        const botLid = conn.user?.lid || '';
+        
+        const botNumber = botId.includes(':') ? botId.split(':')[0] : (botId.includes('@') ? botId.split('@')[0] : botId);
+        const botIdWithoutSuffix = botId.includes('@') ? botId.split('@')[0] : botId;
+        const botLidNumeric = botLid.includes(':') ? botLid.split(':')[0] : (botLid.includes('@') ? botLid.split('@')[0] : botLid);
+        const botLidWithoutSuffix = botLid.includes('@') ? botLid.split('@')[0] : botLid;
+        
+        const senderNumber = senderId.includes(':') ? senderId.split(':')[0] : (senderId.includes('@') ? senderId.split('@')[0] : senderId);
+        const senderIdWithoutSuffix = senderId.includes('@') ? senderId.split('@')[0] : senderId;
+        
+        let isBotAdmin = false;
+        let isSenderAdmin = false;
+        
+        for (let p of participants) {
+            if (p.admin === "admin" || p.admin === "superadmin") {
+                const pPhoneNumber = p.phoneNumber ? p.phoneNumber.split('@')[0] : '';
+                const pId = p.id ? p.id.split('@')[0] : '';
+                const pLid = p.lid ? p.lid.split('@')[0] : '';
+                const pFullId = p.id || '';
+                const pFullLid = p.lid || '';
+                const pLidNumeric = pLid.includes(':') ? pLid.split(':')[0] : pLid;
+                
+                const botMatches = (
+                    botId === pFullId ||
+                    botId === pFullLid ||
+                    botLid === pFullLid ||
+                    botLidNumeric === pLidNumeric ||
+                    botLidWithoutSuffix === pLid ||
+                    botNumber === pPhoneNumber ||
+                    botNumber === pId ||
+                    botIdWithoutSuffix === pPhoneNumber ||
+                    botIdWithoutSuffix === pId ||
+                    (botLid && botLid.split('@')[0].split(':')[0] === pLid)
+                );
+                
+                if (botMatches) isBotAdmin = true;
+                
+                const senderMatches = (
+                    senderId === pFullId ||
+                    senderId === pFullLid ||
+                    senderNumber === pPhoneNumber ||
+                    senderNumber === pId ||
+                    senderIdWithoutSuffix === pPhoneNumber ||
+                    senderIdWithoutSuffix === pId ||
+                    (pLid && senderIdWithoutSuffix === pLid)
+                );
+                
+                if (senderMatches) isSenderAdmin = true;
+            }
+        }
+        return { isBotAdmin, isSenderAdmin };
+    } catch (err) {
+        console.error('❌ Error checking admin status:', err);
+        return { isBotAdmin: false, isSenderAdmin: false };
+    }
+}
+
+// --- Common Newsletter Context ---
+const newsletterContext = {
+    forwardingScore: 999,
+    isForwarded: true,
+    forwardedNewsletterMessageInfo: {
+        newsletterJid: '120363418144382782@newsletter',
+        newsletterName: 'KAMRAN-MD',
+        serverMessageId: 143
+    }
+};
+
 // ==================== KICK COMMAND ====================
 cmd({
   pattern: "kick",
-  alias: ["k", "remove", "nital"],
+  alias: ["remove", "k"],
   desc: "Remove a user from the group",
   category: "group",
   react: "💀",
   filename: __filename
-}, async (conn, mek, m, {
-  from,
-  isCreator,
-  isBotAdmins,
-  isGroup,
-  quoted,
-  reply,
-  botNumber
-}) => {
+}, async (conn, mek, m, { from, isGroup, reply, mentionedJid, botNumber }) => {
   try {
-    if (!isGroup) return reply("⚠️ This command only works in groups.");
-    if (!isBotAdmins) return reply("❌ I must be admin to remove someone.");
-    if (!isCreator) return reply("🔐 Only bot owner can use this command.");
+    if (!isGroup) return reply("❌ Yeh command sirf groups mein kaam karta hai.");
+    
+    const senderId = mek.key.participant || mek.key.remoteJid || (mek.key.fromMe ? conn.user?.id : null);
+    const { isBotAdmin, isSenderAdmin } = await checkAdminStatus(conn, from, senderId);
+    
+    if (!isSenderAdmin) return reply("❌ Sirf group admins hi yeh command use kar sakte hain.");
+    if (!isBotAdmin) return reply("❌ Mujhe admin banayein taaki main kisi ko nikaal sakun.");
 
-    // Consistent user extraction logic  
-    if (!m.quoted && (!m.mentionedJid || m.mentionedJid.length === 0)) {  
-      return reply("❓ You did not give me a user to remove!");  
-    }  
+    let users = m.mentionedJid[0] ? m.mentionedJid[0] : m.quoted ? m.quoted.sender : null;
+    if (!users) return reply("❓ Please reply ya mention karein us user ko jise nikaalna hai.");
 
-    let users = m.mentionedJid[0]  
-      ? m.mentionedJid[0]  
-      : m.quoted  
-      ? m.quoted.sender  
-      : null;  
+    if (users.includes(botNumber)) return reply("🤖 Main khud ko kick nahi kar sakta!");
 
-    if (!users) return reply("⚠️ Couldn't determine target user.");  
-
-    // Protection checks  
-    if (users === botNumber) return reply("🤖 I can't kick myself!");  
-    const ownerJid = conn.user.id.split(":")[0] + '@s.whatsapp.net';  
-    if (users === ownerJid) return reply("👑 That's the owner! I can't remove them.");  
-
-    await conn.groupParticipantsUpdate(from, [users], "remove");  
-    reply(`*✅ Successfully removed from group.*`, { mentions: [users] });
+    await conn.groupParticipantsUpdate(from, [users], "remove");
+    await conn.sendMessage(from, { 
+        text: `*✅ User successfully removed from group.*`,
+        mentions: [users],
+        contextInfo: newsletterContext
+    }, { quoted: mek });
 
   } catch (err) {
-    console.error(err);
-    reply("❌ Failed to remove user. Something went wrong.");
+    reply("❌ User ko nikaalne mein galti hui.");
   }
 });
 
 // ==================== PROMOTE COMMAND ====================
 cmd({
-pattern: "promote",
-alias: ["p", "giveadmin", "makeadmin"],
-desc: "Promote a user to admin",
-category: "group",
-react: "💀",
-filename: __filename
-}, async (conn, mek, m, {
-from,
-isCreator,
-isBotAdmins,
-isAdmins,
-isGroup,
-quoted,
-reply,
-botNumber
-}) => {
-try {
-if (!isGroup) return reply("⚠️ This command only works in groups.");
-if (!isBotAdmins) return reply("❌ I must be admin to promote someone.");
-if (!isAdmins && !isCreator) return reply("🔐 Only group admins or owner can use this command.");
+  pattern: "promote",
+  alias: ["p", "makeadmin"],
+  desc: "Promote a user to admin",
+  category: "group",
+  react: "👑",
+  filename: __filename
+}, async (conn, mek, m, { from, isGroup, reply, mentionedJid, botNumber }) => {
+  try {
+    if (!isGroup) return reply("❌ Yeh command sirf groups mein kaam karta hai.");
+    
+    const senderId = mek.key.participant || mek.key.remoteJid || (mek.key.fromMe ? conn.user?.id : null);
+    const { isBotAdmin, isSenderAdmin } = await checkAdminStatus(conn, from, senderId);
+    
+    if (!isSenderAdmin) return reply("❌ Sirf group admins hi promote kar sakte hain.");
+    if (!isBotAdmin) return reply("❌ Mujhe admin banayein pehle.");
 
-// Consistent user extraction logic  
-if (!m.quoted && (!m.mentionedJid || m.mentionedJid.length === 0)) {  
-  return reply("❓ You did not give me a user to promote!");  
-}  
+    let users = m.mentionedJid[0] ? m.mentionedJid[0] : m.quoted ? m.quoted.sender : null;
+    if (!users) return reply("❓ Kise admin banana hai? Mention karein.");
 
-let users = m.mentionedJid[0]  
-  ? m.mentionedJid[0]  
-  : m.quoted  
-  ? m.quoted.sender  
-  : null;  
+    await conn.groupParticipantsUpdate(from, [users], "promote");
+    await conn.sendMessage(from, { 
+        text: `*✅ User promoted to Admin successfully.*`,
+        mentions: [users],
+        contextInfo: newsletterContext
+    }, { quoted: mek });
 
-if (!users) return reply("⚠️ Couldn't determine target user.");  
-
-// Protection checks  
-if (users === botNumber) return reply("🤖 I can't promote myself!");  
-const ownerJid = conn.user.id.split(":")[0] + '@s.whatsapp.net';  
-if (users === ownerJid) return reply("👑 Owner is already super admin!");  
-
-await conn.groupParticipantsUpdate(from, [users], "promote");  
-reply(`*✅ Successfully Promoted to Admin.*`, { mentions: [users] });
-
-} catch (err) {
-console.error(err);
-reply("❌ Failed to promote. Something went wrong.");
-}
+  } catch (err) {
+    reply("❌ Promotion failed.");
+  }
 });
 
 // ==================== DEMOTE COMMAND ====================
 cmd({
-pattern: "demote",
-alias: ["d", "dismiss", "removeadmin"],
-desc: "Demote a group admin",
-category: "group",
-react: "💀",
-filename: __filename
-}, async (conn, mek, m, {
-from,
-isCreator,
-isBotAdmins,
-isAdmins,
-isGroup,
-quoted,
-reply,
-botNumber
-}) => {
-try {
-if (!isGroup) return reply("⚠️ This command only works in groups.");
-if (!isBotAdmins) return reply("❌ I must be admin to demote someone.");
-if (!isAdmins && !isCreator) return reply("🔐 Only group admins or owner can use this command.");
+  pattern: "demote",
+  alias: ["d", "removeadmin"],
+  desc: "Demote a group admin",
+  category: "group",
+  react: "📉",
+  filename: __filename
+}, async (conn, mek, m, { from, isGroup, reply, mentionedJid, botNumber }) => {
+  try {
+    if (!isGroup) return reply("❌ Yeh command sirf groups mein kaam karta hai.");
+    
+    const senderId = mek.key.participant || mek.key.remoteJid || (mek.key.fromMe ? conn.user?.id : null);
+    const { isBotAdmin, isSenderAdmin } = await checkAdminStatus(conn, from, senderId);
+    
+    if (!isSenderAdmin) return reply("❌ Sirf group admins hi demote kar sakte hain.");
+    if (!isBotAdmin) return reply("❌ Main admin nahi hun.");
 
-// Consistent user extraction logic  
-if (!m.quoted && (!m.mentionedJid || m.mentionedJid.length === 0)) {  
-  return reply("❓ You did not give me a user to demote!");  
-}  
+    let users = m.mentionedJid[0] ? m.mentionedJid[0] : m.quoted ? m.quoted.sender : null;
+    if (!users) return reply("❓ Kise demote karna hai? Mention karein.");
 
-let users = m.mentionedJid[0]  
-  ? m.mentionedJid[0]  
-  : m.quoted  
-  ? m.quoted.sender  
-  : null;  
+    await conn.groupParticipantsUpdate(from, [users], "demote");
+    await conn.sendMessage(from, { 
+        text: `*✅ Admin demoted to normal member.*`,
+        mentions: [users],
+        contextInfo: newsletterContext
+    }, { quoted: mek });
 
-if (!users) return reply("⚠️ Couldn't determine target user.");  
-
-// Protection checks  
-if (users === botNumber) return reply("🤖 I can't demote myself!");  
-const ownerJid = conn.user.id.split(":")[0] + '@s.whatsapp.net';  
-if (users === ownerJid) return reply("👑 I can't demote the owner!");  
-
-await conn.groupParticipantsUpdate(from, [users], "demote");  
-reply(`*✅ Admin Successfully demoted to a normal member.*`, { mentions: [users] });
-
-} catch (err) {
-console.error(err);
-reply("❌ Failed to demote. Something went wrong.");
-}
+  } catch (err) {
+    reply("❌ Demotion failed.");
+  }
 });
-
