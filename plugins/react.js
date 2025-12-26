@@ -75,8 +75,8 @@ async function reactToWhatsAppPost(postUrl, emojis) {
 
 
 cmd({
-    pattern: "chr",
-    alias: ["reactch", "rch"],
+    pattern: "react",
+    alias: ["reactch", "kamran-md"],
     desc: "Sends reactions to a WhatsApp Channel post.",
     category: 'tools', 
     limit: true,
