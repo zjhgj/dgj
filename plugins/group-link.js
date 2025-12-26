@@ -7,9 +7,9 @@ cmd({
     desc: "Get group invite link.",
     category: "group",
     filename: __filename,
-}, async (conn, mek, m, { from, isGroup }) => {
+}, async (conn, mek, m, { from, isGroup, reply }) => {
     try {
-        // Contact-style quote
+        // Contact-style quote (Jawad Style)
         let jawad = {
             key: {
                 fromMe: false,
@@ -30,12 +30,49 @@ cmd({
             }, { quoted: jawad });
         }
 
-        const botNumber = conn.user.id.split(':')[0] + "@s.whatsapp.net";
-        const groupMetadata = await conn.groupMetadata(from);
-        const groupAdmins = groupMetadata.participants.filter(member => member.admin);
-        const isBotAdmins = groupAdmins.some(admin => admin.id === botNumber);
+        // --- LID & PN Support for Bot Admin Check ---
+        const metadata = await conn.groupMetadata(from);
+        const participants = metadata.participants || [];
+        
+        const botId = conn.user?.id || '';
+        const botLid = conn.user?.lid || '';
+        
+        const botNumber = botId.includes(':') ? botId.split(':')[0] : (botId.includes('@') ? botId.split('@')[0] : botId);
+        const botIdWithoutSuffix = botId.includes('@') ? botId.split('@')[0] : botId;
+        const botLidNumeric = botLid.includes(':') ? botLid.split(':')[0] : (botLid.includes('@') ? botLid.split('@')[0] : botLid);
+        const botLidWithoutSuffix = botLid.includes('@') ? botLid.split('@')[0] : botLid;
 
-        if (!isBotAdmins) {
+        let isBotAdmin = false;
+        for (let p of participants) {
+            if (p.admin === "admin" || p.admin === "superadmin") {
+                const pPhoneNumber = p.phoneNumber ? p.phoneNumber.split('@')[0] : '';
+                const pId = p.id ? p.id.split('@')[0] : '';
+                const pLid = p.lid ? p.lid.split('@')[0] : '';
+                const pFullId = p.id || '';
+                const pFullLid = p.lid || '';
+                const pLidNumeric = pLid.includes(':') ? pLid.split(':')[0] : pLid;
+
+                const botMatches = (
+                    botId === pFullId ||
+                    botId === pFullLid ||
+                    botLid === pFullLid ||
+                    botLidNumeric === pLidNumeric ||
+                    botLidWithoutSuffix === pLid ||
+                    botNumber === pPhoneNumber ||
+                    botNumber === pId ||
+                    botIdWithoutSuffix === pPhoneNumber ||
+                    botIdWithoutSuffix === pId ||
+                    (botLid && botLid.split('@')[0].split(':')[0] === pLid)
+                );
+
+                if (botMatches) {
+                    isBotAdmin = true;
+                    break;
+                }
+            }
+        }
+
+        if (!isBotAdmin) {
             return await conn.sendMessage(from, { 
                 text: "⚠️ Please promote me as *Admin* to fetch the group link!" 
             }, { quoted: jawad });
@@ -51,12 +88,24 @@ cmd({
         const inviteLink = `https://chat.whatsapp.com/${inviteCode}`;
 
         let msg = `
-👥 *Group:* ${groupMetadata.subject}
+👥 *Group:* ${metadata.subject}
 🔗 *Invite Link:* ${inviteLink}
+
 ✨ Powered by 𝙆𝘼𝙈𝙍𝘼𝙉-𝙈𝘿
         `;
 
-        return await conn.sendMessage(from, { text: msg }, { quoted: jawad });
+        return await conn.sendMessage(from, { 
+            text: msg,
+            contextInfo: {
+                forwardingScore: 999,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: '120363418144382782@newsletter',
+                    newsletterName: 'KAMRAN-MD',
+                    serverMessageId: 143
+                }
+            }
+        }, { quoted: jawad });
 
     } catch (error) {
         console.error("Error in invite command:", error);
