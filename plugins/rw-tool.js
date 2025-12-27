@@ -1,15 +1,14 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - WALLPAPER SEARCH (WALLPAPERFLARE)
+//           KAMRAN-MD - AI IMAGE EDITOR (IMG2IMG)
 //---------------------------------------------------------------------------
-//  🚀 SCRAPER INTEGRATED WITH LID & NEWSLETTER SUPPORT
+//  🚀 POWERED BY IMGEDITOR API (LID & NEWSLETTER SUPPORT)
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
-const cheerio = require('cheerio');
 const config = require('../config');
 
-// Newsletter Context for professional look
+// Newsletter Context for professional branding
 const newsletterContext = {
     forwardingScore: 999,
     isForwarded: true,
@@ -20,86 +19,100 @@ const newsletterContext = {
     }
 };
 
+const BASE = "https://imgeditor.co/api";
+
 /**
- * Wallpaper Scraper Function
+ * Upload Image Buffer to ImgEditor
  */
-async function wallpaperScraper(query) {
-    try {
-        const url = `https://www.wallpaperflare.com/search?wallpaper=${encodeURIComponent(query)}`;
-        const { data } = await axios.get(url, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-        });
+async function uploadImage(buffer) {
+    const res = await axios.post(`${BASE}/get-upload-url`, {
+        fileName: "image.jpg",
+        contentType: "image/jpeg",
+        fileSize: buffer.length
+    }, { headers: { "content-type": "application/json" } });
 
-        const $ = cheerio.load(data);
-        const results = [];
+    const json = res.data;
+    if (!json.uploadUrl || !json.publicUrl) throw new Error("Gagal mendapatkan upload url");
 
-        $('li[itemprop="associatedMedia"]').each((_, el) => {
-            const title = $(el).find('figcaption[itemprop="caption description"]').text().trim();
-            const image = $(el).find("img").attr("data-src");
-            const page = $(el).find('a[itemprop="url"]').attr("href");
-            const resolution = $(el).find(".res").text().trim();
+    await axios.put(json.uploadUrl, buffer, {
+        headers: { "content-type": "image/jpeg" }
+    });
 
-            if (image && page) {
-                results.push({
-                    title,
-                    resolution,
-                    image,
-                    page: `https://www.wallpaperflare.com${page}`
-                });
-            }
-        });
+    return json.publicUrl;
+}
 
-        return results;
-    } catch (error) {
-        console.error("Scraper Error:", error.message);
-        return [];
+/**
+ * Request AI Image Generation
+ */
+async function generateImage(prompt, imageUrl) {
+    const res = await axios.post(`${BASE}/generate-image`, {
+        prompt,
+        styleId: "realistic",
+        mode: "image",
+        imageUrl,
+        imageUrls: [imageUrl],
+        numImages: 1,
+        outputFormat: "png",
+        model: "nano-banana"
+    }, { headers: { "content-type": "application/json" } });
+
+    if (!res.data.taskId) throw new Error("Task creation failed");
+    return res.data.taskId;
+}
+
+/**
+ * Wait for AI Task Completion
+ */
+async function waitResult(taskId) {
+    while (true) {
+        await new Promise(r => setTimeout(r, 2500));
+        const res = await axios.get(`${BASE}/generate-image/status?taskId=${taskId}`);
+        const json = res.data;
+
+        if (json.status === "completed" && json.imageUrl) return json.imageUrl;
+        if (json.status === "failed") throw new Error("Generation failed");
     }
 }
 
-// --- WALLPAPER COMMAND ---
+// --- COMMAND: EDIT IMAGE ---
 
 cmd({
-    pattern: "wallpaper",
-    alias: ["wall", "wp"],
-    desc: "Search for high-quality wallpapers.",
-    category: "search",
-    react: "🖼️",
-    filename: __filename
+    pattern: "editimg",
+    alias: ["imgai", "reimagine"],
+    desc: "Edit an image using AI prompt.",
+    category: "ai",
+    react: "🎨",
+    filename: __filename,
 }, async (conn, mek, m, { from, text, reply }) => {
-    if (!text) return reply("🖼️ *Wallpaper Search*\n\nUsage: `.wallpaper <query>`\nExample: `.wallpaper Cyberpunk` ");
-
     try {
-        await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
+        const q = m.quoted ? m.quoted : m;
+        const mime = (q.msg || q).mimetype || '';
+        
+        if (!/image/.test(mime)) return reply("📸 Please reply to an image with a prompt.\nExample: `.editimg change to a robot` ");
+        if (!text) return reply("❓ Please provide a prompt for AI.");
 
-        const results = await wallpaperScraper(text);
-
-        if (results.length === 0) {
-            return reply("❌ No wallpapers found for your search.");
-        }
-
-        // Picking a random wallpaper from the results
-        const randomWall = results[Math.floor(Math.random() * results.length)];
-
-        const caption = `╭──〔 *🖼️ WALLPAPER INFO* 〕  
-├─ 📝 *Title:* ${randomWall.title || 'N/A'}
-├─ 📏 *Resolution:* ${randomWall.resolution || 'HD'}
-├─ 🔗 *Source:* WallpaperFlare
-╰───────────────────🚀
-
-*🚀 Powered by KAMRAN-MD*`;
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        
+        // 1. Download and Upload
+        const mediaBuffer = await q.download();
+        const publicUrl = await uploadImage(mediaBuffer);
+        
+        // 2. Generate Task
+        const taskId = await generateImage(text, publicUrl);
+        
+        // 3. Wait for result
+        const resultUrl = await waitResult(taskId);
 
         await conn.sendMessage(from, { 
-            image: { url: randomWall.image }, 
-            caption: caption,
+            image: { url: resultUrl }, 
+            caption: `*🎨 AI Edit Completed*\n\n*Prompt:* ${text}\n\n*🚀 Powered by KAMRAN-MD*`,
             contextInfo: newsletterContext
         }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error("Wallpaper Command Error:", e);
-        reply("❌ An error occurred while fetching wallpapers.");
+        console.error("AI Editor Error:", e);
+        reply(`❌ Error: ${e.message}`);
     }
 });
