@@ -167,7 +167,6 @@ async function connectToWA() {
 
             
                 // Send connection message
-     	
                 try {
                     const username = config.REPO.split('/').slice(3, 4)[0];
                     const mrfrank = `https://github.com/${username}`;
