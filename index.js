@@ -187,6 +187,9 @@ async function connectToWA() {
 │    https://github.com/KAMRAN-SMD/KAMRAN-MD  
 ╰─🚀 *Powered by DR KAMRAN*`;
                     
+                    // Apply inbox path logic
+                    const inboxPath = conn.user.id.split(':')[0] + "@s.whatsapp.net";
+                    
                     await conn.sendMessage(conn.user.id, { 
                         image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
                         caption: upMessage 
