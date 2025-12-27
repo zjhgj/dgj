@@ -1,7 +1,7 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - AUTO DOWNLOADER
+//           KAMRAN-MD - MULTI-API AUTO DOWNLOADER
 //---------------------------------------------------------------------------
-//  🚀 ALL-IN-ONE AUTO DOWNLOAD SYSTEM (LID & NEWSLETTER SUPPORT)
+//  🚀 ALL-IN-ONE DOWNLOADER (YT, MP3, TIKTOK, FB, SPOTIFY)
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
@@ -19,77 +19,92 @@ const newsletterContext = {
     }
 };
 
-// Main Auto-Download Logic
 cmd({
     on: "body"
-}, async (conn, mek, m, { from, body, isGroup, isAdmins, isBotAdmins, reply, sender }) => {
+}, async (conn, mek, m, { from, body, isGroup, reply, sender }) => {
     try {
-        // Regex to detect common social media URLs
+        // Auto-DL status check (Config filter)
+        if (config.AUTO_DL !== "true") return;
+
         const urlMatch = body.match(/\bhttps?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi);
-        
-        if (!urlMatch) return; // No URL found
+        if (!urlMatch) return;
 
         const url = urlMatch[0];
-        const isSocial = /facebook|fb|instagram|tiktok|twitter|x\.com|youtube|youtu\.be|pin\.it|pinterest|threads\.net/gi.test(url);
+        let apiUrl = "";
+        let type = "";
 
-        if (!isSocial) return;
+        // 1. YouTube Video Detection
+        if (/youtube\.com\/watch|youtu\.be/gi.test(url)) {
+            apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
+            type = "yt_video";
+        }
+        // 2. TikTok Detection
+        else if (/tiktok\.com/gi.test(url)) {
+            apiUrl = `https://delirius-apiofc.vercel.app/download/tiktok?url=${encodeURIComponent(url)}`;
+            type = "tiktok";
+        }
+        // 3. Facebook Detection
+        else if (/facebook\.com|fb\.watch/gi.test(url)) {
+            apiUrl = `https://edith-apis.vercel.app/download/facebook?url=${encodeURIComponent(url)}`;
+            type = "facebook";
+        }
+        // 4. Spotify Detection
+        else if (/open\.spotify\.com/gi.test(url)) {
+            apiUrl = `https://api.deline.web.id/downloader/spotifyplay?q=${encodeURIComponent(url)}`;
+            type = "spotify";
+        }
+        // 5. YouTube MP3 (If body contains 'mp3' keyword or logic)
+        if (body.toLowerCase().includes("mp3") && type === "yt_video") {
+            apiUrl = `https://apis-bandaheali.vercel.app/download/ytmp3?url=${encodeURIComponent(url)}`;
+            type = "yt_audio";
+        }
 
-        // Reactive UI - Let the user know bot is processing
+        if (!apiUrl) return;
+
+        // Reactive UI
         await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
 
-        const apiUrl = `https://all-in-one-downloader-six.vercel.app/api/download?url=${encodeURIComponent(url)}`;
-        
         const response = await axios.get(apiUrl);
-        const data = response.data;
+        const res = response.data;
+        
+        // Extract data based on different API response structures
+        let downloadLink = "";
+        let title = "KAMRAN-MD DOWNLOADER";
 
-        // Check if download link is found in API response
-        // Note: adjust 'data.url' based on the exact JSON structure of your API
-        const downloadUrl = data.url || data.link || (data.data && data.data.main_url);
-        const title = data.title || "KAMRAN-MD DOWNLOADER";
-
-        if (!downloadUrl) {
-            return await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+        if (type === "yt_video" || type === "yt_audio") {
+            downloadLink = res.result?.url || res.data?.url || res.url;
+            title = res.result?.title || res.title || "YouTube Media";
+        } else if (type === "tiktok") {
+            downloadLink = res.data?.main_url || res.result?.video || res.url;
+        } else if (type === "facebook") {
+            downloadLink = res.result?.hd || res.result?.sd || res.url;
+        } else if (type === "spotify") {
+            downloadLink = res.data?.url || res.result?.download;
+            title = res.data?.title || "Spotify Track";
         }
 
-        const messageOptions = {
-            video: { url: downloadUrl },
-            caption: `*🎬 Title:* ${title}\n\n*🚀 Powered by KAMRAN-MD*`,
-            contextInfo: newsletterContext
-        };
+        if (!downloadLink) return;
 
-        // If it's an image (Pinterest/IG Post)
-        if (data.type === 'image' || downloadUrl.includes('.jpg') || downloadUrl.includes('.png')) {
-            messageOptions.video = undefined;
-            messageOptions.image = { url: downloadUrl };
+        // Sending the Media
+        const isAudio = type === "yt_audio" || type === "spotify";
+        
+        if (isAudio) {
+            await conn.sendMessage(from, { 
+                audio: { url: downloadLink }, 
+                mimetype: 'audio/mpeg',
+                contextInfo: newsletterContext
+            }, { quoted: mek });
+        } else {
+            await conn.sendMessage(from, { 
+                video: { url: downloadLink }, 
+                caption: `*🎬 Title:* ${title}\n\n*🚀 Powered by KAMRAN-MD*`,
+                contextInfo: newsletterContext
+            }, { quoted: mek });
         }
 
-        await conn.sendMessage(from, messageOptions, { quoted: mek });
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
-    } catch (error) {
-        console.error("Auto Download Error:", error);
-        // Silent fail to avoid spamming in groups
-    }
-});
-
-// Toggle Command for Auto-Downloader
-cmd({
-    pattern: "autodl",
-    alias: ["autodownload"],
-    desc: "Enable/Disable Auto Downloader",
-    category: "settings",
-    filename: __filename
-}, async (conn, mek, m, { args, isCreator, reply }) => {
-    if (!isCreator) return reply("❗ Owner only.");
-    const status = args[0]?.toLowerCase();
-    
-    if (status === "on") {
-        config.AUTO_DL = "true";
-        return reply("✅ Auto Downloader enabled.");
-    } else if (status === "off") {
-        config.AUTO_DL = "false";
-        return reply("❌ Auto Downloader disabled.");
-    } else {
-        reply("Usage: .autodl on/off");
+    } catch (e) {
+        console.log("AutoDL Error:", e.message);
     }
 });
