@@ -1,7 +1,7 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - MULTI-API AUTO DOWNLOADER
+//           KAMRAN-MD - AUTO DOWNLOADER (ADVANCED)
 //---------------------------------------------------------------------------
-//  🚀 ALL-IN-ONE DOWNLOADER (YT, MP3, TIKTOK, FB, SPOTIFY)
+//  🚀 MULTI-API AUTO DOWNLOAD SYSTEM (LID & NEWSLETTER SUPPORT)
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
@@ -19,44 +19,49 @@ const newsletterContext = {
     }
 };
 
+// Main Auto-Download Logic
 cmd({
     on: "body"
 }, async (conn, mek, m, { from, body, isGroup, reply, sender }) => {
     try {
-        // Auto-DL status check (Config filter)
+        // Global toggle check
         if (config.AUTO_DL !== "true") return;
 
+        // Regex to detect URLs
         const urlMatch = body.match(/\bhttps?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi);
         if (!urlMatch) return;
 
         const url = urlMatch[0];
         let apiUrl = "";
-        let type = "";
+        let method = "video"; // Default
 
-        // 1. YouTube Video Detection
-        if (/youtube\.com\/watch|youtu\.be/gi.test(url)) {
-            apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
-            type = "yt_video";
-        }
-        // 2. TikTok Detection
-        else if (/tiktok\.com/gi.test(url)) {
+        // --- Specific API Selection ---
+        
+        // 1. YouTube Logic
+        if (url.includes("youtube.com") || url.includes("youtu.be")) {
+            if (body.toLowerCase().includes("mp3") || body.toLowerCase().includes("audio")) {
+                apiUrl = `https://apis-bandaheali.vercel.app/download/ytmp3?url=${encodeURIComponent(url)}`;
+                method = "audio";
+            } else {
+                apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
+            }
+        } 
+        // 2. TikTok Logic
+        else if (url.includes("tiktok.com")) {
             apiUrl = `https://delirius-apiofc.vercel.app/download/tiktok?url=${encodeURIComponent(url)}`;
-            type = "tiktok";
-        }
-        // 3. Facebook Detection
-        else if (/facebook\.com|fb\.watch/gi.test(url)) {
+        } 
+        // 3. Facebook Logic
+        else if (url.includes("facebook.com") || url.includes("fb.watch")) {
             apiUrl = `https://edith-apis.vercel.app/download/facebook?url=${encodeURIComponent(url)}`;
-            type = "facebook";
-        }
-        // 4. Spotify Detection
-        else if (/open\.spotify\.com/gi.test(url)) {
+        } 
+        // 4. Spotify Logic
+        else if (url.includes("spotify.com")) {
             apiUrl = `https://api.deline.web.id/downloader/spotifyplay?q=${encodeURIComponent(url)}`;
-            type = "spotify";
+            method = "audio";
         }
-        // 5. YouTube MP3 (If body contains 'mp3' keyword or logic)
-        if (body.toLowerCase().includes("mp3") && type === "yt_video") {
-            apiUrl = `https://apis-bandaheali.vercel.app/download/ytmp3?url=${encodeURIComponent(url)}`;
-            type = "yt_audio";
+        // 5. All-in-One Backup (For Instagram, Twitter, etc.)
+        else if (/instagram|twitter|x\.com|pin\.it|pinterest|threads\.net/gi.test(url)) {
+            apiUrl = `https://all-in-one-downloader-six.vercel.app/api/download?url=${encodeURIComponent(url)}`;
         }
 
         if (!apiUrl) return;
@@ -67,36 +72,25 @@ cmd({
         const response = await axios.get(apiUrl);
         const res = response.data;
         
-        // Extract data based on different API response structures
-        let downloadLink = "";
-        let title = "KAMRAN-MD DOWNLOADER";
+        // Extraction based on different API formats
+        let downloadUrl = res.url || res.link || (res.data && (res.data.url || res.data.main_url || res.data.download)) || (res.result && (res.result.url || res.result.hd || res.result.sd || res.result.download));
+        let title = res.title || (res.data && res.data.title) || (res.result && res.result.title) || "KAMRAN-MD DOWNLOADER";
 
-        if (type === "yt_video" || type === "yt_audio") {
-            downloadLink = res.result?.url || res.data?.url || res.url;
-            title = res.result?.title || res.title || "YouTube Media";
-        } else if (type === "tiktok") {
-            downloadLink = res.data?.main_url || res.result?.video || res.url;
-        } else if (type === "facebook") {
-            downloadLink = res.result?.hd || res.result?.sd || res.url;
-        } else if (type === "spotify") {
-            downloadLink = res.data?.url || res.result?.download;
-            title = res.data?.title || "Spotify Track";
+        if (!downloadUrl) {
+            return await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
         }
 
-        if (!downloadLink) return;
-
-        // Sending the Media
-        const isAudio = type === "yt_audio" || type === "spotify";
-        
-        if (isAudio) {
+        // Sending Media
+        if (method === "audio") {
             await conn.sendMessage(from, { 
-                audio: { url: downloadLink }, 
+                audio: { url: downloadUrl }, 
                 mimetype: 'audio/mpeg',
+                ptt: false,
                 contextInfo: newsletterContext
             }, { quoted: mek });
         } else {
             await conn.sendMessage(from, { 
-                video: { url: downloadLink }, 
+                video: { url: downloadUrl }, 
                 caption: `*🎬 Title:* ${title}\n\n*🚀 Powered by KAMRAN-MD*`,
                 contextInfo: newsletterContext
             }, { quoted: mek });
@@ -104,7 +98,29 @@ cmd({
 
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
-    } catch (e) {
-        console.log("AutoDL Error:", e.message);
+    } catch (error) {
+        console.error("AutoDL Error:", error.message);
+    }
+});
+
+// Toggle Command
+cmd({
+    pattern: "autodl",
+    alias: ["autodownload"],
+    desc: "Enable/Disable Auto Downloader",
+    category: "settings",
+    filename: __filename
+}, async (conn, mek, m, { args, isCreator, reply }) => {
+    if (!isCreator) return reply("❗ Owner only.");
+    const status = args[0]?.toLowerCase();
+    
+    if (status === "on") {
+        config.AUTO_DL = "true";
+        return reply("✅ Auto Downloader enabled.");
+    } else if (status === "off") {
+        config.AUTO_DL = "false";
+        return reply("❌ Auto Downloader disabled.");
+    } else {
+        reply("Usage: .autodl on/off");
     }
 });
