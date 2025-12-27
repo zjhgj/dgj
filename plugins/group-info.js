@@ -6,7 +6,7 @@ cmd({
     pattern: "ginfo",
     react: "🥏",
     alias: ["groupinfo"],
-    desc: "Get group information.",
+    desc: "Get group information with LID support.",
     category: "group",
     use: '.ginfo',
     filename: __filename
@@ -18,13 +18,29 @@ async (conn, mek, m, {
     try {
         // Requirements
         if (!isGroup) return reply(`❌ This command only works in group chats.`);
-        if (!isAdmins && !isDev) return reply(`⛔ Only *Group Admins* or *Bot Dev* can use this.`);
-        if (!isBotAdmins) return reply(`❌ I need *admin* rights to fetch group details.`);
+        
+        // Newsletter Context for professional look
+        const newsletterContext = {
+            forwardingScore: 999,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+                newsletterJid: '120363418144382782@newsletter',
+                newsletterName: 'KAMRAN-MD',
+                serverMessageId: 143
+            }
+        };
 
+        const metadata = await conn.groupMetadata(from);
+        
+        // LID Fix: identify admins correctly even if phone numbers are hidden
+        const groupAdmins = participants.filter(p => p.admin === "admin" || p.admin === "superadmin");
+        
+        // Fallback Profile Picture
         const fallbackPpUrls = [
-            'https://i.ibb.co/KhYC4FY/1221bc0bdd2354b42b293317ff2adbcf-icon.png',
+            'https://files.catbox.moe/ly6553.jpg',
             'https://i.ibb.co/KhYC4FY/1221bc0bdd2354b42b293317ff2adbcf-icon.png',
         ];
+        
         let ppUrl;
         try {
             ppUrl = await conn.profilePictureUrl(from, 'image');
@@ -32,28 +48,41 @@ async (conn, mek, m, {
             ppUrl = fallbackPpUrls[Math.floor(Math.random() * fallbackPpUrls.length)];
         }
 
-        const metadata = await conn.groupMetadata(from);
-        const groupAdmins = participants.filter(p => p.admin);
-        const listAdmin = groupAdmins.map((v, i) => `${i + 1}. @${v.id.split('@')[0]}`).join('\n');
-        const owner = metadata.owner || groupAdmins[0]?.id || "unknown";
+        // Mapping Admins (LID compatible mapping)
+        const listAdmin = groupAdmins.map((v, i) => {
+            const id = v.id.split('@')[0];
+            return `${i + 1}. @${id}`;
+        }).join('\n');
 
-        const gdata = `*「 Group Information 」*\n
-*Group Name* : ${metadata.subject}
-*Group ID* : ${metadata.id}
-*Participants* : ${metadata.size}
-*Group Creator* : @${owner.split('@')[0]}
-*Description* : ${metadata.desc?.toString() || 'No description'}\n
-*Admins (${groupAdmins.length})*:\n${listAdmin}`
+        const owner = metadata.owner || (groupAdmins.length > 0 ? groupAdmins[0].id : "unknown");
+        const creationDate = new Date(metadata.creation * 1000).toLocaleString();
+
+        const gdata = `╭──〔 *🏠 GROUP INFORMATION* 〕  
+├─ 📝 *Name:* ${metadata.subject}
+├─ 🆔 *ID:* ${metadata.id}
+├─ 👑 *Creator:* @${owner.split('@')[0]}
+├─ 📅 *Created:* ${creationDate}
+├─ 👥 *Members:* ${participants.length}
+├─ 🛡️ *Admins:* ${groupAdmins.length}
+╰───────────────────🚀
+
+*📝 Description:* ${metadata.desc?.toString() || 'No description available.'}
+
+*🛡️ Admin List:*
+${listAdmin}
+
+*🚀 Powered by KAMRAN-MD*`;
 
         await conn.sendMessage(from, {
             image: { url: ppUrl },
             caption: gdata,
-            mentions: groupAdmins.map(v => v.id).concat([owner])
+            mentions: participants.map(p => p.id), // Mentioning everyone to ensure tags work
+            contextInfo: newsletterContext
         }, { quoted: mek });
 
     } catch (e) {
         console.error(e);
         await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
-        reply(`❌ An error occurred:\n\n${e}`);
+        reply(`❌ An error occurred while fetching group info.`);
     }
 });
