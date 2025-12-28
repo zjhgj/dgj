@@ -1,7 +1,7 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - ALL VIDEO DOWNLOADER (VIDSSAVE)
+//           KAMRAN-MD - ADVANCED MULTI DOWNLOADER (V2)
 //---------------------------------------------------------------------------
-//  🚀 DOWNLOAD FROM YT, IG, FB, TT, ETC. (LID & NEWSLETTER SUPPORT)
+//  🚀 SUPPORT FOR MP3 & VIDEO (720P, 480P, 360P) - LID & NEWSLETTER
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
@@ -57,7 +57,7 @@ class VidsSave {
             }).toString();
 
             let finalUrl = null;
-            for (let i = 0; i < 10; i++) {
+            for (let i = 0; i < 12; i++) {
                 const { data: sseString } = await axios.get(`${this.baseUrl}/sse/contentsite_api/media/download_query?${queryParams}`, {
                     headers: { ...this.headers, "accept": "text/event-stream" },
                     responseType: "text"
@@ -81,64 +81,97 @@ class VidsSave {
             return finalUrl;
         } catch (e) { return null; }
     }
-
-    async scrape(url) {
-        const data = await this.getResources(url);
-        if (!data) return { status: false };
-
-        const { title, thumbnail, resources } = data;
-        let videoRes = resources.filter(r => r.type === "video").sort((a, b) => parseInt(b.quality) - parseInt(a.quality));
-        const bestVideo = videoRes[0];
-        const videoUrl = await this.resolveDownloadLink(bestVideo?.resource_content);
-
-        return {
-            status: true,
-            title: title,
-            thumbnail: thumbnail,
-            videoUrl: videoUrl
-        };
-    }
 }
 
 const scraper = new VidsSave();
 
+// Main Command
 cmd({
-    pattern: "download",
-    alias: ["dl", "getvid", "allvideo"],
-    desc: "Download videos from various platforms (YT, FB, IG, TT).",
+    pattern: "ytdl",
+    alias: ["song", "video2", "audio1"],
+    desc: "Download YouTube/Social Media in MP3 or Video (Multiple Qualities).",
     category: "download",
     react: "📥",
     filename: __filename
 }, async (conn, mek, m, { from, text, reply }) => {
-    if (!text) return reply("📥 *All Video Downloader*\n\nUsage: `.dl <video link>`\nExample: `.dl https://www.youtube.com/watch?v=...` ");
+    if (!text) return reply("📥 *KAMRAN-MD DOWNLOADER*\n\nUsage: `.ytdl <link>`\nExample: `.ytdl https://youtube.com/...` ");
 
     try {
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        const result = await scraper.scrape(text);
+        const data = await scraper.getResources(text);
+        if (!data) return reply("❌ Link invalid ya API error!");
 
-        if (!result.status || !result.videoUrl) {
-            return reply("❌ Unable to fetch video. Please check the link.");
-        }
+        const { title, thumbnail, resources } = data;
 
-        const caption = `╭──〔 *📥 DOWNLOADER* 〕  
-├─ 📝 *Title:* ${result.title}
-├─ 🔗 *Source:* Detected automatically
-╰───────────────────🚀
+        // Filtering Versions
+        const v720 = resources.find(r => r.quality === "720P" && r.type === "video");
+        const v480 = resources.find(r => r.quality === "480P" && r.type === "video");
+        const v360 = resources.find(r => r.quality === "360P" && r.type === "video");
+        const audio = resources.find(r => r.type === "audio");
+
+        let msg = `╭──〔 *📥 DOWNLOAD MENU* 〕  
+├─ 📝 *Title:* ${title}
+├─ 🔗 *Source:* YouTube / Social
+╰───────────────────🚀\n
+*Reply with a number to download:*
+
+1️⃣ *Audio (MP3)*
+2️⃣ *Video (720p - HD)*
+3️⃣ *Video (480p - SD)*
+4️⃣ *Video (360p - Low)*
 
 *🚀 Powered by KAMRAN-MD*`;
 
-        // Sending Video
-        await conn.sendMessage(from, { 
-            video: { url: result.videoUrl }, 
-            caption: caption,
+        const sentMsg = await conn.sendMessage(from, { 
+            image: { url: thumbnail }, 
+            caption: msg,
             contextInfo: newsletterContext
         }, { quoted: mek });
 
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        // Listening for selection
+        conn.ev.on('messages.upsert', async (chatUpdate) => {
+            const msgUpdate = chatUpdate.messages[0];
+            if (!msgUpdate.message || !msgUpdate.message.extendedTextMessage) return;
+            
+            const selected = msgUpdate.message.extendedTextMessage.text;
+            const quotedId = msgUpdate.message.extendedTextMessage.contextInfo.stanzaId;
+
+            if (quotedId === sentMsg.key.id) {
+                await conn.sendMessage(from, { react: { text: "📥", key: msgUpdate.key } });
+                let targetResource = null;
+                let type = "video";
+
+                if (selected === "1") { targetResource = audio; type = "audio"; }
+                else if (selected === "2") targetResource = v720;
+                else if (selected === "3") targetResource = v480;
+                else if (selected === "4") targetResource = v360;
+
+                if (targetResource) {
+                    const dlLink = await scraper.resolveDownloadLink(targetResource.resource_content);
+                    if (dlLink) {
+                        if (type === "audio") {
+                            await conn.sendMessage(from, { 
+                                audio: { url: dlLink }, 
+                                mimetype: 'audio/mpeg', 
+                                contextInfo: newsletterContext 
+                            }, { quoted: msgUpdate });
+                        } else {
+                            await conn.sendMessage(from, { 
+                                video: { url: dlLink }, 
+                                caption: `*✅ Downloaded: ${targetResource.quality}*`, 
+                                contextInfo: newsletterContext 
+                            }, { quoted: msgUpdate });
+                        }
+                    } else {
+                        reply("❌ Download link generate nahi ho saka!");
+                    }
+                }
+            }
+        });
 
     } catch (e) {
-        console.error("Download Error:", e);
-        reply("❌ An error occurred while processing the download.");
+        console.error(e);
+        reply("❌ Kuch galat ho gaya!");
     }
 });
