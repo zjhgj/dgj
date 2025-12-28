@@ -1,11 +1,11 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - POWERFUL YTDL (FIXED SEARCH)
+//           KAMRAN-MD - YTDL FIXED (SEARCH & DOWNLOAD)
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// Newsletter Context
+// Newsletter Context for professional look
 const newsletterContext = {
     forwardingScore: 999,
     isForwarded: true,
@@ -16,91 +16,84 @@ const newsletterContext = {
     }
 };
 
-// Memory to store user sessions
-const ytdlSession = new Map();
+// Global object to store temporary user data
+const ytDataStore = {};
 
 cmd({
-    pattern: "ytdl",
-    alias: ["yt", "downloadyt"],
-    desc: "Download YouTube videos/audio with fixed selection.",
+    pattern: "ytdlk",
+    alias: ["ytq", "ytrs", "uvideo"],
+    desc: "Download YouTube with easy selection.",
     category: "download",
     react: "🎥",
     filename: __filename,
 }, async (conn, mek, m, { from, text, reply }) => {
-    if (!text) return reply("🎥 *YouTube Downloader*\n\nUsage: `.ytdl <link>`\nExample: `.ytdl https://youtu.be/xxxx` ");
+    if (!text) return reply("🎥 *YouTube Downloader*\n\nUsage: `.ytdl <link>`\nExample: `.ytdl https://youtu.be/kY3n5O_D4F4` ");
 
     if (!/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(text))
-        return reply("❌ Valid YouTube link bhejein.");
+        return reply("❌ *Aapka link galat hai!* Sahi YouTube link dein.");
 
     try {
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
+        // User ka link save kar rahe hain
+        ytDataStore[from] = { url: text, active: true };
+
         const menu = `╭──〔 *🎥 YTDL MENU* 〕  
-├─ 📝 *Target:* YouTube
+├─ 📝 *Provider:* Optikl Engine
 ╰───────────────────🚀
 
-*Niche diye gaye Quality me se ek chunen (Type karein):*
+*Download karne ke liye niche likha text type karke send karein:*
 
-📥 *Audio:*
-type *mp3* - High Quality Audio
+🎧 *AUDIO:*
+Type *mp3* - High Quality MP3
 
-🎥 *Video:*
-type *360* - 360p Quality
-type *480* - 480p Quality
-type *720* - 720p (HD)
-type *1080* - 1080p (Full HD)
+🎥 *VIDEO:*
+Type *360* - Low Quality
+Type *480* - Medium Quality
+Type *720* - HD Quality
+Type *1080* - Full HD Quality
 
 *🚀 Powered by KAMRAN-MD*`;
 
-        const sentMsg = await conn.sendMessage(from, { 
+        await conn.sendMessage(from, { 
             text: menu,
             contextInfo: newsletterContext
         }, { quoted: mek });
 
-        // Session me link aur message ID save karein
-        ytdlSession.set(from, { 
-            link: text, 
-            msgId: sentMsg.key.id,
-            timestamp: Date.now() 
-        });
-
     } catch (e) {
-        reply("❌ Error: API limit ya network issue.");
+        reply("❌ API limit ya network issue!");
     }
 });
 
-// Listener for Reply / Selection
+// Listener: Jab user 360, 720 ya mp3 likhega
 cmd({
     on: "text"
 }, async (conn, mek, m, { from, text, reply }) => {
-    const session = ytdlSession.get(from);
-    if (!session) return;
-
-    // Session 5 minute baad expire ho jayegi
-    if (Date.now() - session.timestamp > 300000) {
-        ytdlSession.delete(from);
-        return;
-    }
+    // Agar user ne ytdl command nahi chalayi toh kuch mat karo
+    if (!ytDataStore[from] || !ytDataStore[from].active) return;
 
     const input = text.toLowerCase().trim();
-    const formats = ["mp3", "144", "240", "360", "480", "720", "1080"];
+    const formats = ["mp3", "360", "480", "720", "1080"];
 
+    // Agar user format ke bajaye kuch aur likhta hai toh cancel
     if (!formats.includes(input)) return;
 
-    // Sirf wahi user download kar payega jisne command chalayi thi
-    // (Optional: m.message.extendedTextMessage.contextInfo.stanzaId check)
+    const videoUrl = ytDataStore[from].url;
+    ytDataStore[from].active = false; // Task shuru hone par session close
 
     try {
         await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
-        ytdlSession.delete(from); // Download shuru hote hi session khatam
 
-        const apiUrl = `https://host.optikl.ink/download/youtube?url=${encodeURIComponent(session.link)}&format=${input}`;
+        const apiUrl = `https://host.optikl.ink/download/youtube?url=${encodeURIComponent(videoUrl)}&format=${input}`;
         const { data } = await axios.get(apiUrl);
 
-        if (!data.status) return reply("❌ Download link generate nahi ho saka.");
+        if (!data.status) {
+            delete ytDataStore[from];
+            return reply("❌ Download link nahi mil saka. Shayad video private hai.");
+        }
 
         const res = data.result;
-        const caption = `*✅ Download Complete*\n\n📝 *Title:* ${res.title}\n⚖️ *Quality:* ${input.toUpperCase()}`;
+        const info = `*✅ Download Complete*\n\n📝 *Title:* ${res.title}\n⚖️ *Quality:* ${input.toUpperCase()}`;
 
         if (input === "mp3") {
             await conn.sendMessage(from, { 
@@ -111,14 +104,16 @@ cmd({
         } else {
             await conn.sendMessage(from, { 
                 video: { url: res.download }, 
-                caption: caption,
+                caption: info,
                 contextInfo: newsletterContext
             }, { quoted: mek });
         }
 
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        delete ytDataStore[from];
 
     } catch (e) {
-        reply("❌ Downloading fail ho gayi. Link expire ho sakta hai.");
+        delete ytDataStore[from];
+        reply("❌ Error occurred! Try again later.");
     }
 });
