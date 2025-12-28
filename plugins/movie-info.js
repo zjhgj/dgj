@@ -1,9 +1,12 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - YTDL FIXED (SEARCH & DOWNLOAD)
+//           KAMRAN-MD - GITHUB GISTS DOWNLOADER
+//---------------------------------------------------------------------------
+//  🚀 GET CODE FROM GITHUB GISTS (TEXT OR DOCUMENT SUPPORT)
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
+const config = require('../config');
 
 // Newsletter Context for professional look
 const newsletterContext = {
@@ -16,104 +19,77 @@ const newsletterContext = {
     }
 };
 
-// Global object to store temporary user data
-const ytDataStore = {};
+/**
+ * Function to extract ID from Github Gist URL
+ */
+function extractId(url) {
+    try {
+        const parts = new URL(url).pathname.split('/').filter(Boolean);
+        const id = parts.pop();
+        return id || null;
+    } catch (e) {
+        return null;
+    }
+}
+
+// --- COMMAND: GITS ---
 
 cmd({
-    pattern: "ytdlk",
-    alias: ["ytq", "ytrs", "uvideo"],
-    desc: "Download YouTube with easy selection.",
-    category: "download",
-    react: "🎥",
+    pattern: "gits",
+    alias: ["getgits", "gist"],
+    desc: "Get code/files from Github Gists.",
+    category: "tools",
+    react: "📁",
     filename: __filename,
 }, async (conn, mek, m, { from, text, reply }) => {
-    if (!text) return reply("🎥 *YouTube Downloader*\n\nUsage: `.ytdl <link>`\nExample: `.ytdl https://youtu.be/kY3n5O_D4F4` ");
-
-    if (!/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(text))
-        return reply("❌ *Aapka link galat hai!* Sahi YouTube link dein.");
+    if (!text) {
+        return reply(`⚠️ *Format Invalid*\n\nUsage: \`.gits <link>\` (Text output)\nUsage: \`.gits <link> --doc\` (File output)`);
+    }
 
     try {
+        let [link, type] = text.split(" ");
+        if (!link.includes("github")) return reply("❌ Please provide a valid Github Gist link.");
+
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // User ka link save kar rahe hain
-        ytDataStore[from] = { url: text, active: true };
+        const id = extractId(link);
+        if (!id) return reply("❌ Could not extract Gist ID.");
 
-        const menu = `╭──〔 *🎥 YTDL MENU* 〕  
-├─ 📝 *Provider:* Optikl Engine
-╰───────────────────🚀
+        // Fetching Gist Data from Github API
+        const response = await axios.get(`https://api.github.com/gists/${id}`);
+        const getRaw = response.data;
+        const files = Object.values(getRaw?.files || []);
 
-*Download karne ke liye niche likha text type karke send karein:*
+        if (files.length === 0) return reply("❌ No files found in this Gist.");
 
-🎧 *AUDIO:*
-Type *mp3* - High Quality MP3
+        for (const file of files) {
+            if (type === "--doc") {
+                // Send as Document
+                const buffer = Buffer.from(file.content, "utf-8");
 
-🎥 *VIDEO:*
-Type *360* - Low Quality
-Type *480* - Medium Quality
-Type *720* - HD Quality
-Type *1080* - Full HD Quality
+                await conn.sendMessage(from, {
+                    document: buffer,
+                    fileName: file.filename,
+                    mimetype: 'text/plain', // Standard text file type
+                    caption: `*📄 File:* ${file.filename}\n*🚀 From:* KAMRAN-MD`,
+                    contextInfo: newsletterContext
+                }, { quoted: mek });
 
-*🚀 Powered by KAMRAN-MD*`;
-
-        await conn.sendMessage(from, { 
-            text: menu,
-            contextInfo: newsletterContext
-        }, { quoted: mek });
-
-    } catch (e) {
-        reply("❌ API limit ya network issue!");
-    }
-});
-
-// Listener: Jab user 360, 720 ya mp3 likhega
-cmd({
-    on: "text"
-}, async (conn, mek, m, { from, text, reply }) => {
-    // Agar user ne ytdl command nahi chalayi toh kuch mat karo
-    if (!ytDataStore[from] || !ytDataStore[from].active) return;
-
-    const input = text.toLowerCase().trim();
-    const formats = ["mp3", "360", "480", "720", "1080"];
-
-    // Agar user format ke bajaye kuch aur likhta hai toh cancel
-    if (!formats.includes(input)) return;
-
-    const videoUrl = ytDataStore[from].url;
-    ytDataStore[from].active = false; // Task shuru hone par session close
-
-    try {
-        await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
-
-        const apiUrl = `https://host.optikl.ink/download/youtube?url=${encodeURIComponent(videoUrl)}&format=${input}`;
-        const { data } = await axios.get(apiUrl);
-
-        if (!data.status) {
-            delete ytDataStore[from];
-            return reply("❌ Download link nahi mil saka. Shayad video private hai.");
-        }
-
-        const res = data.result;
-        const info = `*✅ Download Complete*\n\n📝 *Title:* ${res.title}\n⚖️ *Quality:* ${input.toUpperCase()}`;
-
-        if (input === "mp3") {
-            await conn.sendMessage(from, { 
-                audio: { url: res.download }, 
-                mimetype: "audio/mpeg",
-                contextInfo: newsletterContext
-            }, { quoted: mek });
-        } else {
-            await conn.sendMessage(from, { 
-                video: { url: res.download }, 
-                caption: info,
-                contextInfo: newsletterContext
-            }, { quoted: mek });
+            } else {
+                // Send as Text Message
+                const codeMsg = `*📄 File:* ${file.filename}\n\n\`\`\`${file.content}\`\`\`\n\n*🚀 KAMRAN-MD*`;
+                
+                await conn.sendMessage(from, { 
+                    text: codeMsg,
+                    contextInfo: newsletterContext
+                }, { quoted: mek });
+            }
         }
 
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-        delete ytDataStore[from];
 
     } catch (e) {
-        delete ytDataStore[from];
-        reply("❌ Error occurred! Try again later.");
+        console.error("Gits Error:", e);
+        reply("❌ Error fetching Gist data. Please check the link or API status.");
     }
 });
