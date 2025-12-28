@@ -1,97 +1,171 @@
-const axios = require('axios')
-const { cmd } = require('../command')
+//---------------------------------------------------------------------------
+//           KAMRAN-MD - ADVANCED YTDL (OPTIKL ENGINE)
+//---------------------------------------------------------------------------
+//  🚀 ALL QUALITIES SUPPORTED (LID & NEWSLETTER SUPPORT)
+//---------------------------------------------------------------------------
 
-global.movieCache = global.movieCache || {}
+const { cmd } = require('../command');
+const axios = require('axios');
+const config = require('../config');
+
+// Newsletter Context
+const newsletterContext = {
+    forwardingScore: 999,
+    isForwarded: true,
+    forwardedNewsletterMessageInfo: {
+        newsletterJid: '120363418144382782@newsletter',
+        newsletterName: 'KAMRAN-MD',
+        serverMessageId: 143
+    }
+};
+
+class YouTubeDownloader {
+    static FORMATS = {
+        mp3: "MP3 (Audio Only)",
+        144: "144p",
+        240: "240p",
+        360: "360p",
+        480: "480p",
+        720: "720p (HD)",
+        1080: "1080p (Full HD)"
+    };
+
+    static API_URL = "https://host.optikl.ink/download/youtube";
+
+    static async fetchVideoInfo(url, format) {
+        const fmt = format.toLowerCase();
+        const { data } = await axios.get(this.API_URL, {
+            params: { url, format: fmt },
+            timeout: 60000,
+            headers: { "User-Agent": "Mozilla/5.0" }
+        });
+
+        if (!data.status || data.code !== 200)
+            throw new Error(data.message || "Failed to fetch data from Optikl API");
+
+        const r = data.result;
+        return {
+            title: r.title || "No Title",
+            duration: this.formatDuration(r.duration),
+            thumbnail: r.thumbnail,
+            quality: r.quality || fmt.toUpperCase(),
+            downloadUrl: r.download,
+            type: fmt === "mp3" ? "audio" : "video"
+        };
+    }
+
+    static formatDuration(seconds) {
+        if (!seconds) return "00:00";
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        return h > 0
+            ? `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+            : `${m}:${s.toString().padStart(2, "0")}`;
+    }
+}
+
+// Memory session to handle replies
+const ytdlSession = {};
 
 cmd({
-    pattern: "movie",
-    alias: ["film"],
+    pattern: "ytdl",
+    alias: ["yts", "video3"],
+    desc: "Download YouTube videos/audio in high quality.",
     category: "download",
-    react: "🎬",
-    filename: __filename
-}, async (conn, mek, m, { from, args, reply }) => {
+    react: "🎥",
+    filename: __filename,
+}, async (conn, mek, m, { from, text, reply }) => {
+    if (!text) return reply("🎥 *KAMRAN-MD YTDL*\n\nUsage: `.ytdl <link>`\nExample: `.ytdl https://youtu.be/xxxx` ");
 
-    // STEP 1 — SEARCH
-    if (args.length > 0) {
-        const query = args.join(" ")
-        const url = `https://api.srihub.store/movie/sinhalasub?apikey=dew_5H5Dbuh4v7NbkNRmI0Ns2u2ZK240aNnJ9lnYQXR9&q=${encodeURIComponent(query)}`
+    if (!/^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(text))
+        return reply("❌ Please provide a valid YouTube link.");
 
-        const { data } = await axios.get(url)
-        if (!data?.result) return reply("❌ No results found")
+    try {
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // Save movie to cache
-        global.movieCache[from] = data.result
+        const listText = Object.entries(YouTubeDownloader.FORMATS)
+            .map(([k, v]) => `*${k}* ➟  ${v}`)
+            .join("\n");
 
-        let searchText = `
-🔎 *KAMRAN MD SEARCH*
+        const caption = `╭──〔 *🎥 YTDL MENU* 〕  
+├─ 📝 *Target:* Detected
+├─ 📂 *Provider:* Optikl Engine
+╰───────────────────🚀
 
-📱 Input   : ${query}
-🍒 Results : 1
+*Select Quality (Reply with Number/Key):*
+${listText}
 
-🎬 *Movies*
-01. ${data.result.title}
-        `.trim()
+*🚀 Powered by KAMRAN-MD*`;
 
-        return conn.sendMessage(from, {
-            image: { url: data.result.image },
-            caption: searchText
-        }, { quoted: mek })
+        const sentMsg = await conn.sendMessage(from, { 
+            text: caption,
+            contextInfo: newsletterContext
+        }, { quoted: mek });
+
+        // Save to session
+        ytdlSession[from] = { link: text, msgId: sentMsg.key.id };
+
+    } catch (e) {
+        console.error(e);
+        reply("❌ Error processing request.");
     }
+});
 
-    // STEP 2 — USER REPLY (NUMBERS)
-    const choice = parseInt(m.text)
-    const movie = global.movieCache[from]
-    if (!movie || isNaN(choice)) return
+// Listener for replies
+cmd({
+    on: "text"
+}, async (conn, mek, m, { from, text, reply }) => {
+    const session = ytdlSession[from];
+    if (!session) return;
+    
+    // Check if user is replying to the bot's quality menu
+    const isReply = m.message?.extendedTextMessage?.contextInfo?.stanzaId === session.msgId;
+    if (!isReply) return;
 
-    // SHOW MOVIE DOWNLOAD MENU
-    if (choice === 1) {
-        let menu = `
-╭──────────────────╮
-│ *KAMRAN MD MOVIE DOWNLOAD*
-╰──────────────────╯
+    const format = text.toLowerCase().trim();
+    if (!YouTubeDownloader.FORMATS[format]) return;
 
-➠ *Title* : ${movie.title}
-➠ *Site*  : SinhalaSub.lk
-─────────────────────
+    try {
+        await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
+        delete ytdlSession[from]; // Clear session after selection
 
-01 || Send Details
-02 || Send Images
+        const info = await YouTubeDownloader.fetchVideoInfo(session.link, format);
 
-03 || FHD 1080p [ PIXELDRAIN ]
-04 || HD 720p  [ PIXELDRAIN ]
-05 || SD 480p  [ PIXELDRAIN ]
+        const caption = `╭──〔 *📥 YTDL COMPLETE* 〕  
+├─ 📝 *Title:* ${info.title}
+├─ ⏲️ *Duration:* ${info.duration}
+├─ ⚖️ *Quality:* ${info.quality}
+╰───────────────────🚀`;
 
-06 || FHD 1080p [ SINHALASUB ]
-07 || HD 720p  [ SINHALASUB ]
-08 || SD 480p  [ SINHALASUB ]
+        if (info.type === "audio") {
+            await conn.sendMessage(from, { 
+                audio: { url: info.downloadUrl }, 
+                mimetype: "audio/mpeg", 
+                contextInfo: {
+                    ...newsletterContext,
+                    externalAdReply: {
+                        title: info.title,
+                        body: `Duration: ${info.duration}`,
+                        thumbnailUrl: info.thumbnail,
+                        sourceUrl: session.link,
+                        mediaType: 1,
+                        showAdAttribution: true
+                    }
+                }
+            }, { quoted: mek });
+        } else {
+            await conn.sendMessage(from, { 
+                video: { url: info.downloadUrl }, 
+                caption: caption,
+                contextInfo: newsletterContext
+            }, { quoted: mek });
+        }
 
-09 || FHD 1080p [ MIRROR ]
-10 || HD 720p  [ MIRROR ]
-11 || SD 480p  [ MIRROR ]
+        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
-> powered by DR KAMRAN
-        `.trim()
-
-        return conn.sendMessage(from, {
-            image: { url: movie.image },
-            caption: menu
-        }, { quoted: mek })
+    } catch (e) {
+        console.error(e);
+        reply(`❌ Error: ${e.message}`);
     }
-
-    // STEP 3 — 🔥 NUMBER 11 (SD 480P VIDEO)
-    if (choice === 11) {
-        const sd480 =
-            movie.downloads?.sinhalasub?.find(v => v.quality.includes("480")) ||
-            movie.downloads?.pixeldrain?.find(v => v.quality.includes("480"))
-
-        if (!sd480) return reply("❌ SD 480p not available")
-
-        return conn.sendMessage(from, {
-            video: { url: sd480.link },   // ✅ VIDEO, NOT DOCUMENT
-            caption: `🎬 *${movie.title}*\n\n📀 Quality : SD 480p\n📦 Size    : ${sd480.size}\n\n> powered by DR KAMRAN`,
-            mimetype: 'video/mp4'
-        }, { quoted: mek })
-    }
-})
-
-
+});
