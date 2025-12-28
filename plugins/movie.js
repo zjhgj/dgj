@@ -1,63 +1,117 @@
-// ✅ Coded by DR KAMRAN for KAMRAN MD
-// ⚙️ API: https://movanest.zone.id/v2/sublk?url=
+//---------------------------------------------------------------------------
+//           KAMRAN-MD - PINTEREST IMAGE SEARCH
+//---------------------------------------------------------------------------
+//  🚀 MULTI-IMAGE SEARCH WITH BOOKMARK SUPPORT (LID & NEWSLETTER)
+//---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
+const config = require('../config');
+
+// Newsletter Context for professional look
+const newsletterContext = {
+    forwardingScore: 999,
+    isForwarded: true,
+    forwardedNewsletterMessageInfo: {
+        newsletterJid: '120363418144382782@newsletter',
+        newsletterName: 'KAMRAN-MD',
+        serverMessageId: 143
+    }
+};
+
+// Memory to store bookmarks for pagination (reset on restart)
+const pinterestBookmarks = new Map();
 
 cmd({
-    pattern: "mv",
-    alias: ["film", "watch"],
-    desc: "Search and get download links for movies.",
-    category: "download",
-    react: "🍿",
-    filename: __filename
-}, async (conn, mek, m, { from, q, reply }) => {
+    pattern: "pinterest",
+    alias: ["pinimg", "pint"],
+    desc: "Search images on Pinterest.",
+    category: "search",
+    react: "📌",
+    filename: __filename,
+}, async (conn, mek, m, { from, text, reply }) => {
     try {
-        if (!q) return await reply("🎥 Please provide a Movie name or URL!\n\nExample: `.movie Inception` or `.movie https://example.com/movie`.");
+        if (!text) return reply("📌 *Pinterest Search*\n\nUsage: `.pin <query>`\nExample: `.pin anime girl` ");
 
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // ⚙️ API Configuration
-        const apiUrl = `https://movanest.zone.id/v2/sublk?url=${encodeURIComponent(q)}`;
-        
-        // 🔍 Fetch Data
-        const response = await axios.get(apiUrl);
-        const data = response.data;
+        const queryKey = text.toLowerCase();
+        const bookmark = pinterestBookmarks.get(queryKey) || [];
 
-        // Check if API response is valid
-        if (!data || !data.status || !data.result) {
-            await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-            return await reply("❌ No results found or API is currently down. Please try again later.");
+        // Pinterest specific headers and URL
+        const url = 'https://id.pinterest.com/resource/BaseSearchResource/get/';
+        const headers = {
+            'accept': 'application/json, text/javascript, */*, q=0.01',
+            'accept-language': 'id-ID',
+            'content-type': 'application/x-www-form-urlencoded',
+            'user-agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/127.0.0.0 Mobile Safari/537.36',
+            'x-requested-with': 'XMLHttpRequest'
+        };
+
+        const params = new URLSearchParams();
+        params.append('source_url', `/search/pins/?q=${encodeURIComponent(text)}&rs=typed`);
+        params.append('data', JSON.stringify({
+            options: {
+                query: text,
+                scope: 'pins',
+                rs: 'typed',
+                redux_normalize_feed: true,
+                bookmarks: bookmark
+            },
+            context: {}
+        }));
+
+        const res = await axios.post(url, params.toString(), { headers });
+        const json = res.data;
+        const results = json?.resource_response?.data?.results || [];
+        const newBookmark = json?.resource_response?.bookmark;
+
+        // Handle Pagination Bookmark
+        if (newBookmark) {
+            pinterestBookmarks.set(queryKey, [newBookmark]);
+        } else {
+            pinterestBookmarks.delete(queryKey);
         }
 
-        const movie = data.result;
+        if (results.length === 0) {
+            pinterestBookmarks.delete(queryKey);
+            return reply(`🍂 *No results found for:* ${text}`);
+        }
 
-        // 🖼️ Create Information Caption
-        const movieCaption = `
-*🎬 MOVIE DOWNLOADER*
+        // Extract and Shuffle high-res images
+        const images = [
+            ...new Set(
+                results
+                    .map(v => v.images?.['736x']?.url || v.images?.['474x']?.url)
+                    .filter(Boolean)
+            )
+        ].sort(() => Math.random() - 0.5);
 
-🎞️ *Title:* ${movie.title || 'Unknown'}
-📅 *Release:* ${movie.release_date || 'N/A'}
-⭐ *Rating:* ${movie.rating || 'N/A'}
-📂 *Quality:* ${movie.quality || 'HD'}
+        let sentCount = 0;
+        const limit = 5; // Max 5 images per request
 
-🔗 *Download/Watch Link:*
-${movie.download_url || movie.link || 'No link available'}
+        for (const img of images) {
+            if (sentCount >= limit) break;
 
-*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ DR KAMRAN*`;
+            await conn.sendMessage(from, { 
+                image: { url: img },
+                caption: sentCount === 0 ? `*📌 Pinterest Results for:* ${text}\n\n*🚀 Powered by KAMRAN-MD*` : '',
+                contextInfo: newsletterContext
+            }, { quoted: mek });
 
-        // 📦 Send Movie Poster and Details
-        await conn.sendMessage(from, {
-            image: { url: movie.thumbnail || movie.poster || 'https://i.imgur.com/8B1OId6.jpeg' },
-            caption: movieCaption
-        }, { quoted: mek });
+            sentCount++;
+            // Small delay to prevent spam/ban
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
 
-        // ✅ Final success reaction
-        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+        if (sentCount === 0) {
+            return reply(`🍂 *Failed to send images.*`);
+        }
+
+        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error("❌ Error in .movie command:", e);
-        await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
-        await reply(`⚠️ *Error:* ${e.message || "An unexpected error occurred while fetching the movie."}`);
+        console.error("Pinterest Error:", e);
+        reply(`🍂 *Something went wrong.*`);
     }
 });
