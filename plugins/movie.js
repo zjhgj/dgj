@@ -103,8 +103,8 @@ class VidsSave {
 const scraper = new VidsSave();
 
 cmd({
-    pattern: "download",
-    alias: ["dl", "getvid", "video"],
+    pattern: "MDV",
+    alias: ["dl", "getvid", "youall"],
     desc: "Download videos from various platforms (YT, FB, IG, TT).",
     category: "download",
     react: "📥",
