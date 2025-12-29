@@ -1,152 +1,81 @@
-const { cmd } = require("../command");
-const axios = require("axios");
+const { cmd } = require('../command');
+const axios = require('axios');
+
+// Global cache for pagination
+if (!global.chaceotp) global.chaceotp = {};
 
 cmd({
-    pattern: "tempnum",
-    alias: ["fakenum", "tempnumber"],
-    desc: "Get temporary numbers & OTP instructions",
+    pattern: "otpapk",
+    alias: ["otpservice"],
+    desc: "List available OTP services from RumahOTP.",
     category: "tools",
     react: "📱",
-    use: "<country-code>"
-},
-async (conn, mek, m, { from, args, reply }) => {
-    try {
-        // Mandatory country code check
-        if (!args || args.length < 1) {
-            return reply(`❌ *Usage:* .tempnum <country-code>\nExample: .tempnum us\n\n📦 Use .otpbox <number>* to check OTPs`);
-        }
-
-        const countryCode = args[0].toLowerCase();
-        
-        // API call with validation
-        const { data } = await axios.get(
-            `https://api.vreden.my.id/api/tools/fakenumber/listnumber?id=${countryCode}`,
-            { 
-                timeout: 10000,
-                validateStatus: status => status === 200
-            }
-        );
-
-        // Fixed syntax error here - added missing parenthesis
-        if (!data?.result || !Array.isArray(data.result)) {
-            console.error("Invalid API structure:", data);
-            return reply(`⚠ Invalid API response format\nTry .tempnum us`);
-        }
-
-        if (data.result.length === 0) {
-            return reply(`📭 No numbers available for *${countryCode.toUpperCase()}*\nTry another country code!\n\nUse .otpbox <number> after selection`);
-        }
-
-        // Process numbers
-        const numbers = data.result.slice(0, 25);
-        const numberList = numbers.map((num, i) => 
-            `${String(i+1).padStart(2, ' ')}. ${num.number}`
-        ).join("\n");
-
-        // Final message with OTP instructions
-        await reply(
-            `╭──「 📱 TEMPORARY NUMBERS 」\n` +
-            `│\n` +
-            `│ Country: ${countryCode.toUpperCase()}\n` +
-            `│ Numbers Found: ${numbers.length}\n` +
-            `│\n` +
-            `${numberList}\n\n` +
-            `╰──「 📦 USE: .otpbox <number> 」\n` +
-            `_Example: .otpbox +1234567890_`
-        );
-
-    } catch (err) {
-        console.error("API Error:", err);
-        const errorMessage = err.code === "ECONNABORTED" ? 
-            `⏳ *Timeout*: API took too long\nTry smaller country codes like 'us', 'gb'` :
-            `⚠ *Error*: ${err.message}\nUse format: .tempnum <country-code>`;
-            
-        reply(`${errorMessage}\n\n🔑 Remember: ${prefix}otpinbox <number>`);
-    }
-});
-
-cmd({
-    pattern: "templist",
-    alias: ["tempnumberlist", "tempnlist", "listnumbers"],
-    desc: "Show list of countries with temp numbers",
-    category: "tools",
-    react: "🌍",
     filename: __filename,
-    use: ".templist"
-},
-async (conn, m, { reply }) => {
+}, async (conn, mek, m, { from, text, reply, pushname, prefix, command }) => {
     try {
-        const { data } = await axios.get("https://api.vreden.my.id/api/tools/fakenumber/country");
+        const skrng = Date.now();
+        const exp = 25 * 60 * 1000; // 25 min expiry
 
-        if (!data || !data.result) return reply("❌ Couldn't fetch country list.");
-
-        const countries = data.result.map((c, i) => `*${i + 1}.* ${c.title} \`(${c.id})\``).join("\n");
-
-        await reply(`🌍 *Total Available Countries:* ${data.result.length}\n\n${countries}`);
-    } catch (e) {
-        console.error("TEMP LIST ERROR:", e);
-        reply("❌ Failed to fetch temporary number country list.");
-    }
-});
-
-cmd({
-    pattern: "otpbox",
-    alias: ["checkotp", "getotp"],
-    desc: "Check OTP messages for temporary number",
-    category: "tools",
-    react: "🔑",
-    use: "<full-number>"
-},
-async (conn, mek, m, { from, args, reply }) => {
-    try {
-        // Validate input
-        if (!args[0] || !args[0].startsWith("+")) {
-            return reply(`❌ *Usage:* .otpbox <full-number>\nExample: .otpbox +9231034481xx`);
+        // Cleanup expired cache
+        for (const id in global.chaceotp) {
+            if (skrng - global.chaceotp[id].timestamp > exp) delete global.chaceotp[id];
         }
 
-        const phoneNumber = args[0].trim();
-        
-        // Fetch OTP messages
-        const { data } = await axios.get(
-            `https://api.vreden.my.id/api/tools/fakenumber/message?nomor=${encodeURIComponent(phoneNumber)}`,
-            { 
-                timeout: 10000,
-                validateStatus: status => status === 200
+        const h = { 'x-apikey': 'apikey-mu', 'Accept': 'application/json' };
+
+        // Handle Pagination (-next)
+        if (text && text.startsWith('-next ')) {
+            const cid = text.split(' ')[1];
+            if (!cid || !global.chaceotp[cid] || global.chaceotp[cid].type !== 'service') {
+                return reply("❌ Cache ID invalid or expired!");
             }
-        );
 
-        // Validate response
-        if (!data?.result || !Array.isArray(data.result)) {
-            return reply("⚠ No OTP messages found for this number");
+            const cdata = global.chaceotp[cid];
+            const srvice = cdata.data;
+            const npage = (cdata.page || 1) + 1;
+            const itempage = 20;
+            const tpage = Math.ceil(srvice.length / itempage);
+
+            if (npage > tpage) return reply("❌ No more pages!");
+
+            const sidx = (npage - 1) * itempage;
+            const edix = Math.min(sidx + itempage, srvice.length);
+            const pservice = srvice.slice(sidx, edix);
+
+            let psn = `╰╼ ┈─ ◌ ˚ OTP SERVICES ⠹\n\n• Total: *${srvice.length}*\n• Page: ${npage}/${tpage}\n\n`;
+            pservice.forEach((service, i) => {
+                psn += `${sidx + i + 1}. *${service.service_name}*\n   ╰ Code: ${service.service_code}\n\n`;
+            });
+
+            psn += `*Next:* ${prefix + command} -next ${cid}\n*Request by:* ${pushname}`;
+            
+            global.chaceotp[cid].page = npage;
+            global.chaceotp[cid].timestamp = skrng;
+            return reply(psn);
         }
 
-        // Format OTP messages
-        const otpMessages = data.result.map(msg => {
-            // Extract OTP code (matches common OTP patterns)
-            const otpMatch = msg.content.match(/\b\d{4,8}\b/g);
-            const otpCode = otpMatch ? otpMatch[0] : "Not found";
-            
-            return `┌ *From:* ${msg.from || "Unknown"}
-│ *Code:* ${otpCode}
-│ *Time:* ${msg.time_wib || msg.timestamp}
-└ *Message:* ${msg.content.substring(0, 50)}${msg.content.length > 50 ? "..." : ""}`;
-        }).join("\n\n");
+        // Fetch New Data
+        const res = await axios.get('https://www.rumahotp.com/api/v2/services', { headers: h });
+        if (!res.data?.success) return reply("❌ Gagal mengambil data!");
 
-        await reply(
-            `╭──「 🔑 OTP MESSAGES 」\n` +
-            `│ Number: ${phoneNumber}\n` +
-            `│ Messages Found: ${data.result.length}\n` +
-            `│\n` +
-            `${otpMessages}\n` +
-            `╰──「 📌 Use .tempnum to get numbers 」`
-        );
+        const srvices = res.data.data;
+        const cid = Math.random().toString(36).substring(2, 10);
 
-    } catch (err) {
-        console.error("OTP Check Error:", err);
-        const errorMsg = err.code === "ECONNABORTED" ?
-            "⌛ OTP check timed out. Try again later" :
-            `⚠ Error: ${err.response?.data?.error || err.message}`;
-        
-        reply(`${errorMsg}\n\nUsage: .otpbox +9231034481xx`);
+        global.chaceotp[cid] = { type: 'service', data: srvices, page: 1, timestamp: skrng };
+
+        const pservice = srvices.slice(0, 20);
+        const tpage = Math.ceil(srvices.length / 20);
+
+        let psn = `╰╼ ┈─ ◌ ˚ OTP SERVICES ⠹\n\n• Total: *${srvices.length}*\n• Page: 1/${tpage}\n• Cache ID: ${cid}\n\n`;
+        pservice.forEach((service, i) => {
+            psn += `${i + 1}. *${service.service_name}*\n   ╰ Code: ${service.service_code}\n\n`;
+        });
+
+        psn += `*Next:* ${prefix + command} -next ${cid}\n*Request by:* ${pushname}`;
+        reply(psn);
+
+    } catch (e) {
+        console.error(e);
+        reply("❌ Error API RumahOTP");
     }
 });
