@@ -1,7 +1,7 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - CHANNEL MESSAGE REACT (RCH)
+//           KAMRAN-MD - CINERU MOVIE SEARCH ENGINE
 //---------------------------------------------------------------------------
-//  🚀 SEND AUTO REACTIONS TO CHANNELS (LID & NEWSLETTER SUPPORT)
+//  🚀 SEARCH MOVIES FROM CINERU.LK (AUTHORIZATION SUPPORTED)
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
@@ -19,64 +19,82 @@ const newsletterContext = {
     }
 };
 
+/**
+ * Cineru Search API Configuration
+ */
+const CINERU_SEARCH_CONFIG = {
+    API_KEY: "5149650e536620aa6639369d94b2e0ec7a40bbffcf196100bf723505891cd4cd",
+    BASE_URL: "https://foreign-marna-sithaunarathnapromax-9a005c2e.koyeb.app/api/cineru/search"
+};
+
+// --- COMMAND: CSEARCH ---
+
 cmd({
-    pattern: "rch",
-    alias: ["reactch", "channelreact"],
-    desc: "React to a channel message using a link and emojis.",
-    category: "utility",
-    react: "🎭",
+    pattern: "csearch",
+    alias: ["movie-search", "cinerusearch"],
+    desc: "Search for movies and series on Cineru.lk",
+    category: "download",
+    react: "🔍",
     filename: __filename,
-}, async (conn, mek, m, { from, args, reply }) => {
-    // API key and usage check
-    const apiKey = ""; // Get your API key from https://asitha.top/channel-manager
-    
-    if (args.length < 2) {
-        return reply("⚠️ *Format Invalid*\n\nUsage: `.rch <link> <emoji1> <emoji2> ...`\nExample: `.rch https://whatsapp.com/channel/.../123 ❤️ 🔥 👍` ");
+}, async (conn, mek, m, { from, text, reply, prefix }) => {
+    if (!text) {
+        return reply(`🔍 *Cineru Movie Search*\n\nUsage: \`${prefix}csearch <movie_name>\`\nExample: \`${prefix}csearch spider-man\``);
     }
-
-    const link = args.shift();
-    let emojiList = args.join(" ")
-        .replace(/,/g, " ")
-        .split(/\s+/)
-        .filter(e => e.trim());
-
-    const emoji = emojiList.join(",");
 
     try {
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        const url = `https://react.whyux-xec.my.id/api/rch?link=${encodeURIComponent(link)}&emoji=${encodeURIComponent(emoji)}`;
-        
-        const res = await axios.get(url, {
+        // API Request with Authorization Header
+        const response = await axios.get(CINERU_SEARCH_CONFIG.BASE_URL, {
+            params: { query: text },
             headers: {
-                "x-api-key": apiKey
-            }
+                'Authorization': `Bearer ${CINERU_SEARCH_CONFIG.API_KEY}`,
+            },
+            timeout: 20000
         });
 
-        const json = res.data;
+        const data = response.data;
 
-        // Creating a clean response message
-        let statusEmoji = json.status ? "✅" : "❌";
-        let responseMsg = `╭──〔 *🎭 CHANNEL REACT* 〕  
-├─ ${statusEmoji} *Status:* ${json.status ? 'Success' : 'Failed'}
-├─ 🔗 *Link:* ${link.substring(0, 30)}...
-├─ ✨ *Emojis:* ${emoji}
-╰───────────────────🚀
+        if (!data || !data.status || !data.result || data.result.length === 0) {
+            return reply(`❌ No results found for "*${text}*". Try another keyword.`);
+        }
 
-*Detailed Response:*
-\`\`\`${JSON.stringify(json, null, 2)}\`\`\`
+        const results = data.result;
+        
+        // Constructing professional search list
+        let searchList = `╭──〔 *🔍 CINERU SEARCH* 〕  
+├─ 📝 *Query:* ${text}
+├─ 📂 *Results Found:* ${results.length}
+╰───────────────────🚀\n\n`;
 
-*🚀 Powered by KAMRAN-MD*`;
+        results.forEach((movie, i) => {
+            searchList += `${i + 1}. *${movie.title || 'Untitled'}*\n`;
+            if (movie.year) searchList += `   📅 *Year:* ${movie.year}\n`;
+            searchList += `   🔗 *Link:* ${movie.link}\n\n`;
+        });
 
+        searchList += `*💡 Note:* Use \`${prefix}cineru <link>\` to get full movie details.\n\n*🚀 Powered by KAMRAN-MD*`;
+
+        // Sending the list with a default movie search thumbnail
         await conn.sendMessage(from, { 
-            text: responseMsg,
-            contextInfo: newsletterContext
+            text: searchList,
+            contextInfo: {
+                ...newsletterContext,
+                externalAdReply: {
+                    title: "CINERU MOVIE SEARCH",
+                    body: `Results for: ${text}`,
+                    thumbnailUrl: "https://files.catbox.moe/ly6553.jpg", // Replace with a movie icon if needed
+                    sourceUrl: "https://cineru.lk",
+                    mediaType: 1,
+                    showAdAttribution: true
+                }
+            }
         }, { quoted: mek });
 
-        await conn.sendMessage(from, { react: { text: json.status ? "✅" : "❌", key: mek.key } });
+        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error("ReactCH Error:", e);
-        reply("❌ Error while connecting to the API!");
+        console.error("Cineru Search Error:", e.response?.data || e.message);
+        reply(`❌ *Search Failed:* ${e.response?.data?.message || "Could not connect to the search server."}`);
     }
 });
