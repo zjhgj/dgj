@@ -76,7 +76,7 @@ cmd({
     // Send edited image
     await conn.sendMessage(m.chat, {
       image: imageBuffer,
-      caption: `🧠 *AI Image Edit Completed!*\n📏 Size: ${fileSize}\n📝 Prompt: ${text}\n\n> *Powered by JawadTechX*`
+      caption: `🧠 *AI Image Edit Completed!*\n📏 Size: ${fileSize}\n📝 Prompt: ${text}\n\n> *Powered by DR KAMRAN*`
     }, { quoted: message });
 
   } catch (error) {

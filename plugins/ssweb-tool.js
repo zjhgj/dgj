@@ -69,7 +69,7 @@ cmd({
     await conn.sendMessage(from, {
         image: { url: `https://image.thum.io/get/fullpage/${url}` },
         caption: "- 🖼️ *Screenshot Generated*\n\n" +
-                "> Powered By JawadTechX 💜"
+                "> Powered By DR KAMRAN💜"
     }, { quoted: mek });
 
   } catch (error) {
@@ -78,4 +78,4 @@ cmd({
   }
 });
 
-// ⿻ ⌜ 𝐊𝐇𝐀𝐍 ⌟⿻⃮͛🇵🇰𖤐
+// ⿻ ⌜ KANRAN ⌟⿻⃮͛🇵🇰𖤐
