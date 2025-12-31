@@ -62,7 +62,7 @@ async (conn, mek, m, { from, reply }) => {
             await conn.sendMessage(from, {
                 audio: { url: audioPath },
                 mimetype: 'audio/mp4',
-                ptt: true
+                ptt: false
             }, { quoted: mek });
         } else {
             console.error("Audio file not found at path:", audioPath);
