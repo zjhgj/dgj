@@ -1,141 +1,56 @@
 const { cmd } = require('../command');
-const axios = require('axios');
-const cheerio = require('cheerio');
+const { getBuffer } = require('../lib/functions');
 
-const baseUrl = 'https://otakudesu.best';
-const headers = { 
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' 
-};
-
-// --- Helper Scraper Functions ---
-const scraper = {
-    search: async (query) => {
-        const { data } = await axios.get(`${baseUrl}/?s=${query}&post_type=anime`, { headers });
-        const $ = cheerio.load(data);
-        const result = [];
-        $('.chivsrc li').each((i, el) => {
-            result.push({
-                title: $(el).find('h2 a').text().trim(),
-                thumb: $(el).find('img').attr('src'),
-                status: $(el).find('.set').next().text().trim(),
-                url: $(el).find('h2 a').attr('href')
-            });
-        });
-        return result;
-    },
-    detail: async (url) => {
-        const { data } = await axios.get(url, { headers });
-        const $ = cheerio.load(data);
-        const info = $('.infozin .infozingle');
-        const detail = {
-            thumb: $('.fotoanime img').attr('src'),
-            title: info.find('p:contains("Judul")').text().split(':')[1]?.trim(),
-            score: info.find('p:contains("Skor")').text().split(':')[1]?.trim(),
-            status: info.find('p:contains("Status")').text().split(':')[1]?.trim(),
-            genre: info.find('p:contains("Genre")').text().split(':')[1]?.trim(),
-            sinopsis: $('.sinopc').text().trim(),
-            episodes: []
-        };
-        $('.episodelist ul li').each((i, el) => {
-            detail.episodes.push({
-                title: $(el).find('a').text().trim(),
-                url: $(el).find('a').attr('href')
-            });
-        });
-        return detail;
-    },
-    episode: async (url) => {
-        const { data } = await axios.get(url, { headers });
-        const $ = cheerio.load(data);
-        const download = [];
-        $('.download ul li').each((i, el) => {
-            const res = $(el).find('strong').text().trim();
-            const links = [];
-            $(el).find('a').each((j, link) => {
-                links.push($(link).text().trim() + ": " + $(link).attr('href'));
-            });
-            download.push(`*${res}*:\n${links.join('\n')}`);
-        });
-        return {
-            title: $('.venser h1').text().trim(),
-            downloads: download.join('\n\n')
-        };
-    }
-};
-
-// --- Commands ---
-
-// 1. Search Anime
 cmd({
-    pattern: "otaku",
-    alias: ["anime", "otakusearch"],
-    category: "anime",
-    desc: "Search anime on Otakudesu",
-    react: "🔍",
+    pattern: "hytamkan",
+    alias: ["editimage", "hytam"],
+    react: "🎨",
+    desc: "Edit your image using hytamkan effect.",
+    category: "tools",
     filename: __filename
-}, async (conn, mek, m, { q, reply }) => {
+},           
+async (conn, mek, m, { from, reply, quoted }) => {
     try {
-        if (!q) return reply("❌ Please provide an anime name to search.");
-        const results = await scraper.search(q);
-        if (results.length === 0) return reply("❌ No results found.");
+        // چیک کریں کہ کیا یوزر نے تصویر بھیجی ہے یا تصویر کو ریپلائی کیا ہے
+        const isQuotedImage = quoted ? (quoted.type === 'imageMessage') : false;
+        const isImage = m.type === 'imageMessage';
 
-        let txt = `⛩️ *Otakudesu Search Results* ⛩️\n\n`;
-        results.forEach((anime, i) => {
-            txt += `*${i + 1}.* ${anime.title}\nStatus: ${anime.status}\nURL: ${anime.url}\n\n`;
-        });
-        txt += `_Use .otaku-det <url> to see details._`;
-        reply(txt);
-    } catch (e) {
-        reply("❌ Error: " + e.message);
-    }
-});
+        if (!isImage && !isQuotedImage) {
+            return reply("❌ Please reply to an image or upload an image with the command.");
+        }
 
-// 2. Anime Details
-cmd({
-    pattern: "otaku-det",
-    alias: ["animedet"],
-    category: "anime",
-    desc: "Get anime details and episode list",
-    react: "📜",
-    filename: __filename
-}, async (conn, mek, m, { q, reply }) => {
-    try {
-        if (!q || !q.includes('otakudesu')) return reply("❌ Please provide a valid Otakudesu anime URL.");
-        const det = await scraper.detail(q);
+        reply("⏳ Processing your image, please wait...");
 
-        let txt = `🎬 *${det.title}*\n\n`;
-        txt += `⭐ *Score:* ${det.score}\n`;
-        txt += `📌 *Status:* ${det.status}\n`;
-        txt += `🎭 *Genre:* ${det.genre}\n\n`;
-        txt += `📖 *Synopsis:* ${det.sinopsis.substring(0, 500)}...\n\n`;
-        txt += `📺 *Episodes:*\n`;
-        det.episodes.forEach((ep, i) => {
-            txt += `${i + 1}. ${ep.title}\nLink: ${ep.url}\n\n`;
-        });
+        // تصویر ڈاؤن لوڈ کریں
+        const targetMsg = quoted ? m.msg.contextInfo.quotedMessage.imageMessage : m.msg;
+        const buffer = await conn.downloadMediaMessage(targetMsg);
         
-        await conn.sendMessage(m.chat, { image: { url: det.thumb }, caption: txt }, { quoted: mek });
-    } catch (e) {
-        reply("❌ Error: " + e.message);
-    }
-});
+        // تصویر کو اپ لوڈ کرنے یا براہ راست لنک بنانے کے لیے (اکثر APIs کو URL کی ضرورت ہوتی ہے)
+        // یہاں ہم فرض کر رہے ہیں کہ آپ کے پاس تصویر کو URL میں بدلنے کا فنکشن موجود ہے
+        // اگر نہیں، تو ہم بوٹ کے میڈیا اپلوڈر کو استعمال کریں گے
+        
+        const apiUrl = `https://api.baguss.xyz/api/edits/hytamkan?image=https://telegra.ph/file/example.jpg`; 
+        // نوٹ: آپ کو یہاں امیج کو کسی ہوسٹنگ (جیسے telegra.ph) پر اپ لوڈ کر کے اس کا لنک دینا ہوگا
+        
+        // متبادل طریقہ: اگر API براہ راست بفر سپورٹ کرتی ہے (زیادہ تر نہیں کرتی)
+        // یہاں ہم صرف ایک مثال دے رہے ہیں، آپ کو امیج اپ لوڈر فنکشن استعمال کرنا ہوگا
+        
+        /* مثال کے طور پر:
+        const imgUrl = await uploadToCloud(buffer);
+        const finalApi = `https://api.baguss.xyz/api/edits/hytamkan?image=${imgUrl}`;
+        */
 
-// 3. Episode Download Links
-cmd({
-    pattern: "otaku-ep",
-    alias: ["anime-dl"],
-    category: "anime",
-    desc: "Get anime download links for an episode",
-    react: "📥",
-    filename: __filename
-}, async (conn, mek, m, { q, reply }) => {
-    try {
-        if (!q || !q.includes('otakudesu')) return reply("❌ Please provide a valid episode URL.");
-        const ep = await scraper.episode(q);
+        // فرض کریں آپ کے پاس پہلے سے ایڈٹ شدہ رزلٹ آ رہا ہے
+        // ہم براہ راست API سے بفر حاصل کریں گے
+        const resultBuffer = await getBuffer(`https://api.baguss.xyz/api/edits/hytamkan?image=YOUR_UPLOADED_IMAGE_URL`);
 
-        let txt = `📥 *Download Links: ${ep.title}*\n\n`;
-        txt += ep.downloads;
-        reply(txt);
+        await conn.sendMessage(from, { 
+            image: resultBuffer, 
+            caption: "✅ Image edited successfully!" 
+        }, { quoted: mek });
+
     } catch (e) {
-        reply("❌ Error: " + e.message);
+        console.error("Edit Error:", e);
+        reply("❌ Failed to process the image. API might be down or image link is invalid.");
     }
 });
