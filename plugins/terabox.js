@@ -1,56 +1,76 @@
-const { cmd } = require('../command');
-const { getBuffer } = require('../lib/functions');
+const axios = require("axios");
+const FormData = require('form-data');
+const fs = require('fs');
+const os = require('os');
+const path = require("path");
+const { cmd } = require("../command");
 
 cmd({
-    pattern: "hytamkan",
-    alias: ["editimage", "hytam"],
-    react: "🎨",
-    desc: "Edit your image using hytamkan effect.",
-    category: "tools",
-    filename: __filename
-},           
-async (conn, mek, m, { from, reply, quoted }) => {
-    try {
-        // چیک کریں کہ کیا یوزر نے تصویر بھیجی ہے یا تصویر کو ریپلائی کیا ہے
-        const isQuotedImage = quoted ? (quoted.type === 'imageMessage') : false;
-        const isImage = m.type === 'imageMessage';
-
-        if (!isImage && !isQuotedImage) {
-            return reply("❌ Please reply to an image or upload an image with the command.");
-        }
-
-        reply("⏳ Processing your image, please wait...");
-
-        // تصویر ڈاؤن لوڈ کریں
-        const targetMsg = quoted ? m.msg.contextInfo.quotedMessage.imageMessage : m.msg;
-        const buffer = await conn.downloadMediaMessage(targetMsg);
-        
-        // تصویر کو اپ لوڈ کرنے یا براہ راست لنک بنانے کے لیے (اکثر APIs کو URL کی ضرورت ہوتی ہے)
-        // یہاں ہم فرض کر رہے ہیں کہ آپ کے پاس تصویر کو URL میں بدلنے کا فنکشن موجود ہے
-        // اگر نہیں، تو ہم بوٹ کے میڈیا اپلوڈر کو استعمال کریں گے
-        
-        const apiUrl = `https://api.baguss.xyz/api/edits/hytamkan?image=https://telegra.ph/file/example.jpg`; 
-        // نوٹ: آپ کو یہاں امیج کو کسی ہوسٹنگ (جیسے telegra.ph) پر اپ لوڈ کر کے اس کا لنک دینا ہوگا
-        
-        // متبادل طریقہ: اگر API براہ راست بفر سپورٹ کرتی ہے (زیادہ تر نہیں کرتی)
-        // یہاں ہم صرف ایک مثال دے رہے ہیں، آپ کو امیج اپ لوڈر فنکشن استعمال کرنا ہوگا
-        
-        /* مثال کے طور پر:
-        const imgUrl = await uploadToCloud(buffer);
-        const finalApi = `https://api.baguss.xyz/api/edits/hytamkan?image=${imgUrl}`;
-        */
-
-        // فرض کریں آپ کے پاس پہلے سے ایڈٹ شدہ رزلٹ آ رہا ہے
-        // ہم براہ راست API سے بفر حاصل کریں گے
-        const resultBuffer = await getBuffer(`https://api.baguss.xyz/api/edits/hytamkan?image=YOUR_UPLOADED_IMAGE_URL`);
-
-        await conn.sendMessage(from, { 
-            image: resultBuffer, 
-            caption: "✅ Image edited successfully!" 
-        }, { quoted: mek });
-
-    } catch (e) {
-        console.error("Edit Error:", e);
-        reply("❌ Failed to process the image. API might be down or image link is invalid.");
+  pattern: "hytamkan",
+  alias: ["hytam", "darkedit"],
+  react: '🎨',
+  desc: "Apply dark/hytamkan effect to your photo",
+  category: "utility",
+  use: ".hytamkan [reply to image]",
+  filename: __filename
+}, async (client, message, { reply, quoted }) => {
+  try {
+    // 1. میڈیا اور میم ٹائپ چیک کریں (LID Safe)
+    const quotedMsg = quoted || message;
+    const mimeType = (quotedMsg.msg || quotedMsg).mimetype || '';
+    
+    if (!mimeType || !mimeType.startsWith('image/')) {
+      return reply("❌ Please reply to an image to use this effect.");
     }
+
+    await reply("⏳ Processing your image, please wait...");
+
+    // 2. تصویر ڈاؤن لوڈ کریں
+    const mediaBuffer = await quotedMsg.download();
+    
+    // ایکسٹینشن کا تعین
+    let extension = mimeType.includes('png') ? '.png' : '.jpg';
+
+    // 3. ٹمپریری فائل بنائیں
+    const tempFilePath = path.join(os.tmpdir(), `input_${Date.now()}${extension}`);
+    fs.writeFileSync(tempFilePath, mediaBuffer);
+
+    // 4. Catbox پر اپلوڈ کریں (تاکہ لنک حاصل کیا جا سکے)
+    const form = new FormData();
+    form.append('fileToUpload', fs.createReadStream(tempFilePath), `image${extension}`);
+    form.append('reqtype', 'fileupload');
+
+    const uploadResponse = await axios.post("https://catbox.moe/user/api.php", form, {
+      headers: form.getHeaders()
+    });
+
+    const imageUrl = uploadResponse.data;
+    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath); // صفائی
+
+    if (!imageUrl || typeof imageUrl !== 'string') {
+      throw new Error("Failed to generate image link for processing.");
+    }
+
+    // 5. آپ کی فراہم کردہ API کا استعمال
+    const apiUrl = `https://api.baguss.xyz/api/edits/hytamkan?image=${encodeURIComponent(imageUrl)}`;
+    
+    const response = await axios.get(apiUrl, { 
+      responseType: 'arraybuffer',
+      timeout: 90000 // 1.5 منٹ کا ٹائم آؤٹ
+    });
+
+    // 6. رزلٹ چیک کریں اور بھیجیں
+    if (!response.data || response.data.length < 500) {
+      throw new Error("API returned invalid data.");
+    }
+
+    await client.sendMessage(message.chat, {
+      image: response.data,
+      caption: "✅ *Hytamkan Effect Applied!*",
+    }, { quoted: message });
+
+  } catch (error) {
+    console.error('Hytamkan Error:', error);
+    await reply(`❌ Error: ${error.message || "Failed to edit image. The API might be offline."}`);
+  }
 });
