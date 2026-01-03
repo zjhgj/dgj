@@ -1,100 +1,89 @@
 const { cmd } = require('../command');
 const axios = require('axios');
-const FormData = require('form-data');
 
-// --- Helper Functions ---
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-const HIDENG = {
-  origin: 'https://imgupscaler.com',
-  referer: 'https://imgupscaler.com/',
-  'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36'
-};
-
-const upskel = {
-  upload: async (buffer, scaleRadio = 2) => {
-    const form = new FormData();
-    form.append('myfile', buffer, { filename: Date.now() + '.jpg', contentType: 'image/jpeg' });
-    form.append('scaleRadio', scaleRadio);
-
-    const res = await axios.post(
-      'https://get1.imglarger.com/api/UpscalerNew/UploadNew',
-      form,
-      {
+// --- Helper Functions for Vider AI ---
+async function viderAi(prompt) {
+    const { data } = await axios.post('https://api.vider.ai/api/freev1/task_create/free-ai-image-generator', {
+        params: {
+            model: "free-ai-image-generator",
+            image: "",
+            aspectRatio: 1,
+            prompt: prompt
+        }
+    }, {
         headers: {
-          ...form.getHeaders(),
-          ...HIDENG
+            "user-agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36",
+            "content-type": "application/json",
+            "accept": "*/*",
+            "origin": "https://vider.ai"
         }
-      }
-    );
+    });
+    return data?.data?.taskId;
+}
 
-    const jobId = res.data?.data?.code;
-    if (!jobId) throw new Error('Upload failed: No Job ID received.');
-    
-    return jobId;
-  },
-  checkStatus: async (jobId, scaleRadio) => {
-    const maxRetry = 15; // 15 times x 5s = 75 seconds max
-    for (let i = 1; i <= maxRetry; i++) {
-      const res = await axios.post(
-        'https://get1.imglarger.com/api/UpscalerNew/CheckStatusNew',
-        { code: jobId, scaleRadio },
-        {
-          headers: {
-            ...HIDENG,
-            accept: 'application/json, text/plain, */*',
-            'content-type': 'application/json'
-          }
-        }
-      );
-
-      const data = res.data?.data;
-      if (data && data.status === 'success') {
-        return data.downloadUrls[0];
-      }
-      await sleep(5000); // Wait 5 seconds before next check
-    }
-    throw new Error('Upscale timeout! Server is taking too long.');
-  }
-};
+async function getImage(id) {
+    const { data: response } = await axios.get(`https://api.vider.ai/api/freev1/task_get/${id}`, {
+        headers: {
+            "user-agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36",
+            "accept": "*/*",
+            "origin": "https://vider.ai"
+        },
+    });
+    return {
+        finished: response?.data?.finish === 1,
+        url: response?.data?.result?.file_url
+    };
+}
 
 // --- Command ---
 cmd({
-    pattern: "upscale",
-    alias: ["hd2", "enhance2", "upskel"],
-    desc: "Upscale image using AI (imgupscaler)",
-    category: "utility",
-    react: "🚀",
+    pattern: "imagine",
+    alias: ["gen", "aiimg", "draw"],
+    react: "🎨",
+    desc: "Generate AI images from text prompt using ViderAI.",
+    category: "ai",
     filename: __filename
-}, async (conn, mek, m, { from, reply, quoted, args }) => {
+},           
+async (conn, mek, m, { from, q, reply }) => {
     try {
-        // تصویر چیک کریں (LID Safe)
-        const isQuotedImage = quoted ? (quoted.type === 'imageMessage') : false;
-        const isImage = m.type === 'imageMessage';
+        if (!q) return reply("❌ Please provide a prompt (e.g., .imagine a futuristic city).");
 
-        if (!isImage && !isQuotedImage) {
-            return reply("❌ Please reply to an image or upload an image with the command.");
+        reply("⏳ *AI is drawing your imagination...*\nThis might take about 30-60 seconds.");
+
+        // 1. Task Create کریں
+        const taskId = await viderAi(q);
+        if (!taskId) throw new Error("Could not create AI task.");
+
+        // 2. Polling (رزلٹ کا انتظار کریں)
+        let result = { finished: false, url: null };
+        let attempts = 0;
+        const maxAttempts = 15; // زیادہ سے زیادہ 15 بار چیک کرے گا
+
+        // پہلا انتظار تھوڑا لمبا رکھیں کیونکہ AI وقت لیتا ہے
+        await new Promise(resolve => setTimeout(resolve, 20000));
+
+        while (!result.url && attempts < maxAttempts) {
+            attempts++;
+            result = await getImage(taskId);
+            
+            if (result.url) break; // اگر تصویر مل گئی تو لوپ ختم
+            
+            // اگر ابھی تیار نہیں ہوئی تو 10 سیکنڈ مزید انتظار کریں
+            await new Promise(resolve => setTimeout(resolve, 10000));
         }
 
-        const scale = (args[0] === '4') ? 4 : 2; // Default 2x, can use 4x
-        reply(`⏳ *AI is upscaling your image (${scale}x)...*\nThis may take up to a minute.`);
-
-        // میڈیا ڈاؤن لوڈ کریں
-        const targetMsg = quoted ? m.msg.contextInfo.quotedMessage.imageMessage : m.msg;
-        const buffer = await conn.downloadMediaMessage(targetMsg);
-
-        // پروسیسنگ شروع کریں
-        const jobId = await upskel.upload(buffer, scale);
-        const downloadUrl = await upskel.checkStatus(jobId, scale);
-
-        // رزلٹ بھیجیں
-        await conn.sendMessage(from, { 
-            image: { url: downloadUrl }, 
-            caption: `✅ *Upscaled successfully! (${scale}x)*\n- Powered by AI` 
-        }, { quoted: mek });
+        if (result.url) {
+            // 3. تصویر بھیجیں
+            await conn.sendMessage(from, { 
+                image: { url: result.url }, 
+                caption: `✅ *AI Image Generated*\n\n*Prompt:* ${q}\n*Model:* ViderAI` 
+            }, { quoted: mek });
+        } else {
+            reply("❌ Error: AI took too long to respond. Please try again with a different prompt.");
+        }
 
     } catch (e) {
-        console.error("Upscale Error:", e);
-        reply(`❌ Error: ${e.message}`);
+        console.error("ViderAI Error:", e);
+        reply("❌ Failed to generate image. The server might be busy.");
     }
 });
