@@ -1,115 +1,139 @@
-const fetch = require("node-fetch");
-const yts = require("yt-search");
+//---------------------------------------------------------------------------
+//           KAMRAN-MD - YOUTUBE AUDIO DOWNLOADER (AUTO-DL)
+//---------------------------------------------------------------------------
+//  🚀 SEARCH AND DOWNLOAD MP3 MUSIC AUTOMATICALLY
+//---------------------------------------------------------------------------
+
 const { cmd } = require("../command");
+const yts = require("yt-search");
+const axios = require("axios");
 
-const youtubeRegexID = /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([a-zA-Z0-9_-]{11})/;
+/**
+ * Normalizes YouTube URLs to a standard format
+ */
+function normalizeYouTubeUrl(url) {
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/.*[?&]v=)([a-zA-Z0-9_-]{11})/);
+  return match ? `https://youtube.com/watch?v=${match[1]}` : null;
+}
 
-// ===== PLAY / YT DOWNLOAD PLUGIN =====
-cmd({
-    pattern: "play7",
-    alias: ["yta2", "play", "playaudio", "play6", "ytv2", "ytmp4", "mp4"],
-    react: "🎶",
-    desc: "Play or download YouTube songs and videos.",
-    category: "downloads",
-    use: ".play <song name / YouTube link>",
-    filename: __filename
-},
-async (conn, mek, m, { from, q, command, reply }) => {
-    try {
-        if (!q) return reply("❀ Please enter the name of the music or a YouTube link.");
+/**
+ * Core Audio Data Fetching Logic using Jawad-Tech API
+ */
+async function fetchAudioData(url, retries = 2) {
+  try {
+    // We prioritize the dedicated audio endpoint for better MP3 conversion
+    const audioApiUrl = `https://jawad-tech.vercel.app/download/audio?url=${encodeURIComponent(url)}`;
+    const response = await axios.get(audioApiUrl, { timeout: 20000 });
+    const data = response.data;
 
-        // Detect YouTube ID from URL
-        let videoIdToFind = q.match(youtubeRegexID) || null;
-        let ytResult = await yts(videoIdToFind === null ? q : `https://youtu.be/${videoIdToFind[1]}`);
-
-        // Pick correct video
-        if (videoIdToFind) {
-            const videoId = videoIdToFind[1];
-            ytResult = ytResult.all.find(item => item.videoId === videoId) || ytResult.videos.find(item => item.videoId === videoId);
-        }
-        ytResult = ytResult.all?.[0] || ytResult.videos?.[0] || ytResult;
-
-        if (!ytResult || ytResult.length === 0) return reply("✧ No results found for your search.");
-
-        let { title, thumbnail, timestamp, views, ago, url, author } = ytResult;
-        const channel = author?.name || "Unknown";
-
-        const formattedViews = formatViews(views);
-        const infoMessage = `
-「✦」Downloading *${title || "Unknown"}*
-
-> ✧ Channel   » *${channel}*
-> ✰ Views     » *${formattedViews || "Unknown"}*
-> ⴵ Duration  » *${timestamp || "Unknown"}*
-> ✐ Published » *${ago || "Unknown"}*
-> 🜸 Link      » ${url}
-        `.trim();
-
-        // Send info preview with externalAdReply
-        await conn.sendMessage(from, {
-            text: infoMessage,
-            contextInfo: {
-                externalAdReply: {
-                    title: "KAMRAN-MD Player",
-                    body: "Powered by Andbad Organisation",
-                    mediaType: 1,
-                    sourceUrl: url,
-                    thumbnailUrl: thumbnail,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: mek });
-
-        // Handle Audio
-        if (["play", "yta", "ytmp3", "playaudio"].includes(command)) {
-            try {
-                const api = await (await fetch(`https://api.vreden.my.id/api/v1/download/youtube/audio?url=${url}&quality=128`)).json();
-                const result = api?.result?.download?.url;
-
-                if (!result) throw new Error("⚠ Failed to fetch audio link.");
-
-                await conn.sendMessage(from, {
-                    audio: { url: result },
-                    fileName: `${api.result.title}.mp3`,
-                    mimetype: "audio/mpeg"
-                }, { quoted: mek });
-            } catch (e) {
-                return reply("⚠︎ Could not send the audio. Try again later.");
-            }
-        }
-
-        // Handle Video
-        else if (["play6", "ytv2", "ytmp4", "mp4"].includes(command)) {
-            try {
-                const response = await fetch(`https://gtech-api-xtp1.onrender.com/api/video/yt?apikey=APIKEY&url=${url}&type=video&quality=480p&apikey=GataDios`);
-                const json = await response.json();
-
-                if (!json?.data?.url) throw new Error("⚠ Failed to fetch video link.");
-
-                await conn.sendMessage(from, {
-                    video: { url: json.data.url },
-                    caption: title
-                }, { quoted: mek });
-            } catch (e) {
-                return reply("⚠︎ Could not send the video. Try again later.");
-            }
-        }
-
-    } catch (error) {
-        console.error(error);
-        return reply(`⚠︎ An error occurred: ${error.message}`);
+    if (data.status === true && data.result) {
+      return {
+        audio_url: data.result,
+        title: "YouTube Audio"
+      };
     }
-});
-
-// ===== Function to format view counts =====
-function formatViews(views) {
-    if (!views) return "Unknown";
-
-    if (views >= 1_000_000_000) return `${(views / 1_000_000_000).toFixed(1)}B (${views.toLocaleString()})`;
-    if (views >= 1_000_000) return `${(views / 1_000_000).toFixed(1)}M (${views.toLocaleString()})`;
-    if (views >= 1_000) return `${(views / 1_000).toFixed(1)}K (${views.toLocaleString()})`;
-
-    return views.toString();
-          }
-
     
+    // Fallback to general YTDL if dedicated audio fails
+    const fallbackUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
+    const fbRes = await axios.get(fallbackUrl);
+    if (fbRes.data.status && fbRes.data.result.mp3) {
+        return {
+            audio_url: fbRes.data.result.mp3,
+            title: fbRes.data.result.title
+        };
+    }
+
+    throw new Error("API failed to return audio link.");
+  } catch (error) {
+    if (retries > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      return fetchAudioData(url, retries - 1);
+    }
+    return null;
+  }
+}
+
+// --- MAIN COMMAND: SONG ---
+
+cmd(
+  {
+    pattern: "song",
+    alias: ["play2", "music", "yta", "ytmp3"],
+    react: "🎶",
+    desc: "Search and download MP3 audio from YouTube.",
+    category: "download",
+    filename: __filename,
+  },
+  async (conn, mek, m, { from, q, reply, prefix, command }) => {
+    try {
+      if (!q) return reply(`🎶 *Audio Downloader*\n\nUsage: \`${prefix + command} <song name or link>\`\nExample: \`${prefix + command} faded alan walker\``);
+
+      await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
+
+      // Step 1: Search for the video/audio
+      const url = normalizeYouTubeUrl(q);
+      let ytdata;
+
+      if (url) {
+        const searchResults = await yts({ videoId: q.split('v=')[1]?.split('&')[0] || q.split('/').pop() });
+        ytdata = searchResults;
+      } else {
+        const searchResults = await yts(q);
+        if (!searchResults.videos.length) return reply("❌ Song not found!");
+        ytdata = searchResults.videos[0];
+      }
+
+      // Step 2: Send info message
+      const infoText = `
+🎵 *YT AUDIO DOWNLOADER* 🎵
+
+📌 *Title:* ${ytdata.title}
+🎤 *Artist:* ${ytdata.author?.name || 'Unknown'}
+⏱️ *Duration:* ${ytdata.timestamp}
+
+_📥 Processing your MP3 file, please wait..._
+
+> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ ᴍᴅ`;
+
+      await conn.sendMessage(from, { image: { url: ytdata.thumbnail || ytdata.image }, caption: infoText }, { quoted: mek });
+      await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+
+      // Step 3: Fetch download link from API
+      const dlData = await fetchAudioData(ytdata.url);
+
+      if (!dlData || !dlData.audio_url) {
+        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+        return reply("❌ Audio link could not be generated. Please try again later.");
+      }
+
+      // Step 4: Send the Audio file
+      await conn.sendMessage(
+        from,
+        {
+          audio: { url: dlData.audio_url },
+          mimetype: "audio/mpeg",
+          ptt: false, // Send as a music file, not a voice note
+          fileName: `${ytdata.title}.mp3`,
+          contextInfo: {
+            externalAdReply: {
+              title: "YT MP3 DOWNLOADER",
+              body: ytdata.title,
+              thumbnailUrl: ytdata.thumbnail || ytdata.image,
+              sourceUrl: ytdata.url,
+              mediaType: 1,
+              renderLargerThumbnail: true
+            }
+          }
+        },
+        { quoted: mek }
+      );
+
+      await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+
+    } catch (e) {
+      console.error("Audio DL Error:", e);
+      await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+      reply(`⚠️ *Error:* ${e.message || "Something went wrong."}`);
+    }
+  }
+);
