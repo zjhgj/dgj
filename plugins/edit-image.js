@@ -1,86 +1,73 @@
-const axios = require("axios");
-const FormData = require('form-data');
-const fs = require('fs');
-const os = require('os');
-const path = require("path");
-const { cmd } = require("../command");
+//---------------------------------------------------------------------------
+//           KAMRAN-MD - THERESA AI CHATBOT
+//---------------------------------------------------------------------------
+//  🤖 AN ADVANCED AI PERSONALITY FOR CONVERSATIONS
+//---------------------------------------------------------------------------
 
-// Helper function to format bytes
-function formatBytes(bytes) {
-  if (bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
+const { cmd } = require('../command');
+const axios = require('axios');
 
 cmd({
-  pattern: "imix",
-  alias: ["edit", "editimg"],
-  react: '🧠',
-  desc: "Edit image using AI with a custom prompt",
-  category: "img_edit",
-  use: ".imix <prompt> [reply to image]",
-  filename: __filename
-}, async (conn, message, m, { reply, text }) => {
-  try {
-    if (!text) return reply("❌ Please provide a prompt.\n\nExample: `.imix add a boy in with this girl`");
+    pattern: "theresa",
+    alias: ["th", "ai2"],
+    desc: "Chat with Theresa AI assistant.",
+    category: "ai",
+    use: ".theresa hello, how are you?",
+    filename: __filename,
+}, async (conn, mek, m, { from, reply, text, prefix, command }) => {
+    try {
+        // Validation: Ensure text is provided
+        if (!text) {
+            return reply(`💬 *Please provide a message!*\n\n*Example:* \`${prefix + command} hello theresa, what's the weather?\``);
+        }
 
-    // Check for quoted image
-    const quotedMsg = message.quoted ? message.quoted : message;
-    const mimeType = (quotedMsg.msg || quotedMsg).mimetype || '';
-    if (!mimeType || !mimeType.startsWith('image/')) {
-      return reply("📸 Please reply to an *image* (JPEG or PNG).");
+        // Check for forbidden characters
+        if (text.includes('~')) {
+            return reply('❌ The character `~` is not allowed in your query.');
+        }
+
+        // React with waiting emoji
+        await conn.sendMessage(from, { react: { text: "🧠", key: mek.key } });
+
+        // API Request to Theresa AI
+        const url = `https://theresapisv3.vercel.app/ai/theresa?ask=${encodeURIComponent(text)}`;
+        const res = await axios.get(url);
+        const data = res.data;
+
+        // Check for valid API response
+        if (!data.status || !data.result) {
+            throw new Error(data.message || 'No result found from Theresa AI.');
+        }
+
+        // Process the result: Clean up any tildes if returned by AI
+        let responseText = String(data.result).trim();
+        responseText = responseText.replace(/~/g, '');
+
+        // Send the AI response with branding
+        await conn.sendMessage(from, { 
+            text: responseText,
+            contextInfo: {
+                externalAdReply: {
+                    title: "THERESA AI ASSISTANT",
+                    body: "KAMRAN-MD Intelligence",
+                    thumbnailUrl: "https://files.catbox.moe/k37o6v.jpg", // You can replace this with a Theresa image
+                    sourceUrl: "https://github.com/Kamran-Amjad/KAMRAN-MD",
+                    mediaType: 1,
+                    renderLargerThumbnail: false
+                }
+            }
+        }, { quoted: mek });
+
+        // React with success emoji
+        await conn.sendMessage(from, { react: { text: "✨", key: mek.key } });
+
+    } catch (error) {
+        console.error("Theresa AI Error:", error);
+        
+        // React with error emoji
+        await conn.sendMessage(from, { react: { text: "⚠️", key: mek.key } });
+        
+        const errorMsg = error.response?.data?.message || error.message;
+        reply(`❌ *An error occurred:* ${errorMsg}`);
     }
-
-    // Download media
-    const mediaBuffer = await quotedMsg.download();
-    const fileSize = formatBytes(mediaBuffer.length);
-
-    // Determine extension
-    let extension = '';
-    if (mimeType.includes('image/jpeg')) extension = '.jpg';
-    else if (mimeType.includes('image/png')) extension = '.png';
-    else return reply("❌ Unsupported image format. Use JPEG or PNG.");
-
-    // Save to temp file
-    const tempFilePath = path.join(os.tmpdir(), `imix_${Date.now()}${extension}`);
-    fs.writeFileSync(tempFilePath, mediaBuffer);
-
-    // Upload to Catbox
-    const form = new FormData();
-    form.append('fileToUpload', fs.createReadStream(tempFilePath), `image${extension}`);
-    form.append('reqtype', 'fileupload');
-
-    const uploadResponse = await axios.post("https://catbox.moe/user/api.php", form, {
-      headers: form.getHeaders()
-    });
-
-    const imageUrl = uploadResponse.data;
-    fs.unlinkSync(tempFilePath); // Clean temp
-
-    if (!imageUrl || !imageUrl.startsWith('https')) {
-      throw new Error("❌ Failed to upload image to Catbox.");
-    }
-
-    // Call ZenZ API with prompt
-    const apiUrl = `https://api.zenzxz.my.id/maker/imagedit?url=${encodeURIComponent(imageUrl)}&prompt=${encodeURIComponent(text)}`;
-    const response = await axios.get(apiUrl, { responseType: "arraybuffer" });
-
-    if (!response || !response.data) {
-      return reply("⚠️ API did not return a valid image. Try again later.");
-    }
-
-    const imageBuffer = Buffer.from(response.data, "binary");
-
-    // Send edited image
-    await conn.sendMessage(m.chat, {
-      image: imageBuffer,
-      caption: `🧠 *AI Image Edit Completed!*\n📏 Size: ${fileSize}\n📝 Prompt: ${text}\n\n> *Powered by DR KAMRAN*`
-    }, { quoted: message });
-
-  } catch (error) {
-    console.error("Imix Error:", error);
-    reply(`❌ Error: ${error.response?.data?.message || error.message || "Unknown error"}`);
-  }
 });
