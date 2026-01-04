@@ -1,190 +1,96 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - EPHOTO360 TEXT EFFECTS
+//           KAMRAN-MD - AI TEXT HUMANIZER (REWRITER)
 //---------------------------------------------------------------------------
-//  🚀 CREATE AMAZING LOGOS AND TEXT EFFECTS USING EPHOTO360
+//  🚀 CONVERT AI-TONE TEXT INTO NATURAL HUMAN-LIKE LANGUAGE
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
-const qs = require('qs');
-const cheerio = require('cheerio');
-
-const CONFIG = {
-    BASE_URL: 'https://en.ephoto360.com',
-    API_CREATE: 'https://en.ephoto360.com/effect/create-image',
-    HEADERS: {
-        NAVIGATE: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Upgrade-Insecure-Requests': '1',
-            'Sec-Fetch-Mode': 'navigate',
-            'Sec-Fetch-Site': 'same-origin'
-        },
-        AJAX: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/javascript, */*; q=0.01',
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin'
-        }
-    }
-};
+const FormData = require('form-data');
 
 /**
- * Core Ephoto360 Scraper Engine
+ * Humanizer Class to interact with the backend API
  */
-const ephoto360 = {
-    updateCookies: (oldCookie, newCookiesHeader) => {
-        if (!newCookiesHeader) return oldCookie;
-        const newCookieStr = newCookiesHeader.map(c => c.split(';')[0]).join('; ');
-        return oldCookie ? `${oldCookie}; ${newCookieStr}` : newCookieStr;
-    },
+class Humanizer {
+  constructor() {
+    this.ajax = "https://www.reliablesoft.net/wp-admin/admin-ajax.php";
+  }
 
-    getSession: async (url, textArray) => {
-        try {
-            const resInit = await axios.get(url, { headers: CONFIG.HEADERS.NAVIGATE });
-            let cookies = ephoto360.updateCookies('', resInit.headers['set-cookie']);
-            
-            const $ = cheerio.load(resInit.data);
-            const tokenShort = $('input[name="token"]').val();
-            const buildServer = $('input[name="build_server"]').val();
-            const buildServerId = $('input[name="build_server_id"]').val();
+  async humanize(text, lang = "English") {
+    try {
+      const fd = new FormData();
+      fd.append("action", "openai_process");
+      fd.append("shortcode_action", "rewrite");
+      fd.append(
+        "text",
+        `Rewrite the following text to sound like a natural human, avoid AI patterns, and keep it engaging:\n\n${text}`
+      );
+      fd.append("language", lang);
+      fd.append("tone", "natural");
 
-            if (!tokenShort) throw new Error('Token not found.');
-
-            const formData = {
-                'text': textArray,
-                'submit': 'GO',
-                'token': tokenShort,
-                'build_server': buildServer,
-                'build_server_id': buildServerId
-            };
-
-            const resMeta = await axios.post(url, qs.stringify(formData, { arrayFormat: 'brackets' }), {
-                headers: {
-                    ...CONFIG.HEADERS.NAVIGATE,
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Referer': url,
-                    'Cookie': cookies
-                }
-            });
-
-            cookies = ephoto360.updateCookies(cookies, resMeta.headers['set-cookie']);
-
-            const $meta = cheerio.load(resMeta.data);
-            const rawJson = $meta('#form_value_input').val();
-            
-            if (!rawJson) throw new Error('Generation failed (IP limit or invalid inputs).');
-            
-            const sessionData = JSON.parse(rawJson);
-
-            return {
-                ...sessionData,
-                cookies,
-                referer: url
-            };
-
-        } catch (error) {
-            throw new Error(`Session Error: ${error.message}`);
+      const res = await axios.post(this.ajax, fd, {
+        headers: {
+            ...fd.getHeaders(),
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.reliablesoft.net/ai-writing-tool/"
         }
-    },
+      });
 
-    create: async (effectUrl, texts) => {        
-        try {
-            const session = await ephoto360.getSession(effectUrl, texts);
-
-            const payload = {
-                ...session,
-                autocomplete: '',
-                text: texts
-            };
-
-            const response = await axios.post(CONFIG.API_CREATE, qs.stringify(payload, { arrayFormat: 'brackets' }), {
-                headers: {
-                    ...CONFIG.HEADERS.AJAX,
-                    'Referer': session.referer,
-                    'Origin': CONFIG.BASE_URL,
-                    'Cookie': session.cookies
-                }
-            });
-
-            const data = response.data;
-
-            if (data.success) {
-                const fullUrl = session.build_server + data.image;
-                return { status: true, image_url: fullUrl };
-            } else {
-                return { status: false, message: 'Server denied request.' };
-            }
-
-        } catch (error) {
-            return { status: false, message: error.message };
-        }
+      return res.data;
+    } catch (error) {
+      throw new Error("Failed to connect to the humanizer service.");
     }
-};
+  }
+}
 
-// --- LIST OF EFFECTS ---
-const EFFECTS = {
-    'ph': { url: 'https://en.ephoto360.com/create-pornhub-style-logos-online-free-549.html', name: 'Pornhub Logo', inputs: 2 },
-    'glitch': { url: 'https://en.ephoto360.com/create-digital-glitch-text-effects-online-767.html', name: 'Glitch Text', inputs: 1 },
-    'neon': { url: 'https://en.ephoto360.com/neon-text-effect-online-8.html', name: 'Neon Text', inputs: 1 },
-    'blackpink': { url: 'https://en.ephoto360.com/online-blackpink-style-logo-generator-free-711.html', name: 'Blackpink Logo', inputs: 1 },
-    'thunder': { url: 'https://en.ephoto360.com/online-thunder-text-effect-generator-free-753.html', name: 'Thunder Text', inputs: 1 }
-};
+const humanizer = new Humanizer();
 
-// --- COMMAND: EPHOTO ---
+// --- COMMAND: HUMANIZE ---
 
 cmd({
-    pattern: "ephoto",
-    alias: ["maker", "textlogo"],
-    desc: "Create amazing logos with Ephoto360.",
-    category: "logo",
-    use: ".ephoto ph | KAMRAN | MD",
+    pattern: "humanize",
+    alias: ["rewrite", "human"],
+    desc: "Make AI text sound like a human wrote it.",
+    category: "ai",
+    use: ".humanize [Your AI Text]",
     filename: __filename,
-}, async (conn, mek, m, { from, text, reply, prefix, command }) => {
+}, async (conn, mek, m, { from, text, reply, q }) => {
     try {
-        if (!text || !text.includes('|')) {
-            let menu = `🎨 *EPHOTO360 LOGO MAKER*\n\n*Usage:* \`${prefix + command} <style> | <text1> | <text2>\`\n\n*Styles:* \n`;
-            Object.keys(EFFECTS).forEach(k => menu += `- \`${k}\` (${EFFECTS[k].name})\n`);
-            menu += `\n*Example:* \`${prefix + command} ph | Kamran | MD\``;
-            return reply(menu);
-        }
+        if (!q) return reply("❌ Please provide the text you want to humanize.");
 
-        const args = text.split('|').map(v => v.trim());
-        const style = args[0].toLowerCase();
-        
-        if (!EFFECTS[style]) return reply("❌ Style not found. Use `.ephoto` to see the list.");
+        // Reaction and initial message
+        await conn.sendMessage(from, { react: { text: "✍️", key: mek.key } });
+        const loadingMsg = await reply("_🔄 Processing text, making it sound more human..._");
 
-        const texts = args.slice(1);
-        if (texts.length < EFFECTS[style].inputs) return reply(`❌ This style requires ${EFFECTS[style].inputs} text inputs.`);
+        // Call the humanizer engine
+        const result = await humanizer.humanize(q);
 
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-        reply(`_🎨 Creating your ${EFFECTS[style].name}, please wait..._`);
+        if (result && result.success && result.data) {
+            const humanizedText = result.data.trim();
+            
+            const response = `✨ *HUMANIZED TEXT* ✨\n\n${humanizedText}\n\n*🚀 Powered by KAMRAN-MD*`;
 
-        const result = await ephoto360.create(EFFECTS[style].url, texts);
-
-        if (result.status) {
             await conn.sendMessage(from, {
-                image: { url: result.image_url },
-                caption: `✅ *Style:* ${EFFECTS[style].name}\n📝 *Text:* ${texts.join(' | ')}\n\n*🚀 Powered by KAMRAN-MD*`,
+                text: response,
                 contextInfo: {
-                    forwardingScore: 999,
-                    isForwarded: true,
-                    forwardedNewsletterMessageInfo: {
-                        newsletterJid: '120363418144382782@newsletter',
-                        newsletterName: 'KAMRAN-MD',
-                        serverMessageId: 143
+                    externalAdReply: {
+                        title: "AI TEXT HUMANIZER",
+                        body: "Making AI text natural and engaging",
+                        thumbnailUrl: "https://cdn-icons-png.flaticon.com/512/2103/2103633.png",
+                        sourceUrl: "https://github.com/KAMRAN-SMD/KAMRAN-MD",
+                        mediaType: 1,
+                        renderLargerThumbnail: false
                     }
                 }
             }, { quoted: mek });
+
             await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
         } else {
-            throw new Error(result.message);
+            reply("❌ Sorry, I couldn't process that text. The service might be busy.");
         }
 
     } catch (e) {
-        console.error("Ephoto Error:", e);
+        console.error("Humanizer Error:", e);
         await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
         reply(`❌ *Error:* ${e.message}`);
     }
