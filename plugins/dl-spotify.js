@@ -1,91 +1,115 @@
 //---------------------------------------------------------------------------
 //           KAMRAN-MD - SPOTIFY MUSIC DOWNLOADER
 //---------------------------------------------------------------------------
-//  🚀 DOWNLOAD SPOTIFY TRACKS WITH CUSTOM CANVAS ARTWORK
+//  🚀 DOWNLOAD SONGS VIA SPOTIFY URL OR SEARCH KEYWORDS
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
 
 /**
- * Converts Duration string (MM:SS) to Milliseconds
+ * Core Spotify Logic using spotdown.org API
  */
-function durationToMs(duration) {
-    if (!duration) return 0;
-    const [min, sec] = duration.split(':').map(Number);
-    return (min * 60 + sec) * 1000;
-}
-
-cmd({
-    pattern: "spotify",
-    alias: ["spotifyplay", "sp", "song2"],
-    desc: "Download music from Spotify using URL.",
-    category: "download",
-    use: ".spotify <spotify_link>",
-    filename: __filename,
-}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
+async function fetchSpotify(input) {
     try {
-        if (!q) return reply(`🎵 *Spotify Downloader*\n\nUsage: \`${prefix + command} <spotify track url>\`\nExample: \`${prefix + command} https://open.spotify.com/track/xxx\``);
-
-        // --- Step 1: Fetch Song Details ---
-        await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
-
-        const { data: s } = await axios.get(`https://spotdown.org/api/song-details?url=${encodeURIComponent(q)}`, {
+        // Step 1: Get song details
+        const { data: s } = await axios.get(`https://spotdown.org/api/song-details?url=${encodeURIComponent(input)}`, {
             headers: {
-                'origin': 'https://spotdown.org',
-                'referer': 'https://spotdown.org/',
+                origin: 'https://spotdown.org',
+                referer: 'https://spotdown.org/',
                 'user-agent': 'Mozilla/5.0 (Linux; Android 15; SM-F958) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36'
             }
         });
-
+        
         const song = s.songs ? s.songs[0] : null;
-        if (!song) return reply('❌ Error: Track not found! Please check the URL.');
-
-        // --- Step 2: Download Audio Buffer ---
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-
+        if (!song) return null;
+        
+        // Step 2: Download the audio buffer
         const { data: audioBuffer } = await axios.post('https://spotdown.org/api/download', {
             url: song.url
         }, {
             headers: {
-                'origin': 'https://spotdown.org',
-                'referer': 'https://spotdown.org/',
+                origin: 'https://spotdown.org',
+                referer: 'https://spotdown.org/',
                 'user-agent': 'Mozilla/5.0 (Linux; Android 15; SM-F958) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36'
             },
             responseType: 'arraybuffer'
         });
+        
+        return {
+            title: song.title,
+            artist: song.artist,
+            duration: song.duration,
+            cover: song.thumbnail,
+            url: song.url,
+            audio: Buffer.from(audioBuffer)
+        };
+    } catch (error) {
+        console.error("Spotify API Error:", error.message);
+        return null;
+    }
+}
 
-        const ms = durationToMs(song.duration);
+// --- COMMAND: SPOTIFY ---
 
-        // --- Step 3: Generate Spotify Canvas Image ---
-        const spotifycanva = await new canvafy.Spotify()
-            .setAuthor(song.artist || "Unknown Artist")
-            .setTimestamp(40000, ms || 0) // Fixed progress for visual effect
-            .setImage(song.thumbnail || "https://cdn-icons-png.flaticon.com/512/174/174868.png")
-            .setTitle(song.title || "Unknown Title")
-            .setBlur(5)
-            .setOverlayOpacity(0.7)
-            .build();
+cmd({
+    pattern: "spotify",
+    alias: ["sp", "song2"],
+    desc: "Download Spotify tracks by link or name.",
+    category: "download",
+    use: ".spotify <song name or link>",
+    filename: __filename,
+}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
+    try {
+        if (!q) return reply(`🎵 *Spotify Downloader*\n\nUsage: \`${prefix + command} <song name/url>\`\nExample: \`${prefix + command} stay justin bieber\``);
 
-        const caption = `🎶 *SPOTIFY DOWNLOAD* 🎶\n\n📌 *Title:* ${song.title}\n🎤 *Artist:* ${song.artist}\n⏱️ *Duration:* ${song.duration}\n🔗 *Link:* ${song.url}\n\n*🚀 Powered by KAMRAN-MD*`;
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // --- Step 4: Send Results ---
-        const sentMsg = await conn.sendMessage(from, {
-            image: spotifycanva,
-            caption: caption
+        const result = await fetchSpotify(q);
+
+        if (!result) {
+            await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+            return reply("❌ Could not find or download the song. Please try again with a link.");
+        }
+
+        // Send confirmation/info message
+        const infoMsg = `
+🎶 *SPOTIFY DOWNLOAD* 🎶
+
+📌 *Title:* ${result.title}
+🎤 *Artist:* ${result.artist}
+⏱️ *Duration:* ${result.duration}
+
+_📥 Uploading audio, please wait..._
+
+*🚀 Powered by KAMRAN-MD*`;
+
+        await conn.sendMessage(from, { 
+            image: { url: result.cover }, 
+            caption: infoMsg 
         }, { quoted: mek });
 
+        // Send Audio File
         await conn.sendMessage(from, {
-            audio: Buffer.from(audioBuffer),
+            audio: result.audio,
             mimetype: "audio/mpeg",
-            fileName: `${song.title}.mp3`
-        }, { quoted: sentMsg });
+            fileName: `${result.title} - ${result.artist}.mp3`,
+            contextInfo: {
+                externalAdReply: {
+                    title: result.title,
+                    body: result.artist,
+                    thumbnailUrl: result.cover,
+                    sourceUrl: result.url,
+                    mediaType: 1,
+                    renderLargerThumbnail: true
+                }
+            }
+        }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
-    } catch (error) {
-        console.error("Spotify Error:", error.message);
-        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        reply("❌ Error: Service might be busy or the request limit reached.");
+    } catch (e) {
+        console.error("Spotify Plugin Error:", e);
+        reply("❌ An unexpected error occurred.");
     }
 });
