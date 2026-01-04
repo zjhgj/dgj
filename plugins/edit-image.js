@@ -1,123 +1,132 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - NANO BANANA (AI PHOTO EDITOR)
+//           KAMRAN-MD - PINTEREST ALBUM SEARCH
 //---------------------------------------------------------------------------
-//  🎨 EDIT PHOTOS USING AI STYLES (ANIME, CYBERPUNK, ETC.)
+//  🚀 SEARCH PINTEREST & SEND IMAGES AS A NATIVE WHATSAPP ALBUM
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
-const axios = require('axios');
-const FormData = require('form-data');
-const { Readable } = require('stream');
+const fetch = require('node-fetch');
+const {
+    generateWAMessage,
+    generateWAMessageFromContent,
+    jidNormalizedUser
+} = require('@whiskeysockets/baileys');
+const { randomBytes } = require('crypto');
 
-// API Headers for PhotoEditorAI
-const headers = {
-    'Product-Code': '067003',
-    'Product-Serial': 'vj6o8n'
+// Newsletter Context for professional look
+const newsletterContext = {
+    forwardingScore: 999,
+    isForwarded: true,
+    forwardedNewsletterMessageInfo: {
+        newsletterJid: '120363418144382782@newsletter',
+        newsletterName: 'KAMRAN-MD',
+        serverMessageId: 143
+    }
 };
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-/**
- * Creates an AI editing job
- */
-async function createJob(buffer, prompt) {
-    const form = new FormData();
-    form.append('model_name', 'seedream');
-    form.append('edit_type', 'style_transfer');
-    form.append('prompt', prompt);
-    
-    // Convert buffer to readable stream for form-data
-    const stream = Readable.from(buffer);
-    form.append('target_images', stream, { 
-        filename: 'input.jpg', 
-        contentType: 'image/jpeg' 
-    });
-
-    const { data } = await axios.post(
-        'https://api.photoeditorai.io/pe/photo-editor/create-job',
-        form,
-        { headers: { ...form.getHeaders(), ...headers } }
-    );
-
-    if (!data.result || !data.result.job_id) throw new Error("Failed to create AI job.");
-    return data.result.job_id;
-}
-
-/**
- * Polls the job status until completion
- */
-async function getResult(jobId) {
-    let attempts = 0;
-    while (attempts < 20) {
-        const { data } = await axios.get(
-            `https://api.photoeditorai.io/pe/photo-editor/get-job/${jobId}`,
-            { headers }
-        );
-        
-        // Status 2 means completed
-        if (data.result.status === 2 && data.result.output?.length) {
-            return data.result.output[0];
-        }
-        
-        if (data.result.status === -1) throw new Error("AI Job failed.");
-        
-        await sleep(3000);
-        attempts++;
-    }
-    throw new Error("Job polling timeout.");
-}
-
-// --- COMMAND: NANOBANANA ---
-
 cmd({
-    pattern: "nanobanana",
-    alias: ["editimg", "style", "ai-edit"],
-    desc: "Edit image style using AI prompt.",
-    category: "ai",
-    use: ".nanobanana change to anime (reply to photo)",
+    pattern: "pinalbum",
+    alias: ["pinterestalbum", "pinsearch"],
+    desc: "Search Pinterest and send results as a grouped album.",
+    category: "search",
+    use: ".pinalbum furina",
     filename: __filename,
 }, async (conn, mek, m, { from, text, reply, prefix, command }) => {
+    if (!text) return reply(`🔍 *Pinterest Search*\n\nUsage: \`${prefix + command} <query>\`\nExample: \`${prefix + command} nature aesthetics\``);
+
+    await conn.sendMessage(from, { react: { text: "🕓", key: mek.key } });
+
+    let urls = [];
     try {
-        if (!text) return reply(`📸 Please provide a prompt!\n*Example:* \`${prefix + command} convert to professional oil painting\``);
+        const url =
+            "https://www.pinterest.com/resource/BaseSearchResource/get/?data=" +
+            encodeURIComponent(
+                JSON.stringify({
+                    options: { query: encodeURIComponent(text) }
+                })
+            );
 
-        const q = m.quoted ? m.quoted : m;
-        const mime = (q.msg || q).mimetype || '';
-        
-        if (!/image/.test(mime)) return reply("❌ Please reply to an image.");
-
-        await conn.sendMessage(from, { react: { text: "🎨", key: mek.key } });
-        
-        // Downloading media
-        const buffer = await q.download();
-        
-        reply("_🎨 AI is transforming your image, please wait..._");
-
-        // Step 1: Create Job
-        const jobId = await createJob(buffer, text.trim());
-
-        // Step 2: Get Result URL
-        const resultUrl = await getResult(jobId);
-
-        // Step 3: Send processed image
-        await conn.sendMessage(from, {
-            image: { url: resultUrl },
-            caption: `✨ *IMAGE TRANSFORMED*\n\n📝 *Prompt:* ${text}\n🤖 *Model:* Nano Banana AI\n\n*🚀 Powered by KAMRAN-MD*`,
-            contextInfo: {
-                forwardingScore: 999,
-                isForwarded: true,
-                forwardedNewsletterMessageInfo: {
-                    newsletterJid: '120363418144382782@newsletter',
-                    newsletterName: 'KAMRAN-MD',
-                    serverMessageId: 143
-                }
+        const res = await fetch(url, {
+            method: "HEAD",
+            headers: {
+                "screen-dpr": "4",
+                "x-pinterest-pws-handler": "www/search/[scope].js"
             }
-        }, { quoted: mek });
+        });
+
+        if (!res.ok) throw new Error(`Search failed with status ${res.status}`);
+
+        const linkHeader = res.headers.get("Link");
+        if (!linkHeader) throw new Error(`No results found for "${text}"`);
+
+        // Extracting image links
+        urls = [...linkHeader.matchAll(/<(.*?)>/gm)].map(a => a[1]);
+    } catch (e) {
+        return reply(`❌ *Error:* ${e.message}`);
+    }
+
+    const mediaList = [];
+    // Limit to top 10 results for stability
+    for (let url of urls) {
+        if (mediaList.length >= 10) break;
+        try {
+            const r = await fetch(url, { redirect: "follow" });
+            const type = r.headers.get("content-type") || "";
+            if (!type.startsWith("image/")) continue;
+            
+            const buffer = await r.buffer();
+            mediaList.push({
+                image: buffer,
+                caption: `✨ *Pinterest Result:* ${text}\n🚀 *Powered by KAMRAN-MD*`
+            });
+        } catch (err) {
+            console.error("Fetch Error:", err.message);
+        }
+    }
+
+    if (!mediaList.length) return reply("❌ No valid images found.");
+
+    try {
+        // Step 1: Create the Album Opener Message
+        const opener = generateWAMessageFromContent(
+            from,
+            {
+                messageContextInfo: { messageSecret: randomBytes(32) },
+                albumMessage: {
+                    expectedImageCount: mediaList.length,
+                    expectedVideoCount: 0
+                }
+            },
+            {
+                userJid: jidNormalizedUser(conn.user.id),
+                quoted: mek,
+                upload: conn.waUploadToServer
+            }
+        );
+
+        await conn.relayMessage(from, opener.message, { messageId: opener.key.id });
+
+        // Step 2: Send each image associated with the parent Album
+        for (let content of mediaList) {
+            const msg = await generateWAMessage(from, content, {
+                upload: conn.waUploadToServer
+            });
+
+            msg.message.messageContextInfo = {
+                messageSecret: randomBytes(32),
+                messageAssociation: {
+                    associationType: 1, // Parent-Child Association
+                    parentMessageKey: opener.key
+                }
+            };
+
+            await conn.relayMessage(from, msg.message, { messageId: msg.key.id });
+        }
 
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error(e);
-        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        reply(`❌ *Error:* ${e.message || "Failed to edit image."}`);
+        console.error("Album Relay Error:", e);
+        reply("❌ Failed to send as Album. Your WhatsApp version might not support it.");
     }
 });
