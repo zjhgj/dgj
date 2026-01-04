@@ -1,68 +1,91 @@
 const { cmd } = require('../command');
 const axios = require('axios');
+const FormData = require('form-data');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+/**
+ * Aha-Music (doreso.com) API handler
+ */
+async function aha_music(filePath) {
+    const form = new FormData();
+    form.append('file', fs.createReadStream(filePath));
+    form.append('sample_size', 118784);
+    
+    const { data } = await axios.post(
+        'https://api.doreso.com/humming', 
+        form, 
+        {
+            headers: {
+                ...form.getHeaders(),
+                'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
+                'accept': 'application/json, text/plain, */*',
+                'origin': 'https://www.aha-music.com',
+                'referer': 'https://www.aha-music.com/'
+            },
+            maxBodyLength: Infinity,
+            maxContentLength: Infinity
+        }
+    );
+    return data;
+}
 
 cmd({
-    pattern: "shazam",
-    alias: ["findsong", "musicsearch"],
-    react: "🔍",
-    desc: "Search for song details using Shazam API.",
-    category: "search",
+    pattern: "findsong",
+    alias: ["shazam", "whatsong"],
+    react: "🎶",
+    desc: "Find song title by replying to an audio/voice message.",
+    category: "tools",
     filename: __filename
 },           
-async (conn, mek, m, { from, q, reply }) => {
+async (conn, mek, m, { from, reply, quoted }) => {
+    let tmpPath = null;
     try {
-        if (!q) return reply("❌ Please provide a song name (e.g., .shazam Mockingbird)");
+        // 1. آڈیو چیک کریں (LID Safe)
+        const quotedMsg = quoted || m;
+        const mime = (quotedMsg.msg || quotedMsg).mimetype || "";
 
-        reply(`⏳ Searching for *"${q}"* on Shazam...`);
-
-        // Shazam API URL (Note: ID is usually 'us' or 'pk' based on region)
-        const region = "pk"; 
-        const apiUrl = `https://www.shazam.com/services/amapi/v1/catalog/${region}/search?types=songs&term=${encodeURIComponent(q)}`;
-
-        const response = await axios.get(apiUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'application/json'
-            }
-        });
-
-        // چیک کریں کہ کیا ڈیٹا ملا ہے
-        const songs = response.data?.results?.songs?.data;
-
-        if (!songs || songs.length === 0) {
-            return reply("❌ No results found for this song.");
+        if (!/audio|video/.test(mime)) {
+            return reply("⚠️ Please reply to an *audio* or *voice* message to identify the song.");
         }
 
-        // پہلے رزلٹ کی تفصیلات نکالیں
-        const song = songs[0].attributes;
-        const songTitle = song.name;
-        const artistName = song.artistName;
-        const albumName = song.albumName || "N/A";
-        const releaseDate = song.releaseDate || "Unknown";
-        const genres = song.genreNames.join(", ");
-        
-        // ہائی کوالٹی امیج کے لیے URL کو تبدیل کریں
-        const artworkUrl = song.artwork.url
-            .replace('{w}', '600')
-            .replace('{h}', '600');
+        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
 
-        let msg = `🎵 *SHAZAM MUSIC SEARCH* 🎵\n\n` +
-                  `📌 *Title:* ${songTitle}\n` +
-                  `🎤 *Artist:* ${artistName}\n` +
-                  `💿 *Album:* ${albumName}\n` +
-                  `📅 *Released:* ${releaseDate}\n` +
-                  `🎭 *Genre:* ${genres}\n\n` +
-                  `🔗 *Listen:* ${song.url}\n\n` +
-                  `_Powered by Shazam_`;
+        // 2. میڈیا ڈاؤن لوڈ کریں
+        const buffer = await conn.downloadMediaMessage(quotedMsg);
+        if (!buffer) return reply("❌ Failed to download audio.");
 
-        // تصویر اور تفصیلات بھیجیں (LID Safe)
-        await conn.sendMessage(from, { 
-            image: { url: artworkUrl }, 
-            caption: msg 
-        }, { quoted: mek });
+        // 3. عارضی فائل بنائیں
+        tmpPath = path.join(os.tmpdir(), `shazam_${Date.now()}.mp3`);
+        fs.writeFileSync(tmpPath, buffer);
 
-    } catch (e) {
-        console.error("Shazam Error:", e);
-        reply("❌ Error: Could not connect to Shazam servers.");
+        // 4. Shazam/Aha API کال کریں
+        const result = await aha_music(tmpPath);
+
+        // 5. رزلٹ ہینڈلنگ
+        if (result && result.data && result.data.title) {
+            const { title, artists } = result.data;
+            const caption = `🎵 *Song Identified!*\n\n` +
+                          `📌 *Title:* ${title}\n` +
+                          `👤 *Artist:* ${artists}\n\n` +
+                          `*Generated by Aha-Music*`;
+            
+            await conn.sendMessage(from, { text: caption }, { quoted: mek });
+            await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+        } else {
+            await conn.sendMessage(from, { react: { text: "❓", key: m.key } });
+            reply("❌ Could not identify this song. Make sure the audio is clear and at least 5-10 seconds long.");
+        }
+
+    } catch (err) {
+        console.error("Shazam Error:", err);
+        await conn.sendMessage(from, { react: { text: "❌", key: m.key } });
+        reply(`❌ Error: ${err.message || "An error occurred during song identification."}`);
+    } finally {
+        // 6. صفائی (Cleanup)
+        if (tmpPath && fs.existsSync(tmpPath)) {
+            fs.unlinkSync(tmpPath);
+        }
     }
 });
