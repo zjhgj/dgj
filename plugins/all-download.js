@@ -1,111 +1,89 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - AIO DOWNLOADER & AUTO-DL (MIFINFINITY)
+//           KAMRAN-MD - YOUTUBE AUTO-DOWNLOADER
 //---------------------------------------------------------------------------
-//  🚀 DOWNLOAD FROM TIKTOK, IG, FB, YT AUTOMATICALLY OR BY COMMAND
+//  🚀 AUTOMATICALLY DETECT AND DOWNLOAD YOUTUBE VIDEOS FROM LINKS
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// In-memory storage for Auto-DL status (Reset on restart)
-// For permanent storage, you can use your database
-const autoDlSettings = new Map();
-
 /**
- * Core Downloader Function
+ * Core Logic to fetch download link from Jawad-Tech API
  */
-async function fetchMedia(url) {
+async function getYouTubeDownload(url) {
     try {
-        const apiUrl = `https://api.mifinfinity.my.id/api/downloader/aio?url=${encodeURIComponent(url)}`;
-        const { data } = await axios.get(apiUrl);
-        if (data.status && data.result) return data.result;
+        const apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
+        const response = await axios.get(apiUrl, { timeout: 15000 });
+        if (response.data.status && response.data.result) {
+            return response.data.result;
+        }
         return null;
     } catch (e) {
         return null;
     }
 }
 
-// --- COMMAND: DOWNLOAD (Manual) ---
+// --- COMMAND: VIDEO (Manual Mode) ---
 
 cmd({
-    pattern: "dl",
-    alias: ["get", "down"],
-    desc: "All-in-one downloader for social media.",
+    pattern: "videog",
+    alias: ["ytdl", "ytmpt4"],
+    desc: "Manual YouTube video downloader.",
     category: "download",
-    use: ".dl <link>",
+    use: ".video <link>",
     filename: __filename,
-}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
-    if (!q) return reply(`🔗 *AIO Downloader*\n\nUsage: \`${prefix + command} <link>\`\nExample: \`${prefix + command} https://www.instagram.com/p/xxx\``);
+}, async (conn, mek, m, { from, text, reply }) => {
+    if (!text) return reply("❌ Please provide a YouTube link.");
     
     await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-    const res = await fetchMedia(q);
+    const videoData = await getYouTubeDownload(text);
     
-    if (!res) return reply("❌ Link not supported or API error.");
-
-    // Handle Video/Image based on API result
-    const mediaUrl = res.url || res.video || res.hd || res.mp4;
-    if (!mediaUrl) return reply("❌ Could not extract download link.");
+    if (!videoData || !videoData.download_url) {
+        return reply("❌ Could not process this link.");
+    }
 
     await conn.sendMessage(from, {
-        video: { url: mediaUrl },
-        caption: `✅ *Downloaded Successfully*\n\n*🚀 Powered by KAMRAN-MD*`,
+        video: { url: videoData.download_url },
+        caption: `🎥 *Title:* ${videoData.title}\n\n*🚀 Powered by KAMRAN-MD*`
     }, { quoted: mek });
     
     await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 });
 
-// --- COMMAND: AUTODL SETTINGS ---
-
-cmd({
-    pattern: "autodl",
-    desc: "Turn Auto-Download On or Off for this chat.",
-    category: "config",
-    use: ".autodl on/off",
-    filename: __filename,
-}, async (conn, mek, m, { from, q, reply, isAdmins, isOwner }) => {
-    // Only admins or owner can change settings
-    if (!isAdmins && !isOwner) return reply("❌ This command is only for Admins.");
-    
-    if (q === "on") {
-        autoDlSettings.set(from, true);
-        return reply("✅ *Auto-Download is now ON* for this chat.\nI will automatically download links from TikTok, IG, FB, etc.");
-    } else if (q === "off") {
-        autoDlSettings.set(from, false);
-        return reply("❌ *Auto-Download is now OFF* for this chat.");
-    } else {
-        return reply(`❓ Usage: \`.autodl on\` or \`.autodl off\``);
-    }
-});
-
-// --- AUTO-DL LISTENER ---
-
-// We export a listener function that your main bot (index.js) can call on every message
-// If KAMRAN-MD uses a specific event for this, you can integrate it there
-// Here is a generic handler that looks for links:
+// --- AUTO-DL LISTENER: Detects YouTube Links ---
 
 cmd({
     on: "body"
-}, async (conn, mek, m, { from, body, isGroup }) => {
-    const isEnabled = autoDlSettings.get(from);
-    if (!isEnabled) return;
-
-    // Regex for common social media links
-    const urlRegex = /https?:\/\/(www\.)?(tiktok|instagram|facebook|fb|youtube|youtu|x|twitter)\.com\/[^\s]+/gi;
-    const match = body.match(urlRegex);
+}, async (conn, mek, m, { from, body }) => {
+    // Regex to match YouTube and Shorts links
+    const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/gi;
+    const match = body.match(ytRegex);
 
     if (match) {
-        const link = match[0];
-        console.log(`[AutoDL] Detected link: ${link}`);
+        const videoUrl = match[0];
+        console.log(`[AutoDL] YouTube link detected: ${videoUrl}`);
 
-        const res = await fetchMedia(link);
-        if (res) {
-            const mediaUrl = res.url || res.video || res.hd || res.mp4;
-            if (mediaUrl) {
-                await conn.sendMessage(from, {
-                    video: { url: mediaUrl },
-                    caption: `🎬 *Auto Downloader*\n\n*🚀 Powered by KAMRAN-MD*`
-                }, { quoted: mek });
-            }
+        // Small reaction to show the bot is working
+        await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
+
+        const videoData = await getYouTubeDownload(videoUrl);
+
+        if (videoData && videoData.download_url) {
+            await conn.sendMessage(from, {
+                video: { url: videoData.download_url },
+                caption: `🎬 *YouTube Auto-DL*\n\n📌 *Title:* ${videoData.title}\n\n*🚀 Powered by KAMRAN-MD*`,
+                contextInfo: {
+                    forwardingScore: 999,
+                    isForwarded: true,
+                    forwardedNewsletterMessageInfo: {
+                        newsletterJid: '120363418144382782@newsletter',
+                        newsletterName: 'KAMRAN-MD',
+                        serverMessageId: 143
+                    }
+                }
+            }, { quoted: mek });
+            
+            await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
         }
     }
 });
