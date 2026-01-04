@@ -1,91 +1,130 @@
-const config = require('../config');
-const { cmd } = require('../command');
-const yts = require('yt-search');
-const fetch = require('node-fetch');
+//---------------------------------------------------------------------------
+//           KAMRAN-MD - YOUTUBE VIDEO DOWNLOADER (AUTO-DL)
+//---------------------------------------------------------------------------
+//  🚀 SEARCH AND DOWNLOAD VIDEOS AUTOMATICALLY
+//---------------------------------------------------------------------------
 
-cmd({
-    pattern: "video",
-    alias: ["mp4", "v"],
-    react: "🎥",
-    desc: "Download video from YouTube with tech interface.",
-    category: "download",
-    use: ".video2 <query or url>",
-    filename: __filename
-}, async (conn, mek, m, { from, q, reply, sender }) => {
-    try {
-        if (!q) return await reply("⚙️ *SYSTEM:* Input required. Please provide a video name or URL.");
+const { cmd } = require("../command");
+const yts = require("yt-search");
+const axios = require("axios");
 
-        // --- PHASE 1: INITIAL SCAN ---
-        let techMsg = `╔═══════════════╗
-  ✰  *𝙆𝘼𝙈𝙍𝘼𝙉 𝙈𝘿 𝘿𝙊𝙒𝙉𝙇𝙊𝘼𝘿* ✰
-╟────────────╢
-│ ✞︎ **sᴛᴀᴛᴜs:** sᴄᴀɴɴɪɴɢ... 🎥
-│ ✞︎ **ᴘʀᴏᴄᴇss:** ᴅᴀᴛᴀ_ʟᴏᴏᴋᴜᴘ
-│ ✞︎ **ʟᴏᴀᴅ:** [▬▬▬▭▭▭▭] 30%
-╚═══════════════╝`;
+// Simple In-memory cache
+const cache = new Map();
 
-        const { key } = await conn.sendMessage(from, { text: techMsg }, { quoted: mek });
+/**
+ * Normalizes YouTube URLs to a standard format
+ */
+function normalizeYouTubeUrl(url) {
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/.*[?&]v=)([a-zA-Z0-9_-]{11})/);
+  return match ? `https://youtube.com/watch?v=${match[1]}` : null;
+}
 
-        let videoUrl, title, timestamp;
-        
-        if (q.match(/(youtube\.com|youtu\.be)/)) {
-            videoUrl = q;
-            const videoId = q.split(/[=/]/).pop();
-            const videoInfo = await yts({ videoId });
-            title = videoInfo.title;
-            timestamp = videoInfo.timestamp;
-        } else {
-            const search = await yts(q);
-            if (!search.videos.length) return await conn.sendMessage(from, { text: "❌ **CORE ERROR:** NOT FOUND", edit: key });
-            videoUrl = search.videos[0].url;
-            title = search.videos[0].title;
-            timestamp = search.videos[0].timestamp;
-        }
+/**
+ * Core Data Fetching Logic using Jawad-Tech API
+ */
+async function fetchDownloadData(url, retries = 2) {
+  try {
+    const apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
+    const response = await axios.get(apiUrl, { timeout: 20000 });
+    const data = response.data;
 
-        // --- PHASE 2: DOWNLOADING STATUS ---
-        let downloadMsg = `╔═══════════════╗
-  ✰  *𝙆𝘼𝙈𝙍𝘼𝙉 𝙈𝘿 𝘿𝙊𝙒𝙉𝙇𝙊𝘼𝘿* ✰
-╟────────────╢
-│ ✞︎ **ᴛɪᴛʟᴇ:** ${title.substring(0, 20)}...
-│ ✞︎ **ᴅᴜʀᴀᴛɪᴏɴ:** ${timestamp}
-│ ✞︎ **ʟᴏᴀᴅ:** [▬▬▬▬▬▬▬] 100%
-╟────────────╢
-│ 📥 **sᴛᴀᴛᴜs:** ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ...
-╚═══════════════╝`;
-
-        await conn.sendMessage(from, { text: downloadMsg, edit: key });
-
-        // Fetching Video Data
-        const apiUrl = `https://apis.davidcyriltech.my.id/download/ytmp4?url=${encodeURIComponent(videoUrl)}`;
-        const response = await fetch(apiUrl);
-        const data = await response.json();
-
-        if (!data.success || !data.result?.download_url) {
-            return await conn.sendMessage(from, { text: "❌ **FATAL ERROR:** DOWNLOAD FAILED", edit: key });
-        }
-
-        // --- PHASE 3: TRANSMISSION ---
-        await conn.sendMessage(from, {
-            video: { url: data.result.download_url },
-            mimetype: 'video/mp4',
-            caption: `🎬 *${title}*\n\n> © ᴋᴀᴍʀᴀɴ ᴍᴅ ᴍᴇᴅɪᴀ ⚡`,
-            contextInfo: {
-                mentionedJid: [sender],
-                forwardingScore: 999,
-                isForwarded: true,
-                forwardedNewsletterMessageInfo: {
-                    newsletterJid: '120363418144382782@newsletter',
-                    newsletterName: '『 𝙆𝘼𝙈𝙍𝘼𝙉𝙈𝘿 𝐕𝐈𝐃𝐄𝐎 』',
-                    serverMessageId: 143
-                }
-            }
-        }, { quoted: mek });
-
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-
-    } catch (error) {
-        console.error(error);
-        await reply(`❌ **SYSTEM ERROR:** ${error.message}`);
+    if (data.status === true && data.result) {
+      return {
+        video_url: data.result.mp4,
+        title: data.result.title || "YouTube Video",
+      };
     }
-});
-              
+    throw new Error("API failed to return download link.");
+  } catch (error) {
+    if (retries > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      return fetchDownloadData(url, retries - 1);
+    }
+    return null;
+  }
+}
+
+// --- MAIN COMMAND: VIDEO ---
+
+cmd(
+  {
+    pattern: "video",
+    alias: ["ytmp4", "vdl"],
+    react: "🎥",
+    desc: "Search and download high-quality videos from YouTube.",
+    category: "download",
+    filename: __filename,
+  },
+  async (conn, mek, m, { from, q, reply, prefix, command }) => {
+    try {
+      if (!q) return reply(`🎥 *Video Downloader*\n\nUsage: \`${prefix + command} <name or link>\`\nExample: \`${prefix + command} perfect ed sheeran\``);
+
+      await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
+
+      // Step 1: Search for the video
+      const url = normalizeYouTubeUrl(q);
+      let ytdata;
+
+      if (url) {
+        const searchResults = await yts({ videoId: q.split('v=')[1]?.split('&')[0] || q.split('/').pop() });
+        ytdata = searchResults;
+      } else {
+        const searchResults = await yts(q);
+        if (!searchResults.videos.length) return reply("❌ No videos found for your query!");
+        ytdata = searchResults.videos[0];
+      }
+
+      // Step 2: Send info message
+      const infoText = `
+🎥 *YT VIDEO DOWNLOADER* 🎥
+
+📌 *Title:* ${ytdata.title}
+🎬 *Channel:* ${ytdata.author?.name || 'Unknown'}
+⏱️ *Duration:* ${ytdata.timestamp}
+👁️ *Views:* ${ytdata.views.toLocaleString()}
+
+_📥 Processing your video file, please wait..._
+
+> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ ᴍᴅ`;
+
+      await conn.sendMessage(from, { image: { url: ytdata.thumbnail || ytdata.image }, caption: infoText }, { quoted: mek });
+      await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+
+      // Step 3: Fetch download link from API
+      const dlData = await fetchDownloadData(ytdata.url);
+
+      if (!dlData || !dlData.video_url) {
+        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+        return reply("❌ Download link could not be generated. Please try again later.");
+      }
+
+      // Step 4: Send the Video file
+      await conn.sendMessage(
+        from,
+        {
+          video: { url: dlData.video_url },
+          mimetype: "video/mp4",
+          caption: `✅ *${dlData.title}*\n\n*🚀 Powered by KAMRAN-MD*`,
+          contextInfo: {
+            externalAdReply: {
+              title: "YT VIDEO DOWNLOADER",
+              body: dlData.title,
+              thumbnailUrl: ytdata.thumbnail || ytdata.image,
+              sourceUrl: ytdata.url,
+              mediaType: 2,
+              renderLargerThumbnail: false
+            }
+          }
+        },
+        { quoted: mek }
+      );
+
+      await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+
+    } catch (e) {
+      console.error("Video DL Error:", e);
+      await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+      reply(`⚠️ *Error:* ${e.message || "Something went wrong."}`);
+    }
+  }
+);
