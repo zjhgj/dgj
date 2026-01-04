@@ -1,87 +1,92 @@
-const axios = require("axios");
+//---------------------------------------------------------------------------
+//           KAMRAN-MD - AI IMAGE UNBLUR / ENHANCER
+//---------------------------------------------------------------------------
+//  🚀 RESTORE BLURRY IMAGES TO HIGH DEFINITION (HD)
+//---------------------------------------------------------------------------
+
+const { cmd } = require('../command');
+const axios = require('axios');
 const FormData = require('form-data');
-const fs = require('fs');
-const os = require('os');
-const path = require("path");
-const { cmd } = require("../command");
+
+/**
+ * Upload image to Uguu.se for temporary hosting
+ */
+async function Uguu(buffer, filename) {
+    try {
+        let form = new FormData();
+        form.append('files[]', buffer, { filename });
+        
+        let { data } = await axios.post('https://uguu.se/upload.php', form, { 
+            headers: form.getHeaders() 
+        });
+
+        if (data?.files?.[0]?.url) {
+            return data.files[0].url;
+        } else {
+            throw new Error('Uguu upload failed');
+        }
+    } catch (e) {
+        throw 'Upload to server failed. Try again.';
+    }
+}
+
+// --- COMMAND: UNBLUR ---
 
 cmd({
-  pattern: "remini",
-  alias: ["enhance", "hd", "upscale"],
-  react: '✨',
-  desc: "Enhance photo quality using AI",
-  category: "utility",
-  use: ".remini [reply to image]",
-  filename: __filename
-}, async (client, message, { reply, quoted }) => {
-  try {
-    // Check if quoted message exists and has media
-    const quotedMsg = quoted || message;
-    const mimeType = (quotedMsg.msg || quotedMsg).mimetype || '';
-    
-    if (!mimeType || !mimeType.startsWith('image/')) {
-      return reply("Please reply to an image file (JPEG/PNG)");
+    pattern: "unblur",
+    alias: ["enhance", "remini", "hd"],
+    desc: "Restore and enhance blurry images using AI.",
+    category: "ai",
+    use: "reply to a blurry photo",
+    filename: __filename,
+}, async (conn, mek, m, { from, reply, prefix, command }) => {
+    try {
+        const q = m.quoted ? m.quoted : m;
+        const mime = (q.msg || q).mimetype || '';
+
+        // Check if the media is an image
+        if (!mime.startsWith('image/')) {
+            return reply(`📸 Please send or reply to a *photo* with \`${prefix + command}\``);
+        }
+
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+
+        // Download image from WhatsApp
+        const media = await q.download();
+        if (!media) return reply("❌ Failed to download image from WhatsApp.");
+
+        // Step 1: Upload to Uguu.se
+        const extension = mime.split('/')[1] || 'jpg';
+        const uploadedUrl = await Uguu(media, `temp_${Date.now()}.${extension}`);
+
+        // Step 2: Request Unblur API
+        const apiUrl = `https://api.offmonprst.my.id/api/unblur?url=${encodeURIComponent(uploadedUrl)}`;
+        const { data } = await axios.get(apiUrl);
+
+        if (!data || !data.result || !data.result.output) {
+            throw new Error("API did not return an enhanced image.");
+        }
+
+        // Step 3: Send the Enhanced Image back
+        await conn.sendMessage(from, { 
+            image: { url: data.result.output },
+            caption: `✨ *KAMRAN-MD AI ENHANCER*\n\n🚀 *Status:* Success\n🛠️ *Model:* Unblur v2.0\n\n*🚀 Powered by KAMRAN-MD*`,
+            contextInfo: {
+                forwardingScore: 999,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: '120363418144382782@newsletter',
+                    newsletterName: 'KAMRAN-MD',
+                    serverMessageId: 143
+                }
+            }
+        }, { quoted: mek });
+
+        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+
+    } catch (e) {
+        console.error("Unblur Error:", e);
+        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+        reply(`❌ *Error:* ${e.message || e}`);
     }
-
-    // Download the media
-    const mediaBuffer = await quotedMsg.download();
-    
-    // Get file extension based on mime type
-    let extension = '';
-    if (mimeType.includes('image/jpeg')) extension = '.jpg';
-    else if (mimeType.includes('image/png')) extension = '.png';
-    else {
-      return reply("Unsupported image format. Please use JPEG or PNG");
-    }
-
-    // Create temp file
-    const tempFilePath = path.join(os.tmpdir(), `remini_input_${Date.now()}${extension}`);
-    fs.writeFileSync(tempFilePath, mediaBuffer);
-
-    // Upload to Catbox
-    const form = new FormData();
-    form.append('fileToUpload', fs.createReadStream(tempFilePath), `image${extension}`);
-    form.append('reqtype', 'fileupload');
-
-    const uploadResponse = await axios.post("https://catbox.moe/user/api.php", form, {
-      headers: form.getHeaders()
-    });
-
-    const imageUrl = uploadResponse.data;
-    fs.unlinkSync(tempFilePath); // Clean up temp file
-
-    if (!imageUrl) {
-      throw "Failed to upload image to Catbox";
-    }
-
-    // Enhance image using new API
-    const apiUrl = `https://api.kimkiro.my.id/tool/upscale?url=${encodeURIComponent(imageUrl)}`;
-    const response = await axios.get(apiUrl, { 
-      responseType: 'arraybuffer',
-      timeout: 60000 // 1 minute timeout
-    });
-
-    // Check if response is valid image
-    if (!response.data || response.data.length < 100) {
-      throw "API returned invalid image data";
-    }
-
-    // Save enhanced image
-    const outputPath = path.join(os.tmpdir(), `remini_output_${Date.now()}.jpg`);
-    fs.writeFileSync(outputPath, response.data);
-
-    // Send the enhanced image with loading message
-    await reply("🔄 Enhancing image quality...");
-    await client.sendMessage(message.chat, {
-      image: fs.readFileSync(outputPath),
-      caption: "- *✅ Image enhanced successfully!*",
-    }, { quoted: message });
-
-    // Clean up
-    fs.unlinkSync(outputPath);
-
-  } catch (error) {
-    console.error('Image Enhancement Error:', error);
-    await reply(`❌ Error: ${error.message || "Failed to enhance image. The image might be too large or the API is unavailable."}`);
-  }
 });
