@@ -82,8 +82,8 @@ const upskel = {
 // --- COMMAND: UPSCALE ---
 
 cmd({
-    pattern: "upscale2",
-    alias: ["hdr", "enhance2", "remini2"],
+    pattern: "hd",
+    alias: ["hdr", "enhance", "remini"],
     desc: "Upscale image quality using AI (2x or 4x).",
     category: "ai",
     use: ".upscale 4 (reply to photo)",
