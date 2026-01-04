@@ -6,7 +6,6 @@
 
 const { cmd } = require('../command');
 const axios = require('axios');
-const canvafy = require('canvafy');
 
 /**
  * Converts Duration string (MM:SS) to Milliseconds
