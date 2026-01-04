@@ -1,46 +1,47 @@
-const fs = require('fs');
-const config = require('../config');
 const { cmd } = require('../command');
 
 cmd({
-    pattern: "setpp",
-    desc: "Change bot profile picture",
-    category: "owner",
-    react: "❤️",
+    pattern: "getdp",
+    desc: "Get profile picture of a user or group",
+    category: "tools",
+    react: "📸",
     filename: __filename
 },
-async (conn, mek, m, { from, reply, isOwner }) => {
+async (conn, mek, m, { from, quoted, isGroup, reply }) => {
     try {
-        // Owner check
-        if (!isOwner) return reply("❌ Owner only command");
+        // 1. Determine whose DP to get
+        let target;
+        if (m.mentionedJid && m.mentionedJid[0]) {
+            // If someone is tagged
+            target = m.mentionedJid[0];
+        } else if (m.msg.contextInfo && m.msg.contextInfo.participant) {
+            // If replying to a message
+            target = m.msg.contextInfo.participant;
+        } else {
+            // Default to the current chat (User or Group)
+            target = from;
+        }
 
-        // Check if there is a quoted message
-        const quoted = m.msg.contextInfo ? m.msg.contextInfo.quotedMessage : null;
-        if (!quoted) return reply("❌ Please reply to an image.");
+        // 2. Fetch the Profile Picture URL
+        // 'image' type gets the high-resolution version
+        let ppUrl;
+        try {
+            ppUrl = await conn.profilePictureUrl(target, 'image');
+        } catch (e) {
+            // Fallback if they don't have a DP or it's hidden by privacy
+            return reply("❌ I couldn't fetch the profile picture. It might be private or not set.");
+        }
 
-        // Check if the quoted message is an image
-        const mime = quoted.imageMessage ? 'image/jpeg' : null;
-        if (!mime) return reply("❌ Please reply to an **image** only.");
-
-        // React with loading
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-
-        // Download the media from the quoted message
-        const buffer = await m.quoted.download();
-
-        // Update the Profile Picture
-        // Use conn.user.id or conn.decodeJid(conn.user.id)
-        await conn.updateProfilePicture(conn.user.id, buffer);
-
-        // Success notification
-        await conn.sendMessage(from, {
-            text: "✅ *Profile picture updated successfully!*"
+        // 3. Send the image
+        await conn.sendMessage(from, { 
+            image: { url: ppUrl }, 
+            caption: `📸 *Profile Picture of:* @${target.split('@')[0]}`,
+            mentions: [target]
         }, { quoted: mek });
 
     } catch (err) {
-        console.error("Error updating DP:", err);
-        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        reply("❌ Error: " + err.message);
+        console.error(err);
+        reply("❌ Error fetching profile picture.");
     }
 });
-      
+
