@@ -1,126 +1,111 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - AUTO DOWNLOADER (ADVANCED)
+//           KAMRAN-MD - AIO DOWNLOADER & AUTO-DL (MIFINFINITY)
 //---------------------------------------------------------------------------
-//  🚀 MULTI-API AUTO DOWNLOAD SYSTEM (LID & NEWSLETTER SUPPORT)
+//  🚀 DOWNLOAD FROM TIKTOK, IG, FB, YT AUTOMATICALLY OR BY COMMAND
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
-const config = require('../config');
 
-// Newsletter Context for professional look
-const newsletterContext = {
-    forwardingScore: 999,
-    isForwarded: true,
-    forwardedNewsletterMessageInfo: {
-        newsletterJid: '120363418144382782@newsletter',
-        newsletterName: 'KAMRAN-MD',
-        serverMessageId: 143
-    }
-};
+// In-memory storage for Auto-DL status (Reset on restart)
+// For permanent storage, you can use your database
+const autoDlSettings = new Map();
 
-// Main Auto-Download Logic
-cmd({
-    on: "body"
-}, async (conn, mek, m, { from, body, isGroup, reply, sender }) => {
+/**
+ * Core Downloader Function
+ */
+async function fetchMedia(url) {
     try {
-        // Global toggle check
-        if (config.AUTO_DL !== "true") return;
+        const apiUrl = `https://api.mifinfinity.my.id/api/downloader/aio?url=${encodeURIComponent(url)}`;
+        const { data } = await axios.get(apiUrl);
+        if (data.status && data.result) return data.result;
+        return null;
+    } catch (e) {
+        return null;
+    }
+}
 
-        // Regex to detect URLs
-        const urlMatch = body.match(/\bhttps?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi);
-        if (!urlMatch) return;
+// --- COMMAND: DOWNLOAD (Manual) ---
 
-        const url = urlMatch[0];
-        let apiUrl = "";
-        let method = "video"; // Default
+cmd({
+    pattern: "dl",
+    alias: ["get", "down"],
+    desc: "All-in-one downloader for social media.",
+    category: "download",
+    use: ".dl <link>",
+    filename: __filename,
+}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
+    if (!q) return reply(`🔗 *AIO Downloader*\n\nUsage: \`${prefix + command} <link>\`\nExample: \`${prefix + command} https://www.instagram.com/p/xxx\``);
+    
+    await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+    const res = await fetchMedia(q);
+    
+    if (!res) return reply("❌ Link not supported or API error.");
 
-        // --- Specific API Selection ---
-        
-        // 1. YouTube Logic
-        if (url.includes("youtube.com") || url.includes("youtu.be")) {
-            if (body.toLowerCase().includes("mp3") || body.toLowerCase().includes("audio")) {
-                apiUrl = `https://apis-bandaheali.vercel.app/download/ytmp3?url=${encodeURIComponent(url)}`;
-                method = "audio";
-            } else {
-                apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
-            }
-        } 
-        // 2. TikTok Logic
-        else if (url.includes("tiktok.com")) {
-            apiUrl = `https://delirius-apiofc.vercel.app/download/tiktok?url=${encodeURIComponent(url)}`;
-        } 
-        // 3. Facebook Logic
-        else if (url.includes("facebook.com") || url.includes("fb.watch")) {
-            apiUrl = `https://edith-apis.vercel.app/download/facebook?url=${encodeURIComponent(url)}`;
-        } 
-        // 4. Spotify Logic
-        else if (url.includes("spotify.com")) {
-            apiUrl = `https://api.deline.web.id/downloader/spotifyplay?q=${encodeURIComponent(url)}`;
-            method = "audio";
-        }
-        // 5. All-in-One Backup (For Instagram, Twitter, etc.)
-        else if (/instagram|twitter|x\.com|pin\.it|pinterest|threads\.net/gi.test(url)) {
-            apiUrl = `https://all-in-one-downloader-six.vercel.app/api/download?url=${encodeURIComponent(url)}`;
-        }
+    // Handle Video/Image based on API result
+    const mediaUrl = res.url || res.video || res.hd || res.mp4;
+    if (!mediaUrl) return reply("❌ Could not extract download link.");
 
-        if (!apiUrl) return;
+    await conn.sendMessage(from, {
+        video: { url: mediaUrl },
+        caption: `✅ *Downloaded Successfully*\n\n*🚀 Powered by KAMRAN-MD*`,
+    }, { quoted: mek });
+    
+    await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+});
 
-        // Reactive UI
-        await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
+// --- COMMAND: AUTODL SETTINGS ---
 
-        const response = await axios.get(apiUrl);
-        const res = response.data;
-        
-        // Extraction based on different API formats
-        let downloadUrl = res.url || res.link || (res.data && (res.data.url || res.data.main_url || res.data.download)) || (res.result && (res.result.url || res.result.hd || res.result.sd || res.result.download));
-        let title = res.title || (res.data && res.data.title) || (res.result && res.result.title) || "KAMRAN-MD DOWNLOADER";
-
-        if (!downloadUrl) {
-            return await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        }
-
-        // Sending Media
-        if (method === "audio") {
-            await conn.sendMessage(from, { 
-                audio: { url: downloadUrl }, 
-                mimetype: 'audio/mpeg',
-                ptt: false,
-                contextInfo: newsletterContext
-            }, { quoted: mek });
-        } else {
-            await conn.sendMessage(from, { 
-                video: { url: downloadUrl }, 
-                caption: `*🎬 Title:* ${title}\n\n*🚀 Powered by KAMRAN-MD*`,
-                contextInfo: newsletterContext
-            }, { quoted: mek });
-        }
-
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-
-    } catch (error) {
-        console.error("AutoDL Error:", error.message);
+cmd({
+    pattern: "autodl",
+    desc: "Turn Auto-Download On or Off for this chat.",
+    category: "config",
+    use: ".autodl on/off",
+    filename: __filename,
+}, async (conn, mek, m, { from, q, reply, isAdmins, isOwner }) => {
+    // Only admins or owner can change settings
+    if (!isAdmins && !isOwner) return reply("❌ This command is only for Admins.");
+    
+    if (q === "on") {
+        autoDlSettings.set(from, true);
+        return reply("✅ *Auto-Download is now ON* for this chat.\nI will automatically download links from TikTok, IG, FB, etc.");
+    } else if (q === "off") {
+        autoDlSettings.set(from, false);
+        return reply("❌ *Auto-Download is now OFF* for this chat.");
+    } else {
+        return reply(`❓ Usage: \`.autodl on\` or \`.autodl off\``);
     }
 });
 
-// Toggle Command
+// --- AUTO-DL LISTENER ---
+
+// We export a listener function that your main bot (index.js) can call on every message
+// If KAMRAN-MD uses a specific event for this, you can integrate it there
+// Here is a generic handler that looks for links:
+
 cmd({
-    pattern: "autodl",
-    alias: ["autodownload"],
-    desc: "Enable/Disable Auto Downloader",
-    category: "settings",
-    filename: __filename
-}, async (conn, mek, m, { args, isCreator, reply }) => {
-    if (!isCreator) return reply("❗ Owner only.");
-    const status = args[0]?.toLowerCase();
-    
-    if (status === "on") {
-        config.AUTO_DL = "true";
-        return reply("✅ Auto Downloader enabled.");
-    } else if (status === "off") {
-        config.AUTO_DL = "false";
-        return reply("❌ Auto Downloader disabled.");
-    } else {
-        reply("Usage: .autodl on/off");
+    on: "body"
+}, async (conn, mek, m, { from, body, isGroup }) => {
+    const isEnabled = autoDlSettings.get(from);
+    if (!isEnabled) return;
+
+    // Regex for common social media links
+    const urlRegex = /https?:\/\/(www\.)?(tiktok|instagram|facebook|fb|youtube|youtu|x|twitter)\.com\/[^\s]+/gi;
+    const match = body.match(urlRegex);
+
+    if (match) {
+        const link = match[0];
+        console.log(`[AutoDL] Detected link: ${link}`);
+
+        const res = await fetchMedia(link);
+        if (res) {
+            const mediaUrl = res.url || res.video || res.hd || res.mp4;
+            if (mediaUrl) {
+                await conn.sendMessage(from, {
+                    video: { url: mediaUrl },
+                    caption: `🎬 *Auto Downloader*\n\n*🚀 Powered by KAMRAN-MD*`
+                }, { quoted: mek });
+            }
+        }
     }
 });
