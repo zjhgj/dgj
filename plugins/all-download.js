@@ -1,155 +1,84 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - YOUTUBE MASTER (AUTO-DL, SEARCH, DOWNLOAD)
+//           KAMRAN-MD - PURE YOUTUBE AUTO-DOWNLOADER
 //---------------------------------------------------------------------------
-//  🚀 ALL-IN-ONE YOUTUBE TOOL: SEARCH, MANUAL DL, AND AUTO-DL SWITCH
+//  🚀 NO COMMANDS - JUST PASTE A LINK AND GET THE VIDEO AUTOMATICALLY
 //---------------------------------------------------------------------------
 
-const { cmd } = require('../command');
-const axios = require('axios');
-const yts = require("yt-search");
-
-// Settings storage for Auto-DL (Reset on restart)
-const autoDlStatus = new Map();
+const { cmd } = require("../command");
+const axios = require("axios");
 
 /**
- * Fetch download data from API
+ * Core Data Fetching Logic using Jawad-Tech API
  */
-async function getYouTubeDownload(url) {
-    try {
-        const apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
-        const response = await axios.get(apiUrl, { timeout: 15000 });
-        if (response.data.status && response.data.result) {
-            return response.data.result;
-        }
-        return null;
-    } catch (e) {
-        return null;
+async function fetchDownloadData(url, retries = 2) {
+  try {
+    const apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
+    const response = await axios.get(apiUrl, { timeout: 20000 });
+    const data = response.data;
+
+    if (data.status === true && data.result) {
+      return {
+        video_url: data.result.mp4,
+        title: data.result.title || "YouTube Video",
+      };
     }
+    throw new Error("API error");
+  } catch (error) {
+    if (retries > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      return fetchDownloadData(url, retries - 1);
+    }
+    return null;
+  }
 }
 
-// --- COMMAND: YTS (YouTube Search) ---
-
-cmd({
-    pattern: "yts2",
-    alias: ["ytsearch2", "search2"],
-    desc: "Search for videos on YouTube.",
-    category: "search",
-    use: ".yts perfect ed sheeran",
-    filename: __filename,
-}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
-    try {
-        if (!q) return reply(`🔍 *YouTube Search*\n\nUsage: \`${prefix + command} <query>\``);
-
-        await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
-
-        const search = await yts(q);
-        const videos = search.videos.slice(0, 10);
-
-        if (videos.length === 0) return reply("❌ No results found.");
-
-        let message = `🔎 *YOUTUBE SEARCH RESULTS*\n\n*Query:* ${q}\n\n`;
-        videos.forEach((video, index) => {
-            message += `*${index + 1}. ${video.title}*\n`;
-            message += `⌚ *Duration:* ${video.timestamp} | 👁️ *Views:* ${video.views.toLocaleString()}\n`;
-            message += `🔗 *Link:* ${video.url}\n\n`;
-        });
-
-        message += `*🚀 Powered by KAMRAN-MD*`;
-
-        await conn.sendMessage(from, {
-            image: { url: videos[0].thumbnail },
-            caption: message,
-            contextInfo: {
-                forwardingScore: 999,
-                isForwarded: true,
-                forwardedNewsletterMessageInfo: {
-                    newsletterJid: '120363418144382782@newsletter',
-                    newsletterName: 'KAMRAN-MD'
-                }
-            }
-        }, { quoted: mek });
-
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-    } catch (e) {
-        reply(`❌ Error: ${e.message}`);
-    }
-});
-
-// --- COMMAND: YT-AUTODL (On/Off Switch) ---
-
-cmd({
-    pattern: "ytdl-auto",
-    alias: ["yt-auto", "autoyt"],
-    desc: "Turn YouTube Auto-Download On or Off.",
-    category: "config",
-    use: ".yt-auto on/off",
-    filename: __filename,
-}, async (conn, mek, m, { from, q, reply, isAdmins, isOwner }) => {
-    if (!isAdmins && !isOwner) return reply("❌ This command is for Admins/Owner only.");
-    
-    if (q === "on") {
-        autoDlStatus.set(from, true);
-        return reply("✅ *YouTube Auto-DL is now ON* for this chat.");
-    } else if (q === "off") {
-        autoDlStatus.set(from, false);
-        return reply("❌ *YouTube Auto-DL is now OFF* for this chat.");
-    } else {
-        const current = autoDlStatus.get(from) ? "ON" : "OFF";
-        return reply(`❓ *Usage:* \`.yt-auto on\` or \`.yt-auto off\`\n📌 *Current Status:* ${current}`);
-    }
-});
-
-// --- COMMAND: VIDEO (Manual Download) ---
-
-cmd({
-    pattern: "video3",
-    alias: ["ytmp4"],
-    desc: "Manual YouTube downloader.",
-    category: "download",
-    use: ".video <link>",
-    filename: __filename,
-}, async (conn, mek, m, { from, text, reply }) => {
-    if (!text) return reply("❌ Please provide a YouTube link.");
-    await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-    const videoData = await getYouTubeDownload(text);
-    if (!videoData || !videoData.download_url) return reply("❌ Could not process link.");
-
-    await conn.sendMessage(from, {
-        video: { url: videoData.download_url },
-        caption: `🎥 *Title:* ${videoData.title}\n\n*🚀 Powered by KAMRAN-MD*`
-    }, { quoted: mek });
-    await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-});
-
-// --- AUTO-DL LISTENER ---
+// --- AUTO-DL LISTENER: Pure Background Task ---
 
 cmd({
     on: "body"
 }, async (conn, mek, m, { from, body }) => {
-    if (!autoDlStatus.get(from)) return;
-
+    // Regex to detect YouTube URLs (Standard, Mobile, and Shorts)
     const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/gi;
     const match = body.match(ytRegex);
 
     if (match) {
         const videoUrl = match[0];
-        await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
-        const videoData = await getYouTubeDownload(videoUrl);
 
-        if (videoData && videoData.download_url) {
+        // Step 1: Initial reaction to show link detection
+        await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
+
+        // Step 2: Fetch the data
+        const dlData = await fetchDownloadData(videoUrl);
+
+        if (dlData && dlData.video_url) {
+            // Step 3: Send the video file
             await conn.sendMessage(from, {
-                video: { url: videoData.download_url },
-                caption: `🎬 *YouTube Auto-DL*\n📌 *Title:* ${videoData.title}\n\n*🚀 Powered by KAMRAN-MD*`,
+                video: { url: dlData.video_url },
+                mimetype: "video/mp4",
+                caption: `🎬 *YouTube Auto-DL*\n📌 *Title:* ${dlData.title}\n\n*🚀 Powered by KAMRAN-MD*`,
                 contextInfo: {
                     forwardingScore: 999,
                     isForwarded: true,
                     forwardedNewsletterMessageInfo: {
                         newsletterJid: '120363418144382782@newsletter',
-                        newsletterName: 'KAMRAN-MD'
+                        newsletterName: 'KAMRAN-MD',
+                        serverMessageId: 143
+                    },
+                    externalAdReply: {
+                        title: "AUTO VIDEO DOWNLOADER",
+                        body: dlData.title,
+                        mediaType: 2,
+                        sourceUrl: videoUrl,
+                        renderLargerThumbnail: false
                     }
                 }
             }, { quoted: mek });
+            
+            // Step 4: Final success reaction
             await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        } else {
+            // Reaction for failure
+            await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
         }
     }
 });
