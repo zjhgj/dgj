@@ -1,73 +1,123 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - THERESA AI CHATBOT
+//           KAMRAN-MD - NANO BANANA (AI PHOTO EDITOR)
 //---------------------------------------------------------------------------
-//  🤖 AN ADVANCED AI PERSONALITY FOR CONVERSATIONS
+//  🎨 EDIT PHOTOS USING AI STYLES (ANIME, CYBERPUNK, ETC.)
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
+const FormData = require('form-data');
+const { Readable } = require('stream');
+
+// API Headers for PhotoEditorAI
+const headers = {
+    'Product-Code': '067003',
+    'Product-Serial': 'vj6o8n'
+};
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/**
+ * Creates an AI editing job
+ */
+async function createJob(buffer, prompt) {
+    const form = new FormData();
+    form.append('model_name', 'seedream');
+    form.append('edit_type', 'style_transfer');
+    form.append('prompt', prompt);
+    
+    // Convert buffer to readable stream for form-data
+    const stream = Readable.from(buffer);
+    form.append('target_images', stream, { 
+        filename: 'input.jpg', 
+        contentType: 'image/jpeg' 
+    });
+
+    const { data } = await axios.post(
+        'https://api.photoeditorai.io/pe/photo-editor/create-job',
+        form,
+        { headers: { ...form.getHeaders(), ...headers } }
+    );
+
+    if (!data.result || !data.result.job_id) throw new Error("Failed to create AI job.");
+    return data.result.job_id;
+}
+
+/**
+ * Polls the job status until completion
+ */
+async function getResult(jobId) {
+    let attempts = 0;
+    while (attempts < 20) {
+        const { data } = await axios.get(
+            `https://api.photoeditorai.io/pe/photo-editor/get-job/${jobId}`,
+            { headers }
+        );
+        
+        // Status 2 means completed
+        if (data.result.status === 2 && data.result.output?.length) {
+            return data.result.output[0];
+        }
+        
+        if (data.result.status === -1) throw new Error("AI Job failed.");
+        
+        await sleep(3000);
+        attempts++;
+    }
+    throw new Error("Job polling timeout.");
+}
+
+// --- COMMAND: NANOBANANA ---
 
 cmd({
-    pattern: "theresa",
-    alias: ["th", "ai2"],
-    desc: "Chat with Theresa AI assistant.",
+    pattern: "nanobanana",
+    alias: ["editimg", "style", "ai-edit"],
+    desc: "Edit image style using AI prompt.",
     category: "ai",
-    use: ".theresa hello, how are you?",
+    use: ".nanobanana change to anime (reply to photo)",
     filename: __filename,
-}, async (conn, mek, m, { from, reply, text, prefix, command }) => {
+}, async (conn, mek, m, { from, text, reply, prefix, command }) => {
     try {
-        // Validation: Ensure text is provided
-        if (!text) {
-            return reply(`💬 *Please provide a message!*\n\n*Example:* \`${prefix + command} hello theresa, what's the weather?\``);
-        }
+        if (!text) return reply(`📸 Please provide a prompt!\n*Example:* \`${prefix + command} convert to professional oil painting\``);
 
-        // Check for forbidden characters
-        if (text.includes('~')) {
-            return reply('❌ The character `~` is not allowed in your query.');
-        }
+        const q = m.quoted ? m.quoted : m;
+        const mime = (q.msg || q).mimetype || '';
+        
+        if (!/image/.test(mime)) return reply("❌ Please reply to an image.");
 
-        // React with waiting emoji
-        await conn.sendMessage(from, { react: { text: "🧠", key: mek.key } });
+        await conn.sendMessage(from, { react: { text: "🎨", key: mek.key } });
+        
+        // Downloading media
+        const buffer = await q.download();
+        
+        reply("_🎨 AI is transforming your image, please wait..._");
 
-        // API Request to Theresa AI
-        const url = `https://theresapisv3.vercel.app/ai/theresa?ask=${encodeURIComponent(text)}`;
-        const res = await axios.get(url);
-        const data = res.data;
+        // Step 1: Create Job
+        const jobId = await createJob(buffer, text.trim());
 
-        // Check for valid API response
-        if (!data.status || !data.result) {
-            throw new Error(data.message || 'No result found from Theresa AI.');
-        }
+        // Step 2: Get Result URL
+        const resultUrl = await getResult(jobId);
 
-        // Process the result: Clean up any tildes if returned by AI
-        let responseText = String(data.result).trim();
-        responseText = responseText.replace(/~/g, '');
-
-        // Send the AI response with branding
-        await conn.sendMessage(from, { 
-            text: responseText,
+        // Step 3: Send processed image
+        await conn.sendMessage(from, {
+            image: { url: resultUrl },
+            caption: `✨ *IMAGE TRANSFORMED*\n\n📝 *Prompt:* ${text}\n🤖 *Model:* Nano Banana AI\n\n*🚀 Powered by KAMRAN-MD*`,
             contextInfo: {
-                externalAdReply: {
-                    title: "THERESA AI ASSISTANT",
-                    body: "KAMRAN-MD Intelligence",
-                    thumbnailUrl: "https://files.catbox.moe/k37o6v.jpg", // You can replace this with a Theresa image
-                    sourceUrl: "https://github.com/Kamran-Amjad/KAMRAN-MD",
-                    mediaType: 1,
-                    renderLargerThumbnail: false
+                forwardingScore: 999,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: '120363418144382782@newsletter',
+                    newsletterName: 'KAMRAN-MD',
+                    serverMessageId: 143
                 }
             }
         }, { quoted: mek });
 
-        // React with success emoji
-        await conn.sendMessage(from, { react: { text: "✨", key: mek.key } });
+        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
-    } catch (error) {
-        console.error("Theresa AI Error:", error);
-        
-        // React with error emoji
-        await conn.sendMessage(from, { react: { text: "⚠️", key: mek.key } });
-        
-        const errorMsg = error.response?.data?.message || error.message;
-        reply(`❌ *An error occurred:* ${errorMsg}`);
+    } catch (e) {
+        console.error(e);
+        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+        reply(`❌ *Error:* ${e.message || "Failed to edit image."}`);
     }
 });
