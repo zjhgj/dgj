@@ -1,109 +1,134 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - PLAY MUSIC TO CHANNEL (OGG CONVERT)
+//           KAMRAN-MD - UPSCALE AI (IMGUPSCALER)
 //---------------------------------------------------------------------------
-//  🚀 SEARCH, CONVERT MP3 TO OPUS & SEND TO NEWSLETTER/CHANNEL
+//  🚀 ENHANCE IMAGE QUALITY 2X OR 4X USING AI
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
-const ffmpeg = require('fluent-ffmpeg');
-const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
+const FormData = require('form-data');
 
-// Set FFMPEG path
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+const HEADERS = {
+    origin: 'https://imgupscaler.com',
+    referer: 'https://imgupscaler.com/',
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+};
+
+/**
+ * Core Upscale Logic
+ */
+const upskel = {
+    upload: async (buffer, scaleRadio = 2) => {
+        if (![2, 4].includes(scaleRadio)) scaleRadio = 2;
+
+        const form = new FormData();
+        form.append('myfile', buffer, { filename: `${Date.now()}.jpg`, contentType: 'image/jpeg' });
+        form.append('scaleRadio', scaleRadio.toString());
+
+        const res = await axios.post(
+            'https://get1.imglarger.com/api/UpscalerNew/UploadNew',
+            form,
+            {
+                headers: {
+                    ...form.getHeaders(),
+                    ...HEADERS
+                }
+            }
+        );
+
+        const jobId = res.data?.data?.code;
+        if (!jobId) throw new Error('Upload failed: Job ID not generated.');
+
+        return upskel.checkStatus(jobId, scaleRadio);
+    },
+    
+    checkStatus: async (jobId, scaleRadio) => {
+        const maxRetry = 30; // Max 2.5 minutes
+
+        for (let i = 1; i <= maxRetry; i++) {
+            const res = await axios.post(
+                'https://get1.imglarger.com/api/UpscalerNew/CheckStatusNew',
+                { code: jobId, scaleRadio },
+                {
+                    headers: {
+                        ...HEADERS,
+                        accept: 'application/json, text/plain, */*',
+                        'content-type': 'application/json'
+                    }
+                }
+            );
+
+            const data = res.data?.data;
+            if (data && data.status === 'success') {
+                return {
+                    url: data.downloadUrls[0],
+                    fileName: data.originalfilename,
+                    size: data.filesize
+                };
+            }
+
+            if (data && (data.status === 'failed' || data.status === 'error')) {
+                throw new Error('AI processing failed on server.');
+            }
+
+            await sleep(5000); // Check every 5 seconds
+        }
+        throw new Error('Upscale process timed out.');
+    }
+};
+
+// --- COMMAND: UPSCALE ---
 
 cmd({
-    pattern: "playch",
-    alias: ["songch", "musicch"],
-    desc: "Search music and send as voice note to channel.",
-    category: "music",
-    use: ".playch memories",
+    pattern: "upscale2",
+    alias: ["hdr", "enhance2", "remini2"],
+    desc: "Upscale image quality using AI (2x or 4x).",
+    category: "ai",
+    use: ".upscale 4 (reply to photo)",
     filename: __filename,
 }, async (conn, mek, m, { from, text, reply, prefix, command }) => {
     try {
-        if (!text) return reply(`🎵 *Music Channel Uploader*\n\nUsage: \`${prefix + command} <song name>\`\nExample: \`${prefix + command} perfect ed sheeran\``);
+        const q = m.quoted ? m.quoted : m;
+        const mime = (q.msg || q).mimetype || '';
 
-        // Check if IDCH is defined in global config
-        const channelId = global.idch;
-        if (!channelId) return reply("❌ Channel ID is not configured in `config.js` (global.idch).");
-
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-
-        // Step 1: Search Music using API
-        const apiRes = await axios.get(`https://z7.veloria.my.id/download/play?q=${encodeURIComponent(text)}`);
-        const apiJson = apiRes.data;
-
-        if (!apiJson.status || !apiJson.result) {
-            await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-            return reply("❌ Song not found.");
+        if (!/image/.test(mime)) {
+            return reply(`📸 Please reply to an *image* with \`${prefix + command} <2|4>\``);
         }
 
-        const result = apiJson.result;
+        const scale = text && (text.includes('4')) ? 4 : 2;
 
-        // Step 2: Setup Temp Directory
-        const tmpDir = path.join(__dirname, '../tmp');
-        if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        reply(`_🚀 Upscaling image ${scale}x... this may take up to a minute._`);
 
-        const tmpInput = path.join(tmpDir, `in_${Date.now()}.mp3`);
-        const tmpOutput = path.join(tmpDir, `out_${Date.now()}.ogg`);
+        // Download directly from WhatsApp
+        const mediaBuffer = await q.download();
+        if (!mediaBuffer) throw new Error("Could not download media.");
 
-        // Step 3: Download MP3 Buffer
-        const response = await axios({
-            method: 'get',
-            url: result.download_url,
-            responseType: 'stream'
-        });
+        // Process through AI
+        const result = await upskel.upload(mediaBuffer, scale);
 
-        const writer = fs.createWriteStream(tmpInput);
-        response.data.pipe(writer);
-
-        await new Promise((resolve, reject) => {
-            writer.on('finish', resolve);
-            writer.on('error', reject);
-        });
-
-        // Step 4: Convert to OGG Opus (Voice Note Format)
-        await new Promise((resolve, reject) => {
-            ffmpeg(tmpInput)
-                .toFormat("ogg")
-                .audioCodec("libopus")
-                .on("end", resolve)
-                .on("error", reject)
-                .save(tmpOutput);
-        });
-
-        const converted = fs.readFileSync(tmpOutput);
-
-        // Step 5: Send Audio to CHANNEL (LID/JID)
-        await conn.sendMessage(channelId, {
-            audio: converted,
-            mimetype: "audio/ogg; codecs=opus",
-            ptt: true,
+        // Send Result
+        await conn.sendMessage(from, {
+            image: { url: result.url },
+            caption: `✅ *AI UPSCALE COMPLETE*\n\n🔍 *Scale:* ${scale}x\n📦 *Size:* ${(result.size / 1024).toFixed(2)} KB\n\n*🚀 Powered by KAMRAN-MD*`,
             contextInfo: {
-                externalAdReply: {
-                    title: result.title,
-                    body: `Channel: ${result.channel} | Duration: ${result.duration}`,
-                    thumbnailUrl: result.thumbnail,
-                    sourceUrl: result.url,
-                    mediaType: 1,
-                    renderLargerThumbnail: true,
-                    showAdAttribution: true
-                },
-            },
-        });
+                forwardingScore: 999,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: '120363418144382782@newsletter',
+                    newsletterName: 'KAMRAN-MD',
+                    serverMessageId: 143
+                }
+            }
+        }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-        reply(`✅ *Sent to Channel:* ${result.title}`);
-
-        // Step 6: Cleanup Temp Files
-        if (fs.existsSync(tmpInput)) fs.unlinkSync(tmpInput);
-        if (fs.existsSync(tmpOutput)) fs.unlinkSync(tmpOutput);
 
     } catch (e) {
-        console.error("Music CH Error:", e);
+        console.error("Upscale Error:", e);
         await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        reply(`❌ *Error:* ${e.message}`);
+        reply(`❌ *Error:* ${e.message || "Failed to process image."}`);
     }
 });
