@@ -1,144 +1,158 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - ALL VIDEO DOWNLOADER (VIDSSAVE)
+//           KAMRAN-MD - HAIRSTYLE AI (LIVE3D)
 //---------------------------------------------------------------------------
-//  🚀 DOWNLOAD FROM YT, IG, FB, TT, ETC. (LID & NEWSLETTER SUPPORT)
+//  🚀 CHANGE HAIR STYLES USING AI PROCESSING
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
-const axios = require('axios');
-const config = require('../config');
+const fetch = require('node-fetch');
+const FormData = require('form-data');
 
-// Newsletter Context for professional look
-const newsletterContext = {
-    forwardingScore: 999,
-    isForwarded: true,
-    forwardedNewsletterMessageInfo: {
-        newsletterJid: '120363418144382782@newsletter',
-        newsletterName: 'KAMRAN-MD',
-        serverMessageId: 143
-    }
+const CONFIG = {
+  baseUrl: 'https://app.live3d.io/aitools',
+  resultUrl: 'https://temp.live3d.io',
+  origin: 'https://live3d.io',
+  originFrom: '5b3e78451640893a',
+  fnName: 'demo-change-hair',
+  requestFrom: 9
 };
 
-class VidsSave {
-    constructor() {
-        this.baseUrl = "https://api.vidssave.com";
-        this.authToken = "20250901majwlqo";
-        this.headers = {
-            "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36",
-            "accept": "*/*",
-            "content-type": "application/x-www-form-urlencoded",
-            "Referer": "https://vidssave.com/",
-            "Origin": "https://vidssave.com"
-        };
-    }
-
-    async getResources(url) {
-        try {
-            const body = `auth=${this.authToken}&domain=api-ak.vidssave.com&origin=source&link=${encodeURIComponent(url)}`;
-            const { data } = await axios.post(`${this.baseUrl}/api/contentsite_api/media/parse`, body, { headers: this.headers });
-            if (!data || data.status !== 1) return null;
-            return data.data;
-        } catch (error) { return null; }
-    }
-
-    async resolveDownloadLink(resourceToken) {
-        if (!resourceToken) return null;
-        try {
-            const taskBody = `auth=${this.authToken}&domain=api-ak.vidssave.com&request=${encodeURIComponent(resourceToken)}&no_encrypt=1`;
-            const { data: taskData } = await axios.post(`${this.baseUrl}/api/contentsite_api/media/download`, taskBody, { headers: this.headers });
-            if (!taskData || taskData.status !== 1) return null;
-
-            const queryParams = new URLSearchParams({
-                auth: this.authToken,
-                domain: "api-ak.vidssave.com",
-                task_id: taskData.data.task_id,
-                download_domain: "vidssave.com",
-                origin: "content_site"
-            }).toString();
-
-            let finalUrl = null;
-            for (let i = 0; i < 10; i++) {
-                const { data: sseString } = await axios.get(`${this.baseUrl}/sse/contentsite_api/media/download_query?${queryParams}`, {
-                    headers: { ...this.headers, "accept": "text/event-stream" },
-                    responseType: "text"
-                });
-
-                const lines = sseString.split("\n");
-                for (const line of lines) {
-                    if (line.includes("data:")) {
-                        try {
-                            const json = JSON.parse(line.replace("data:", "").replace("event: success", "").trim());
-                            if (json.status === "success" && json.download_link) {
-                                finalUrl = json.download_link;
-                                break;
-                            }
-                        } catch (e) {}
-                    }
-                }
-                if (finalUrl) break;
-                await new Promise(r => setTimeout(r, 1000));
-            }
-            return finalUrl;
-        } catch (e) { return null; }
-    }
-
-    async scrape(url) {
-        const data = await this.getResources(url);
-        if (!data) return { status: false };
-
-        const { title, thumbnail, resources } = data;
-        let videoRes = resources.filter(r => r.type === "video").sort((a, b) => parseInt(b.quality) - parseInt(a.quality));
-        const bestVideo = videoRes[0];
-        const videoUrl = await this.resolveDownloadLink(bestVideo?.resource_content);
-
-        return {
-            status: true,
-            title: title,
-            thumbnail: thumbnail,
-            videoUrl: videoUrl
-        };
-    }
+/**
+ * Generate specific headers required by Live3D API
+ */
+function generateHeaders() {
+  return {
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'fp': '20cebea9c9d06e3b020503f67762edf3',
+    'fp1': 'VYuryLPUfU5QZLF53k96BkHdB7IYyJ8VXkNwwNHDooU+n3SlBumb/UiX+PyrVRJv',
+    'x-code': Date.now().toString(),
+    'x-guide': 'PFu2MqGSK5Wgg3jFZ9VX/LCzTI03jSf6rvUSw8ydSHolxrgCsQrbpZtyycWD/+c4ttuBDSKIYhxAPt4zhxZ4qqyEwjwk6oXmK9Nc04LlwAar9K5Hw2f781SnnuKT/CU0l5PfwaeIIqxXCn3OxyJHKLpPNp6OdkBH952BZ40GETY=',
+    'theme-version': '83EmcUoQTUv50LhNx0VrdcK8rcGexcP35FcZDcpgWsAXEyO4xqL5shCY6sFIWB2Q',
+    'origin': CONFIG.origin,
+    'referer': `${CONFIG.origin}/`
+  };
 }
 
-const scraper = new VidsSave();
+/**
+ * Upload image buffer to Live3D
+ */
+async function uploadImage(buffer) {
+  const form = new FormData();
+  form.append('file', buffer, { filename: 'image.jpg', contentType: 'image/jpeg' });
+  form.append('fn_name', CONFIG.fnName);
+  form.append('request_from', String(CONFIG.requestFrom));
+  form.append('origin_from', CONFIG.originFrom);
+
+  const res = await fetch(`${CONFIG.baseUrl}/upload-img`, {
+    method: 'POST',
+    headers: { ...generateHeaders(), ...form.getHeaders() },
+    body: form
+  });
+  return await res.json();
+}
+
+/**
+ * Create the AI task
+ */
+async function createTask(imagePath, prompt) {
+  const res = await fetch(`${CONFIG.baseUrl}/of/create`, {
+    method: 'POST',
+    headers: { ...generateHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fn_name: CONFIG.fnName,
+      call_type: 3,
+      input: { prompt, source_image: imagePath, request_from: CONFIG.requestFrom },
+      request_from: CONFIG.requestFrom,
+      origin_from: CONFIG.originFrom
+    })
+  });
+  return await res.json();
+}
+
+/**
+ * Check task progress
+ */
+async function checkStatus(taskId) {
+  const res = await fetch(`${CONFIG.baseUrl}/of/check-status`, {
+    method: 'POST',
+    headers: { ...generateHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      task_id: taskId,
+      fn_name: CONFIG.fnName,
+      call_type: 3,
+      request_from: CONFIG.requestFrom,
+      origin_from: CONFIG.originFrom
+    })
+  });
+  return await res.json();
+}
+
+/**
+ * Polling for result
+ */
+async function waitForResult(taskId, max = 30) {
+  for (let i = 0; i < max; i++) {
+    const res = await checkStatus(taskId);
+    if (res.code === 200 && res.data?.status === 2 && res.data?.result_image) {
+      return res.data.result_image;
+    }
+    if (res.data?.status === -1) throw 'AI Processing failed.';
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  throw 'Processing Timeout.';
+}
+
+// --- COMMAND: HAIRSTYLE / EDITHAIR ---
 
 cmd({
-    pattern: "MDV",
-    alias: ["dl", "getvid", "youall"],
-    desc: "Download videos from various platforms (YT, FB, IG, TT).",
-    category: "download",
-    react: "📥",
-    filename: __filename
-}, async (conn, mek, m, { from, text, reply }) => {
-    if (!text) return reply("📥 *All Video Downloader*\n\nUsage: `.dl <video link>`\nExample: `.dl https://www.youtube.com/watch?v=...` ");
-
+    pattern: "hairstyle",
+    alias: ["edithair", "hairai"],
+    desc: "Change hairstyle in an image using AI.",
+    category: "ai",
+    use: ".hairstyle <prompt>",
+    filename: __filename,
+}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        const quoted = m.quoted ? m.quoted : m;
+        const mime = (quoted.msg || quoted).mimetype || '';
 
-        const result = await scraper.scrape(text);
-
-        if (!result.status || !result.videoUrl) {
-            return reply("❌ Unable to fetch video. Please check the link.");
+        if (!mime.startsWith('image/')) {
+            return reply(`📸 *Hairstyle AI*\n\nPlease reply to an image with a prompt.\n\n*Example:* \`${prefix + command} blonde long hair\``);
         }
 
-        const caption = `╭──〔 *📥 DOWNLOADER* 〕  
-├─ 📝 *Title:* ${result.title}
-├─ 🔗 *Source:* Detected automatically
-╰───────────────────🚀
+        if (!q) return reply("❌ Please provide a hairstyle description (prompt).");
 
-*🚀 Powered by KAMRAN-MD*`;
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        reply("_🤖 Processing hairstyle... This may take a few seconds._");
 
-        // Sending Video
+        // Download image from WhatsApp
+        const buffer = await quoted.download();
+        if (!buffer) throw 'Could not download image.';
+
+        // Upload to Live3D
+        const up = await uploadImage(buffer);
+        if (up.code !== 200) throw 'Upload to AI server failed.';
+
+        // Create Task
+        const task = await createTask(up.data.path, q);
+        if (task.code !== 200) throw 'Failed to start AI task.';
+
+        // Wait for Result
+        const result = await waitForResult(task.data.task_id);
+        const url = `${CONFIG.resultUrl}/${result}`;
+
+        // Send Result
         await conn.sendMessage(from, { 
-            video: { url: result.videoUrl }, 
-            caption: caption,
-            contextInfo: newsletterContext
+            image: { url: url }, 
+            caption: `✅ *Hairstyle Changed Successfully!*\n🎨 *Prompt:* ${q}\n\n*🚀 Powered by KAMRAN-MD*` 
         }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error("Download Error:", e);
-        reply("❌ An error occurred while processing the download.");
+        console.error("Hairstyle AI Error:", e);
+        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+        reply(`❌ *Error:* ${typeof e === 'string' ? e : "Something went wrong during processing."}`);
     }
 });
