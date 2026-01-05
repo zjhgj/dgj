@@ -1,117 +1,96 @@
-//---------------------------------------------------------------------------
-//           KAMRAN-MD - AI WATERMARK REMOVER (FIXED)
-//---------------------------------------------------------------------------
-//  🚀 REMOVE WATERMARKS FROM IMAGES USING AIENHANCER.AI
-//---------------------------------------------------------------------------
-
 const { cmd } = require('../command');
 const axios = require('axios');
+const cheerio = require('cheerio');
 
 /**
- * Core Logic: Interacts with aienhancer.ai API
+ * Scraper function for Pinterest via SavePin
  */
-async function Removewm(buffer) {
-    if (!buffer) throw new Error('Buffer is empty or undefined.');
-    const base64 = buffer.toString('base64');
-    
-    const { data: create } = await axios.post(
-        'https://aienhancer.ai/api/v1/r/image-enhance/create',
-        {
-            model: 5,
-            image: `data:image/jpeg;base64,${base64}`,
-            settings: "L7p91uXhVyp5OOJthAyqjSqhlbM+RPZ8+h2Uq9tz6Y+4Agarugz8f4JjxjEycxEzuj/7+6Q0YY9jUvrfmqkucENhHAkMq1EOilzosQlw2msQpW2yRqV3C/WqvP/jrmSu3aUVAyeFhSbK3ARzowBzQYPVHtxwBbTWwlSR4tehnoeSewAjTf2d1dr81ZHNdpu/4WcmHd8FILhKHTW6OmCYv2AdDatvgW7W0a1Gd4NBzo8Pdvv0WIqOyjYwBILaNp+iMmpMdGlqx0c8HAwv5bhRe9cQxPZ3nc3+5gOaGkQpdDLqWTBJ5ubZDRx4n9+eq5r9YwDkM6kIfIgRllWq8YXdqtedk9LlGHPskMzJxq8gMUizZVCJMcC5pfImUUlLic6G9KHERqHoNE1DmZo/aGzY4a8psucXHmUgcgsjn08PZEkEKv2r4HQoZ+yx7AGHJyOSLPT1TCkViqyUyK/ofwdwOH2zJhei4mV1TYfgzBxgnIP8zv3/fpo/diUERbN/zUmM3LJIYfYA7egJS0KeYzbsb72DD/RjCu22f4XxxF2UIftFJqSTesga8O2jfkdg8sTcrTJNgf4vefoc4azu2C1XHCEq+Ye0MxcJ6EYIhyeU7ne0k7RXJzYhzRzL9WN2PqZOUEhR18Znu3jtI6hbT//PEw=="
-        },
-        {
+async function pindl(url) {
+    try {
+        const endpoint = `https://www.savepin.app/pinterest/download.php?url=${encodeURIComponent(url)}&lang=en&type=redirect`;
+
+        const { data } = await axios.get(endpoint, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 13)',
-                'Content-Type': 'application/json',
-                'origin': 'https://aienhancer.ai/',
-                'referer': 'https://aienhancer.ai/remove-watermark-from-image'
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+                "Referer": "https://www.savepin.app/pinterest/en"
             }
-        }
-    );
+        });
 
-    const taskId = create.data?.id;
-    if (!taskId) throw new Error('Task ID not found from AI server.');
+        const $ = cheerio.load(data);
+        const results = new Set();
 
-    for (let i = 0; i < 20; i++) {
-        await new Promise(r => setTimeout(r, 4000));
+        $("a[href], img[src]").each((_, e) => {
+            let u = $(e).attr("href") || $(e).attr("src");
+            if (!u) return;
 
-        const { data: status } = await axios.post(
-            `https://aienhancer.ai/api/v1/r/image-enhance/result`, 
-            { task_id: taskId },
-            {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Linux; Android 13)',
-                    'Content-Type': 'application/json',
-                    'origin': 'https://aienhancer.ai/',
-                    'referer': 'https://aienhancer.ai/remove-watermark-from-image'
-                }
+            // Handle forced download redirects
+            if (u.startsWith("force-save.php")) {
+                const parsedUrl = new URL("https://www.savepin.app/" + u).searchParams.get("url");
+                if (parsedUrl) results.add(decodeURIComponent(parsedUrl));
             }
-        );
 
-        if (status.data.status === 'succeeded') {
-            return status.data.result_image;
-        }
+            // Direct Pinimg or Pin-video links
+            if (u.includes("i.pinimg.com") || u.includes("v.pinimg.com") || u.includes("video-downloads")) {
+                results.add(u);
+            }
+        });
 
-        if (status.data.status === 'failed') {
-            throw new Error(status.data.error || 'AI Processing failed');
-        }
+        const dataArray = [...results];
+        
+        return dataArray.length > 0 
+            ? { status: true, code: 200, data: dataArray }
+            : { status: false, statusCode: 404, message: "No media found" };
+
+    } catch (err) {
+        return { status: false, statusCode: 500, message: err.message };
     }
-    throw new Error('Processing Timeout.');
 }
 
+// WhatsApp Command Registration
 cmd({
-    pattern: "removewm",
-    alias: ["unwm", "dewm"],
-    desc: "Remove watermarks from an image using AI.",
-    category: "ai",
-    use: ".removewm (reply to image)",
+    pattern: "pinterest2",
+    alias: ["pindl2", "pin"],
+    desc: "Download media from Pinterest.",
+    category: "download",
+    use: ".pinterest <url>",
     filename: __filename,
-}, async (conn, mek, m, { from, reply, prefix, command }) => {
+}, async (conn, mek, m, { from, args, reply, prefix, command }) => {
     try {
-        const q = m.quoted ? m.quoted : m;
-        const mime = (q.msg || q).mimetype || q.mediaType || '';
+        if (!args[0]) return reply(`⚠️ Please provide a Pinterest URL.\n\nExample: \`${prefix + command} https://pin.it/...\``);
 
-        if (!/image/.test(mime)) {
-            return reply(`📸 *Watermark Remover*\n\nPlease reply to an image with \`${prefix + command}\``);
+        const url = args[0];
+        if (!/pinterest\.com|pin\.it/.test(url)) return reply("❌ Invalid Pinterest URL.");
+
+        await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
+
+        const res = await pindl(url);
+
+        if (!res.status) {
+            return reply(`❌ Error: ${res.message || "Failed to fetch media."}`);
         }
 
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-        
-        // --- FIXED DOWNLOAD LOGIC ---
-        let mediaBuffer;
-        try {
-            mediaBuffer = await q.download();
-        } catch (downloadErr) {
-            // Fallback for some framework versions
-            mediaBuffer = await conn.downloadMediaMessage(q);
+        // Identify the best quality link (usually first high-res image or video)
+        const mediaUrl = res.data[0];
+        const isVideo = mediaUrl.includes(".mp4") || mediaUrl.includes("v.pinimg.com");
+
+        if (isVideo) {
+            await conn.sendMessage(from, {
+                video: { url: mediaUrl },
+                caption: `✅ *Pinterest Video Downloaded*\n\n*🚀 KAMRAN-MD*`,
+                quoted: mek
+            });
+        } else {
+            await conn.sendMessage(from, {
+                image: { url: mediaUrl },
+                caption: `✅ *Pinterest Image Downloaded*\n\n*🚀 KAMRAN-MD*`,
+                quoted: mek
+            });
         }
-
-        if (!mediaBuffer) return reply("❌ Error: Could not download the image. Make sure it is still accessible in the chat.");
-
-        const resultUrl = await Removewm(mediaBuffer);
-
-        await conn.sendMessage(from, {
-            image: { url: resultUrl },
-            caption: `✅ *Watermark Removed Successfully!*\n\n*🚀 Powered by KAMRAN-MD*`,
-            contextInfo: {
-                externalAdReply: {
-                    title: "AI WATERMARK REMOVER",
-                    body: "Clean Image Generated",
-                    mediaType: 1,
-                    sourceUrl: "https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O",
-                    thumbnailUrl: resultUrl,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error("RemoveWM Error:", e);
-        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        reply(`❌ *Error:* ${e.message || "Something went wrong."}`);
+        console.error(e);
+        reply(`❌ *An error occurred:* ${e.message}`);
     }
 });
