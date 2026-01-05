@@ -1,15 +1,9 @@
-//---------------------------------------------------------------------------
-//           KAMRAN-MD - ALL-IN-ONE VIDEO DOWNLOADER
-//---------------------------------------------------------------------------
-//  🚀 DOWNLOAD VIDEOS FROM MULTIPLE PLATFORMS USING AMOYSYHARE
-//---------------------------------------------------------------------------
-
 const { cmd } = require('../command');
 const axios = require('axios');
 const crypto = require('crypto');
 
 /**
- * Core Logic for Generating Dynamic AmoyShare Headers
+ * Enhanced AmoyShare Helper
  */
 const amoyshare = {
     generateHeader: () => {
@@ -23,7 +17,6 @@ const amoyshare = {
 
         const dateStr = `${yyyy}${mm}${dd}`;
         const constant = "786638952";
-
         const randomVal = 1000 + Math.round(8999 * Math.random());
         const key = `${dateStr}${constant}${randomVal}`;
         const hashInput = `${dateStr}${randomVal}${constant}`;
@@ -37,72 +30,79 @@ const amoyshare = {
 
     request: async (url, params = {}) => {
         const headers = {
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/javascript, */*; q=0.01',
             'Referer': 'https://www.amoyshare.com/',
             'Origin': 'https://www.amoyshare.com',
             'amoyshare': amoyshare.generateHeader()
         };
 
-        const response = await axios.get(url, { params, headers });
+        const response = await axios.get(url, { params, headers, timeout: 15000 });
         return response.data;
     }
 };
 
-// --- COMMAND: DL ---
-
 cmd({
     pattern: "dl",
-    alias: ["alldl", "download"],
-    desc: "Download videos from various platforms (TikTok, FB, IG, etc.)",
+    alias: ["alldl", "get"],
+    desc: "Download videos from TikTok, FB, IG, YT etc.",
     category: "download",
     use: ".dl <link>",
     filename: __filename,
 }, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        if (!q) return reply(`📥 *All-In-One Downloader*\n\nUsage: \`${prefix + command} <video link>\`\nExample: \`${prefix + command} https://tiktok.com/xxx\``);
+        if (!q) return reply(`📥 *Usage:* \`${prefix + command} <link>\``);
+
+        // Basic URL Validation
+        if (!q.startsWith("http")) return reply("❌ Please provide a valid URL starting with http/https.");
 
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        const waitMsg = await reply("🔄 *Processing your request...*");
 
         const apiUrl = 'https://line.1010diy.com/web/free-mp3-finder/urlParse';
-        const data = await amoyshare.request(apiUrl, { url: q, phonydata: 'false' });
+        const result = await amoyshare.request(apiUrl, { url: q, phonydata: 'false' });
 
-        if (!data || !data.data || !data.data.list || data.data.list.length === 0) {
+        // Debugging & Validation
+        if (!result || result.code !== 200 || !result.data) {
             await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-            return reply("❌ Failed to fetch download links. The link might be private or unsupported.");
+            return reply("❌ *Server Busy:* Could not parse this URL. Please try again later or check the link.");
         }
 
-        const videoInfo = data.data;
-        // Finding the best quality video link
-        const bestVideo = videoInfo.list.find(v => v.format === 'mp4') || videoInfo.list[0];
+        const videoData = result.data;
+        let downloadUrl = "";
+        let title = videoData.title || "Video Download";
 
-        if (!bestVideo || !bestVideo.url) {
-            return reply("❌ Could not find a downloadable video stream.");
+        // Strategy 1: Look in 'list' array (Most common)
+        if (videoData.list && videoData.list.length > 0) {
+            // Prefer MP4 and check for valid URLs
+            const videoItem = videoData.list.find(item => item.format === "mp4" && item.url) || 
+                              videoData.list.find(item => item.url);
+            if (videoItem) downloadUrl = videoItem.url;
         }
 
-        // Send Info first
-        const caption = `🎬 *AIO DOWNLOADER*\n\n📌 *Title:* ${videoInfo.title || 'Video'}\n🌐 *Source:* ${videoInfo.source || 'Unknown'}\n\n*🚀 Powered by KAMRAN-MD*`;
+        // Strategy 2: Look in 'links' or direct 'url' (Fallback)
+        if (!downloadUrl && videoData.url) {
+            downloadUrl = videoData.url;
+        }
+
+        if (!downloadUrl) {
+            return reply("❌ No downloadable video found for this link. It might be a private or restricted video.");
+        }
+
+        const caption = `🎬 *KAMRAN-MD DOWNLOADER*\n\n📌 *Title:* ${title}\n🌐 *Source:* ${videoData.source || 'Online'}\n\n*🚀 Powered by KAMRAN-MD*`;
 
         await conn.sendMessage(from, {
-            video: { url: bestVideo.url },
+            video: { url: downloadUrl },
             caption: caption,
-            contextInfo: {
-                externalAdReply: {
-                    title: "KAMRAN-MD DOWNLOADER",
-                    body: videoInfo.title,
-                    mediaType: 2,
-                    sourceUrl: "https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O",
-                    thumbnailUrl: "https://cdn-icons-png.flaticon.com/512/3502/3502601.png",
-                    renderLargerThumbnail: false
-                }
-            }
+            mimetype: 'video/mp4',
+            fileName: `${title}.mp4`
         }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error("AIO Download Error:", e);
+        console.error("Download Error:", e);
         await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        reply(`❌ *Error:* ${e.message || "Something went wrong."}`);
+        reply(`❌ *Error:* ${e.message || "An unexpected error occurred."}`);
     }
 });
