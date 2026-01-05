@@ -1,5 +1,5 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - AI WATERMARK REMOVER
+//           KAMRAN-MD - AI WATERMARK REMOVER (FIXED)
 //---------------------------------------------------------------------------
 //  🚀 REMOVE WATERMARKS FROM IMAGES USING AIENHANCER.AI
 //---------------------------------------------------------------------------
@@ -11,9 +11,9 @@ const axios = require('axios');
  * Core Logic: Interacts with aienhancer.ai API
  */
 async function Removewm(buffer) {
+    if (!buffer) throw new Error('Buffer is empty or undefined.');
     const base64 = buffer.toString('base64');
     
-    // Step 1: Create Processing Task
     const { data: create } = await axios.post(
         'https://aienhancer.ai/api/v1/r/image-enhance/create',
         {
@@ -34,9 +34,8 @@ async function Removewm(buffer) {
     const taskId = create.data?.id;
     if (!taskId) throw new Error('Task ID not found from AI server.');
 
-    // Step 2: Polling status (up to 20 retries)
     for (let i = 0; i < 20; i++) {
-        await new Promise(r => setTimeout(r, 3000)); // Wait 3 seconds per poll
+        await new Promise(r => setTimeout(r, 4000));
 
         const { data: status } = await axios.post(
             `https://aienhancer.ai/api/v1/r/image-enhance/result`, 
@@ -52,18 +51,15 @@ async function Removewm(buffer) {
         );
 
         if (status.data.status === 'succeeded') {
-            return status.data.result_image; // Returns the URL of processed image
+            return status.data.result_image;
         }
 
         if (status.data.status === 'failed') {
             throw new Error(status.data.error || 'AI Processing failed');
         }
     }
-
-    throw new Error('Processing Timeout: The server took too long.');
+    throw new Error('Processing Timeout.');
 }
-
-// --- COMMAND: REMOVEWM ---
 
 cmd({
     pattern: "removewm",
@@ -74,24 +70,28 @@ cmd({
     filename: __filename,
 }, async (conn, mek, m, { from, reply, prefix, command }) => {
     try {
-        const quoted = m.quoted ? m.quoted : m;
-        const mime = (quoted.msg || quoted).mimetype || '';
+        const q = m.quoted ? m.quoted : m;
+        const mime = (q.msg || q).mimetype || q.mediaType || '';
 
         if (!/image/.test(mime)) {
-            return reply(`📸 *Watermark Remover*\n\nPlease reply to an image with \`${prefix + command}\` to remove its watermark.`);
+            return reply(`📸 *Watermark Remover*\n\nPlease reply to an image with \`${prefix + command}\``);
         }
 
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-        reply("_🤖 AI is analyzing the image to remove watermarks... Please wait._");
+        
+        // --- FIXED DOWNLOAD LOGIC ---
+        let mediaBuffer;
+        try {
+            mediaBuffer = await q.download();
+        } catch (downloadErr) {
+            // Fallback for some framework versions
+            mediaBuffer = await conn.downloadMediaMessage(q);
+        }
 
-        // Download image from WhatsApp
-        const mediaBuffer = await quoted.download();
-        if (!mediaBuffer) throw new Error("Could not download image from WhatsApp.");
+        if (!mediaBuffer) return reply("❌ Error: Could not download the image. Make sure it is still accessible in the chat.");
 
-        // Process through AI
         const resultUrl = await Removewm(mediaBuffer);
 
-        // Send Result
         await conn.sendMessage(from, {
             image: { url: resultUrl },
             caption: `✅ *Watermark Removed Successfully!*\n\n*🚀 Powered by KAMRAN-MD*`,
@@ -112,6 +112,6 @@ cmd({
     } catch (e) {
         console.error("RemoveWM Error:", e);
         await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        reply(`❌ *Error:* ${e.message || "Something went wrong during AI processing."}`);
+        reply(`❌ *Error:* ${e.message || "Something went wrong."}`);
     }
 });
