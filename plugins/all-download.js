@@ -1,84 +1,108 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - PURE YOUTUBE AUTO-DOWNLOADER
+//           KAMRAN-MD - ALL-IN-ONE VIDEO DOWNLOADER
 //---------------------------------------------------------------------------
-//  🚀 NO COMMANDS - JUST PASTE A LINK AND GET THE VIDEO AUTOMATICALLY
+//  🚀 DOWNLOAD VIDEOS FROM MULTIPLE PLATFORMS USING AMOYSYHARE
 //---------------------------------------------------------------------------
 
-const { cmd } = require("../command");
-const axios = require("axios");
+const { cmd } = require('../command');
+const axios = require('axios');
+const crypto = require('crypto');
 
 /**
- * Core Data Fetching Logic using Jawad-Tech API
+ * Core Logic for Generating Dynamic AmoyShare Headers
  */
-async function fetchDownloadData(url, retries = 2) {
-  try {
-    const apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
-    const response = await axios.get(apiUrl, { timeout: 20000 });
-    const data = response.data;
+const amoyshare = {
+    generateHeader: () => {
+        const date = new Date();
+        const yyyy = date.getFullYear();
+        let mm = date.getMonth() + 1;
+        let dd = date.getDate();
 
-    if (data.status === true && data.result) {
-      return {
-        video_url: data.result.mp4,
-        title: data.result.title || "YouTube Video",
-      };
-    }
-    throw new Error("API error");
-  } catch (error) {
-    if (retries > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      return fetchDownloadData(url, retries - 1);
-    }
-    return null;
-  }
-}
+        mm = mm > 9 ? mm : "0" + mm;
+        dd = dd > 9 ? dd : "0" + dd;
 
-// --- AUTO-DL LISTENER: Pure Background Task ---
+        const dateStr = `${yyyy}${mm}${dd}`;
+        const constant = "786638952";
+
+        const randomVal = 1000 + Math.round(8999 * Math.random());
+        const key = `${dateStr}${constant}${randomVal}`;
+        const hashInput = `${dateStr}${randomVal}${constant}`;
+        
+        const signature = crypto.createHash('md5')
+            .update(hashInput)
+            .digest('hex');
+
+        return `${key}-${signature}`;
+    },
+
+    request: async (url, params = {}) => {
+        const headers = {
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Referer': 'https://www.amoyshare.com/',
+            'Origin': 'https://www.amoyshare.com',
+            'amoyshare': amoyshare.generateHeader()
+        };
+
+        const response = await axios.get(url, { params, headers });
+        return response.data;
+    }
+};
+
+// --- COMMAND: DL ---
 
 cmd({
-    on: "body"
-}, async (conn, mek, m, { from, body }) => {
-    // Regex to detect YouTube URLs (Standard, Mobile, and Shorts)
-    const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/gi;
-    const match = body.match(ytRegex);
+    pattern: "dl",
+    alias: ["alldl", "download"],
+    desc: "Download videos from various platforms (TikTok, FB, IG, etc.)",
+    category: "download",
+    use: ".dl <link>",
+    filename: __filename,
+}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
+    try {
+        if (!q) return reply(`📥 *All-In-One Downloader*\n\nUsage: \`${prefix + command} <video link>\`\nExample: \`${prefix + command} https://tiktok.com/xxx\``);
 
-    if (match) {
-        const videoUrl = match[0];
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // Step 1: Initial reaction to show link detection
-        await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
+        const apiUrl = 'https://line.1010diy.com/web/free-mp3-finder/urlParse';
+        const data = await amoyshare.request(apiUrl, { url: q, phonydata: 'false' });
 
-        // Step 2: Fetch the data
-        const dlData = await fetchDownloadData(videoUrl);
-
-        if (dlData && dlData.video_url) {
-            // Step 3: Send the video file
-            await conn.sendMessage(from, {
-                video: { url: dlData.video_url },
-                mimetype: "video/mp4",
-                caption: `🎬 *YouTube Auto-DL*\n📌 *Title:* ${dlData.title}\n\n*🚀 Powered by KAMRAN-MD*`,
-                contextInfo: {
-                    forwardingScore: 999,
-                    isForwarded: true,
-                    forwardedNewsletterMessageInfo: {
-                        newsletterJid: '120363418144382782@newsletter',
-                        newsletterName: 'KAMRAN-MD',
-                        serverMessageId: 143
-                    },
-                    externalAdReply: {
-                        title: "AUTO VIDEO DOWNLOADER",
-                        body: dlData.title,
-                        mediaType: 2,
-                        sourceUrl: videoUrl,
-                        renderLargerThumbnail: false
-                    }
-                }
-            }, { quoted: mek });
-            
-            // Step 4: Final success reaction
-            await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-        } else {
-            // Reaction for failure
+        if (!data || !data.data || !data.data.list || data.data.list.length === 0) {
             await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+            return reply("❌ Failed to fetch download links. The link might be private or unsupported.");
         }
+
+        const videoInfo = data.data;
+        // Finding the best quality video link
+        const bestVideo = videoInfo.list.find(v => v.format === 'mp4') || videoInfo.list[0];
+
+        if (!bestVideo || !bestVideo.url) {
+            return reply("❌ Could not find a downloadable video stream.");
+        }
+
+        // Send Info first
+        const caption = `🎬 *AIO DOWNLOADER*\n\n📌 *Title:* ${videoInfo.title || 'Video'}\n🌐 *Source:* ${videoInfo.source || 'Unknown'}\n\n*🚀 Powered by KAMRAN-MD*`;
+
+        await conn.sendMessage(from, {
+            video: { url: bestVideo.url },
+            caption: caption,
+            contextInfo: {
+                externalAdReply: {
+                    title: "KAMRAN-MD DOWNLOADER",
+                    body: videoInfo.title,
+                    mediaType: 2,
+                    sourceUrl: "https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O",
+                    thumbnailUrl: "https://cdn-icons-png.flaticon.com/512/3502/3502601.png",
+                    renderLargerThumbnail: false
+                }
+            }
+        }, { quoted: mek });
+
+        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+
+    } catch (e) {
+        console.error("AIO Download Error:", e);
+        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+        reply(`❌ *Error:* ${e.message || "Something went wrong."}`);
     }
 });
