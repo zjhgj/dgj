@@ -39,7 +39,7 @@ async function fetchMediaData(url) {
 cmd(
   {
     pattern: "play",
-    alias: ["song", "video", "yt", "yta", "ytv"],
+    alias: ["song4", "video3", "yt", "yta", "ytv"],
     desc: "Download YouTube audio/video with a stylish UI.",
     category: "download",
     use: ".play <song name>",
