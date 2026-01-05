@@ -1,108 +1,105 @@
+//---------------------------------------------------------------------------
+//           KAMRAN-MD - GITHUB IMAGE UPLOADER (TOURL)
+//---------------------------------------------------------------------------
+//  🚀 UPLOAD IMAGES TO GITHUB REPO AND GET PERMANENT RAW LINKS
+//---------------------------------------------------------------------------
+
 const { cmd } = require('../command');
 const axios = require('axios');
-const crypto = require('crypto');
 
-/**
- * Enhanced AmoyShare Helper
- */
-const amoyshare = {
-    generateHeader: () => {
-        const date = new Date();
-        const yyyy = date.getFullYear();
-        let mm = date.getMonth() + 1;
-        let dd = date.getDate();
-
-        mm = mm > 9 ? mm : "0" + mm;
-        dd = dd > 9 ? dd : "0" + dd;
-
-        const dateStr = `${yyyy}${mm}${dd}`;
-        const constant = "786638952";
-        const randomVal = 1000 + Math.round(8999 * Math.random());
-        const key = `${dateStr}${constant}${randomVal}`;
-        const hashInput = `${dateStr}${randomVal}${constant}`;
-        
-        const signature = crypto.createHash('md5')
-            .update(hashInput)
-            .digest('hex');
-
-        return `${key}-${signature}`;
-    },
-
-    request: async (url, params = {}) => {
-        const headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/javascript, */*; q=0.01',
-            'Referer': 'https://www.amoyshare.com/',
-            'Origin': 'https://www.amoyshare.com',
-            'amoyshare': amoyshare.generateHeader()
-        };
-
-        const response = await axios.get(url, { params, headers, timeout: 15000 });
-        return response.data;
-    }
+// --- CONFIGURATION ---
+// Replace these with your actual GitHub details
+const GITHUB_CONFIG = {
+    username: "RyzenXD-Sys",      // Your GitHub username
+    repo: "Image",                // Your repository name
+    folder: "Image",              // Folder inside repo (optional)
+    token: "ghp_ctxxxxxxxx",      // Your GitHub Personal Access Token (PAT)
+    branch: "main"                // Default branch
 };
 
 cmd({
-    pattern: "dl",
-    alias: ["alldl", "get"],
-    desc: "Download videos from TikTok, FB, IG, YT etc.",
-    category: "download",
-    use: ".dl <link>",
+    pattern: "uploadgh",
+    alias: ["tourlgh", "ghupload"],
+    desc: "Upload images to GitHub and get a raw URL.",
+    category: "tools",
+    use: ".uploadgh (reply to image)",
     filename: __filename,
-}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
+}, async (conn, mek, m, { from, reply, prefix, command }) => {
     try {
-        if (!q) return reply(`📥 *Usage:* \`${prefix + command} <link>\``);
+        const quoted = m.quoted ? m.quoted : m;
+        const mime = (quoted.msg || quoted).mimetype || '';
 
-        // Basic URL Validation
-        if (!q.startsWith("http")) return reply("❌ Please provide a valid URL starting with http/https.");
+        // Validate Input
+        if (!mime) return reply(`❌ Please reply to an image with \`${prefix + command}\``);
+        if (!/image\/(jpe?g|png)/.test(mime)) return reply(`⚠️ Format not supported! Only JPG/PNG images are allowed.`);
 
+        // Notification
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-        const waitMsg = await reply("🔄 *Processing your request...*");
+        reply("⏳ *Uploading image to GitHub repository...*");
 
-        const apiUrl = 'https://line.1010diy.com/web/free-mp3-finder/urlParse';
-        const result = await amoyshare.request(apiUrl, { url: q, phonydata: 'false' });
+        // Download Media
+        const media = await quoted.download();
+        if (!media) throw new Error("Failed to download media from WhatsApp.");
 
-        // Debugging & Validation
-        if (!result || result.code !== 200 || !result.data) {
-            await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-            return reply("❌ *Server Busy:* Could not parse this URL. Please try again later or check the link.");
+        // File metadata
+        const ext = mime.split('/')[1];
+        const filename = `${Date.now()}-${Math.floor(Math.random() * 1000)}.${ext}`;
+        const filePath = GITHUB_CONFIG.folder ? `${GITHUB_CONFIG.folder}/${filename}` : filename;
+        const contentBase64 = media.toString('base64');
+        
+        // GitHub API URL
+        const apiUrl = `https://api-github-com.translate.goog/repos/${GITHUB_CONFIG.username}/${GITHUB_CONFIG.repo}/contents/${filePath}?_x_tr_sl=auto&_x_tr_tl=en&_x_tr_hl=en&_x_tr_pto=wapp`;
+        // Direct GitHub API (Used with token)
+        const gitUrl = `https://api.github.com/repos/${GITHUB_CONFIG.username}/${GITHUB_CONFIG.repo}/contents/${filePath}`;
+
+        const response = await axios.put(gitUrl, {
+            message: `KAMRAN-MD Upload: ${filename}`,
+            content: contentBase64,
+            branch: GITHUB_CONFIG.branch
+        }, {
+            headers: {
+                "Authorization": `token ${GITHUB_CONFIG.token}`,
+                "Content-Type": "application/json",
+                "User-Agent": "KAMRAN-MD-Bot"
+            }
+        });
+
+        if (response.status === 201 || response.status === 200) {
+            // Construct Raw URL
+            const rawUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.username}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${filePath}`;
+            
+            const caption = `✅ *UPLOAD SUCCESSFUL* ✅\n\n` +
+                          `👤 *User:* ${GITHUB_CONFIG.username}\n` +
+                          `📂 *Repo:* ${GITHUB_CONFIG.repo}\n` +
+                          `📄 *File:* ${filename}\n\n` +
+                          `🔗 *Raw URL:*\n${rawUrl}\n\n` +
+                          `*🚀 Powered by KAMRAN-MD*`;
+
+            await conn.sendMessage(from, {
+                image: { url: rawUrl },
+                caption: caption,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "GITHUB IMAGE HOSTING",
+                        body: "Image stored successfully",
+                        mediaType: 1,
+                        sourceUrl: "https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O",
+                        thumbnailUrl: "https://cdn-icons-png.flaticon.com/512/25/25231.png",
+                        renderLargerThumbnail: false
+                    }
+                }
+            }, { quoted: mek });
+
+            await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        } else {
+            throw new Error("GitHub API returned non-success status.");
         }
-
-        const videoData = result.data;
-        let downloadUrl = "";
-        let title = videoData.title || "Video Download";
-
-        // Strategy 1: Look in 'list' array (Most common)
-        if (videoData.list && videoData.list.length > 0) {
-            // Prefer MP4 and check for valid URLs
-            const videoItem = videoData.list.find(item => item.format === "mp4" && item.url) || 
-                              videoData.list.find(item => item.url);
-            if (videoItem) downloadUrl = videoItem.url;
-        }
-
-        // Strategy 2: Look in 'links' or direct 'url' (Fallback)
-        if (!downloadUrl && videoData.url) {
-            downloadUrl = videoData.url;
-        }
-
-        if (!downloadUrl) {
-            return reply("❌ No downloadable video found for this link. It might be a private or restricted video.");
-        }
-
-        const caption = `🎬 *KAMRAN-MD DOWNLOADER*\n\n📌 *Title:* ${title}\n🌐 *Source:* ${videoData.source || 'Online'}\n\n*🚀 Powered by KAMRAN-MD*`;
-
-        await conn.sendMessage(from, {
-            video: { url: downloadUrl },
-            caption: caption,
-            mimetype: 'video/mp4',
-            fileName: `${title}.mp4`
-        }, { quoted: mek });
-
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error("Download Error:", e);
+        console.error("GitHub Upload Error:", e);
         await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        reply(`❌ *Error:* ${e.message || "An unexpected error occurred."}`);
+        
+        const errMsg = e.response?.data?.message || e.message;
+        reply(`❌ *Upload Failed!*\n\n*Server Response:* ${errMsg}\n\n_Note: Check if your token, username, and repo name are correct in the config._`);
     }
 });
