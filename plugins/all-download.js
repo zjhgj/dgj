@@ -1,105 +1,117 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - GITHUB IMAGE UPLOADER (TOURL)
+//           KAMRAN-MD - AI WATERMARK REMOVER
 //---------------------------------------------------------------------------
-//  🚀 UPLOAD IMAGES TO GITHUB REPO AND GET PERMANENT RAW LINKS
+//  🚀 REMOVE WATERMARKS FROM IMAGES USING AIENHANCER.AI
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// --- CONFIGURATION ---
-// Replace these with your actual GitHub details
-const GITHUB_CONFIG = {
-    username: "RyzenXD-Sys",      // Your GitHub username
-    repo: "Image",                // Your repository name
-    folder: "Image",              // Folder inside repo (optional)
-    token: "ghp_ctxxxxxxxx",      // Your GitHub Personal Access Token (PAT)
-    branch: "main"                // Default branch
-};
+/**
+ * Core Logic: Interacts with aienhancer.ai API
+ */
+async function Removewm(buffer) {
+    const base64 = buffer.toString('base64');
+    
+    // Step 1: Create Processing Task
+    const { data: create } = await axios.post(
+        'https://aienhancer.ai/api/v1/r/image-enhance/create',
+        {
+            model: 5,
+            image: `data:image/jpeg;base64,${base64}`,
+            settings: "L7p91uXhVyp5OOJthAyqjSqhlbM+RPZ8+h2Uq9tz6Y+4Agarugz8f4JjxjEycxEzuj/7+6Q0YY9jUvrfmqkucENhHAkMq1EOilzosQlw2msQpW2yRqV3C/WqvP/jrmSu3aUVAyeFhSbK3ARzowBzQYPVHtxwBbTWwlSR4tehnoeSewAjTf2d1dr81ZHNdpu/4WcmHd8FILhKHTW6OmCYv2AdDatvgW7W0a1Gd4NBzo8Pdvv0WIqOyjYwBILaNp+iMmpMdGlqx0c8HAwv5bhRe9cQxPZ3nc3+5gOaGkQpdDLqWTBJ5ubZDRx4n9+eq5r9YwDkM6kIfIgRllWq8YXdqtedk9LlGHPskMzJxq8gMUizZVCJMcC5pfImUUlLic6G9KHERqHoNE1DmZo/aGzY4a8psucXHmUgcgsjn08PZEkEKv2r4HQoZ+yx7AGHJyOSLPT1TCkViqyUyK/ofwdwOH2zJhei4mV1TYfgzBxgnIP8zv3/fpo/diUERbN/zUmM3LJIYfYA7egJS0KeYzbsb72DD/RjCu22f4XxxF2UIftFJqSTesga8O2jfkdg8sTcrTJNgf4vefoc4azu2C1XHCEq+Ye0MxcJ6EYIhyeU7ne0k7RXJzYhzRzL9WN2PqZOUEhR18Znu3jtI6hbT//PEw=="
+        },
+        {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 13)',
+                'Content-Type': 'application/json',
+                'origin': 'https://aienhancer.ai/',
+                'referer': 'https://aienhancer.ai/remove-watermark-from-image'
+            }
+        }
+    );
+
+    const taskId = create.data?.id;
+    if (!taskId) throw new Error('Task ID not found from AI server.');
+
+    // Step 2: Polling status (up to 20 retries)
+    for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 3000)); // Wait 3 seconds per poll
+
+        const { data: status } = await axios.post(
+            `https://aienhancer.ai/api/v1/r/image-enhance/result`, 
+            { task_id: taskId },
+            {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Linux; Android 13)',
+                    'Content-Type': 'application/json',
+                    'origin': 'https://aienhancer.ai/',
+                    'referer': 'https://aienhancer.ai/remove-watermark-from-image'
+                }
+            }
+        );
+
+        if (status.data.status === 'succeeded') {
+            return status.data.result_image; // Returns the URL of processed image
+        }
+
+        if (status.data.status === 'failed') {
+            throw new Error(status.data.error || 'AI Processing failed');
+        }
+    }
+
+    throw new Error('Processing Timeout: The server took too long.');
+}
+
+// --- COMMAND: REMOVEWM ---
 
 cmd({
-    pattern: "uploadgh",
-    alias: ["tourlgh", "ghupload"],
-    desc: "Upload images to GitHub and get a raw URL.",
-    category: "tools",
-    use: ".uploadgh (reply to image)",
+    pattern: "removewm",
+    alias: ["unwm", "dewm"],
+    desc: "Remove watermarks from an image using AI.",
+    category: "ai",
+    use: ".removewm (reply to image)",
     filename: __filename,
 }, async (conn, mek, m, { from, reply, prefix, command }) => {
     try {
         const quoted = m.quoted ? m.quoted : m;
         const mime = (quoted.msg || quoted).mimetype || '';
 
-        // Validate Input
-        if (!mime) return reply(`❌ Please reply to an image with \`${prefix + command}\``);
-        if (!/image\/(jpe?g|png)/.test(mime)) return reply(`⚠️ Format not supported! Only JPG/PNG images are allowed.`);
-
-        // Notification
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-        reply("⏳ *Uploading image to GitHub repository...*");
-
-        // Download Media
-        const media = await quoted.download();
-        if (!media) throw new Error("Failed to download media from WhatsApp.");
-
-        // File metadata
-        const ext = mime.split('/')[1];
-        const filename = `${Date.now()}-${Math.floor(Math.random() * 1000)}.${ext}`;
-        const filePath = GITHUB_CONFIG.folder ? `${GITHUB_CONFIG.folder}/${filename}` : filename;
-        const contentBase64 = media.toString('base64');
-        
-        // GitHub API URL
-        const apiUrl = `https://api-github-com.translate.goog/repos/${GITHUB_CONFIG.username}/${GITHUB_CONFIG.repo}/contents/${filePath}?_x_tr_sl=auto&_x_tr_tl=en&_x_tr_hl=en&_x_tr_pto=wapp`;
-        // Direct GitHub API (Used with token)
-        const gitUrl = `https://api.github.com/repos/${GITHUB_CONFIG.username}/${GITHUB_CONFIG.repo}/contents/${filePath}`;
-
-        const response = await axios.put(gitUrl, {
-            message: `KAMRAN-MD Upload: ${filename}`,
-            content: contentBase64,
-            branch: GITHUB_CONFIG.branch
-        }, {
-            headers: {
-                "Authorization": `token ${GITHUB_CONFIG.token}`,
-                "Content-Type": "application/json",
-                "User-Agent": "KAMRAN-MD-Bot"
-            }
-        });
-
-        if (response.status === 201 || response.status === 200) {
-            // Construct Raw URL
-            const rawUrl = `https://raw.githubusercontent.com/${GITHUB_CONFIG.username}/${GITHUB_CONFIG.repo}/${GITHUB_CONFIG.branch}/${filePath}`;
-            
-            const caption = `✅ *UPLOAD SUCCESSFUL* ✅\n\n` +
-                          `👤 *User:* ${GITHUB_CONFIG.username}\n` +
-                          `📂 *Repo:* ${GITHUB_CONFIG.repo}\n` +
-                          `📄 *File:* ${filename}\n\n` +
-                          `🔗 *Raw URL:*\n${rawUrl}\n\n` +
-                          `*🚀 Powered by KAMRAN-MD*`;
-
-            await conn.sendMessage(from, {
-                image: { url: rawUrl },
-                caption: caption,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "GITHUB IMAGE HOSTING",
-                        body: "Image stored successfully",
-                        mediaType: 1,
-                        sourceUrl: "https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O",
-                        thumbnailUrl: "https://cdn-icons-png.flaticon.com/512/25/25231.png",
-                        renderLargerThumbnail: false
-                    }
-                }
-            }, { quoted: mek });
-
-            await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-        } else {
-            throw new Error("GitHub API returned non-success status.");
+        if (!/image/.test(mime)) {
+            return reply(`📸 *Watermark Remover*\n\nPlease reply to an image with \`${prefix + command}\` to remove its watermark.`);
         }
 
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        reply("_🤖 AI is analyzing the image to remove watermarks... Please wait._");
+
+        // Download image from WhatsApp
+        const mediaBuffer = await quoted.download();
+        if (!mediaBuffer) throw new Error("Could not download image from WhatsApp.");
+
+        // Process through AI
+        const resultUrl = await Removewm(mediaBuffer);
+
+        // Send Result
+        await conn.sendMessage(from, {
+            image: { url: resultUrl },
+            caption: `✅ *Watermark Removed Successfully!*\n\n*🚀 Powered by KAMRAN-MD*`,
+            contextInfo: {
+                externalAdReply: {
+                    title: "AI WATERMARK REMOVER",
+                    body: "Clean Image Generated",
+                    mediaType: 1,
+                    sourceUrl: "https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O",
+                    thumbnailUrl: resultUrl,
+                    renderLargerThumbnail: true
+                }
+            }
+        }, { quoted: mek });
+
+        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+
     } catch (e) {
-        console.error("GitHub Upload Error:", e);
+        console.error("RemoveWM Error:", e);
         await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        
-        const errMsg = e.response?.data?.message || e.message;
-        reply(`❌ *Upload Failed!*\n\n*Server Response:* ${errMsg}\n\n_Note: Check if your token, username, and repo name are correct in the config._`);
+        reply(`❌ *Error:* ${e.message || "Something went wrong during AI processing."}`);
     }
 });
