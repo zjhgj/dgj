@@ -1,7 +1,5 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - GPT IMAGE GENERATOR
-//---------------------------------------------------------------------------
-//  🚀 GENERATE AI IMAGES FROM TEXT PROMPTS
+//           KAMRAN-MD - GPT IMAGE GENERATOR (FIXED)
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
@@ -9,39 +7,37 @@ const axios = require('axios');
 
 cmd({
     pattern: "gptimage",
-    alias: ["genimage", "aiimage", "imagine"],
+    alias: ["genimage", "aiimage"],
     desc: "Generate AI images from a text prompt.",
     category: "ai",
-    use: ".gptimage <a futuristic city>",
+    use: ".gptimage <prompt>",
     filename: __filename,
 }, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        if (!q) return reply(`✨ *AI Image Generator* ✨\n\nUsage: \`${prefix + command} <your prompt>\`\nExample: \`${prefix + command} a cute cat in space\``);
+        if (!q) return reply(`✨ *AI Image Generator* ✨\n\nUsage: \`${prefix + command} <prompt>\``);
 
-        // 1. Initial Reaction
         await conn.sendMessage(from, { react: { text: "🎨", key: mek.key } });
-        
-        // 2. Inform the user (Loading)
-        const waitMsg = await reply("⏳ *Generating your vision...* Please wait a moment.");
+        await reply("⏳ *Processing your AI Image...* This can take up to 30-60 seconds.");
 
-        // 3. API Request
-        // Endpoint: https://api.nexray.web.id/ai/gptimage?prompt=...
         const apiUrl = `https://api.nexray.web.id/ai/gptimage?prompt=${encodeURIComponent(q)}`;
         
+        // Increased timeout to 2 minutes (120000ms) for slow AI generation
         const response = await axios.get(apiUrl, { 
-            timeout: 60000, // Image generation takes time
-            responseType: 'json' 
+            timeout: 120000 
         });
 
-        // 4. Handle Response
-        // Nexray usually returns the direct image link or a result object
-        const imageUrl = response.data.result || response.data.url || response.data.image;
-
-        if (!imageUrl) {
-            return reply("❌ *Error:* The AI server did not return an image. Try a different prompt.");
+        // Robust data parsing to find the URL
+        let imageUrl = null;
+        if (typeof response.data === 'string' && response.data.startsWith('http')) {
+            imageUrl = response.data;
+        } else if (response.data) {
+            imageUrl = response.data.result || response.data.url || response.data.image || response.data.data;
         }
 
-        // 5. Send the Image
+        if (!imageUrl) {
+            return reply("❌ *API Error:* The server responded but didn't provide an image link. Try a simpler prompt.");
+        }
+
         await conn.sendMessage(from, {
             image: { url: imageUrl },
             caption: `✨ *AI GENERATED IMAGE* ✨\n\n📝 *Prompt:* ${q}\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`,
@@ -57,13 +53,14 @@ cmd({
             }
         }, { quoted: mek });
 
-        // Final Success Reaction
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
         console.error("GPTImage Error:", e);
-        let errorMsg = "Failed to generate image.";
-        if (e.code === 'ECONNABORTED') errorMsg = "Server took too long to respond. Try again.";
+        let errorMsg = "API Server is busy or down.";
+        if (e.code === 'ECONNABORTED') errorMsg = "Generation took too long. Please try again.";
+        if (e.response && e.response.status === 404) errorMsg = "API Endpoint not found.";
+        
         await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
         reply(`❌ *Error:* ${errorMsg}`);
     }
