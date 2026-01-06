@@ -1,57 +1,57 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - ALL-IN-ONE (AIO) DOWNLOADER
+//           KAMRAN-MD - GPT IMAGE GENERATOR
 //---------------------------------------------------------------------------
-//  🚀 DOWNLOAD FROM FB, IG, TIKTOK, TWITTER, YT VIA NEXRAY API
+//  🚀 GENERATE AI IMAGES FROM TEXT PROMPTS
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
 
 cmd({
-    pattern: "aio",
-    alias: ["dl", "download", "get"],
-    desc: "Download video from various platforms (FB, IG, TikTok, YT, etc.)",
-    category: "download",
-    use: ".aio <url>",
+    pattern: "gptimage",
+    alias: ["genimage", "aiimage", "imagine"],
+    desc: "Generate AI images from a text prompt.",
+    category: "ai",
+    use: ".gptimage <a futuristic city>",
     filename: __filename,
 }, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        if (!q) return reply(`✨ *AIO Downloader* ✨\n\nUsage: \`${prefix + command} <url>\`\n\nSupport: TikTok, Instagram, Facebook, Twitter, YouTube.`);
+        if (!q) return reply(`✨ *AI Image Generator* ✨\n\nUsage: \`${prefix + command} <your prompt>\`\nExample: \`${prefix + command} a cute cat in space\``);
 
-        // 1. React with loading
-        await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
-
-        // 2. Fetch data from Nexray AIO API
-        const apiUrl = `https://api.nexray.web.id/downloader/aio?url=${encodeURIComponent(q)}`;
+        // 1. Initial Reaction
+        await conn.sendMessage(from, { react: { text: "🎨", key: mek.key } });
         
-        const response = await axios.get(apiUrl);
-        const res = response.data;
+        // 2. Inform the user (Loading)
+        const waitMsg = await reply("⏳ *Generating your vision...* Please wait a moment.");
 
-        // Check if API returned success
-        if (!res || !res.status || !res.result) {
-            return reply("❌ *Error:* Failed to fetch download link. Make sure the URL is valid and public.");
+        // 3. API Request
+        // Endpoint: https://api.nexray.web.id/ai/gptimage?prompt=...
+        const apiUrl = `https://api.nexray.web.id/ai/gptimage?prompt=${encodeURIComponent(q)}`;
+        
+        const response = await axios.get(apiUrl, { 
+            timeout: 60000, // Image generation takes time
+            responseType: 'json' 
+        });
+
+        // 4. Handle Response
+        // Nexray usually returns the direct image link or a result object
+        const imageUrl = response.data.result || response.data.url || response.data.image;
+
+        if (!imageUrl) {
+            return reply("❌ *Error:* The AI server did not return an image. Try a different prompt.");
         }
 
-        const data = res.result;
-        
-        // Extract info (API results vary by platform, so we handle common fields)
-        const title = data.title || "AIO Downloader";
-        const downloadUrl = data.url || data.video || data.mp4 || data.nowatermark;
-        const thumbnail = data.thumbnail || data.thumb;
-
-        if (!downloadUrl) return reply("❌ *Error:* Could not find a downloadable video link.");
-
-        // 3. Send the Media
+        // 5. Send the Image
         await conn.sendMessage(from, {
-            video: { url: downloadUrl },
-            caption: `✅ *Download Successful*\n\n📌 *Title:* ${title}\n🔗 *Source:* ${q}\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`,
+            image: { url: imageUrl },
+            caption: `✨ *AI GENERATED IMAGE* ✨\n\n📝 *Prompt:* ${q}\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`,
             contextInfo: {
                 externalAdReply: {
-                    title: "AIO VIDEO DOWNLOADER",
-                    body: title,
+                    title: "GPT-IMAGE GENERATOR",
+                    body: "Created via Nexray AI",
                     mediaType: 1,
-                    sourceUrl: q,
-                    thumbnailUrl: thumbnail,
+                    sourceUrl: "https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O",
+                    thumbnailUrl: imageUrl,
                     renderLargerThumbnail: true
                 }
             }
@@ -61,8 +61,10 @@ cmd({
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error("AIO Error:", e);
+        console.error("GPTImage Error:", e);
+        let errorMsg = "Failed to generate image.";
+        if (e.code === 'ECONNABORTED') errorMsg = "Server took too long to respond. Try again.";
         await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        reply(`❌ *API Error:* ${e.message || "Failed to process the request."}`);
+        reply(`❌ *Error:* ${errorMsg}`);
     }
 });
