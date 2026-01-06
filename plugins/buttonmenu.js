@@ -1,63 +1,68 @@
+//---------------------------------------------------------------------------
+//           KAMRAN-MD - ALL-IN-ONE (AIO) DOWNLOADER
+//---------------------------------------------------------------------------
+//  🚀 DOWNLOAD FROM FB, IG, TIKTOK, TWITTER, YT VIA NEXRAY API
+//---------------------------------------------------------------------------
+
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// --- SETTINGS ---
-const AI_CONFIG = {
-    base: "https://hoshino-apis.vercel.app",
-    key: "zionjs", // <-- Agar ye key block hai to reply nahi aayega
-    model: "jokowi", 
-    prompt: `Kamu Hoshino AI. Jawablah setiap pertanyaan user dengan sangat singkat dan jelas.`
-};
-
-let autoAiEnabled = true;
-
 cmd({
-    on: "text"
-}, async (conn, mek, m, { from, body, isCmd, sender }) => {
+    pattern: "aio",
+    alias: ["dl", "download", "get"],
+    desc: "Download video from various platforms (FB, IG, TikTok, YT, etc.)",
+    category: "download",
+    use: ".aio <url>",
+    filename: __filename,
+}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        // Validation
-        if (!autoAiEnabled || isCmd || m.key.fromMe || !body) return;
+        if (!q) return reply(`✨ *AIO Downloader* ✨\n\nUsage: \`${prefix + command} <url>\`\n\nSupport: TikTok, Instagram, Facebook, Twitter, YouTube.`);
 
-        // Start Typing
-        await conn.sendPresenceUpdate('composing', from);
+        // 1. React with loading
+        await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
 
-        // 1. Get AI Text Response
-        const aiUrl = `${AI_CONFIG.base}/api/ai?q=${encodeURIComponent(body)}&prompt=${encodeURIComponent(AI_CONFIG.prompt)}`;
-        const aiRes = await axios.get(aiUrl);
+        // 2. Fetch data from Nexray AIO API
+        const apiUrl = `https://api.nexray.web.id/downloader/aio?url=${encodeURIComponent(q)}`;
         
-        if (!aiRes.data || !aiRes.data.status || !aiRes.data.response) return;
-        const aiText = aiRes.data.response;
+        const response = await axios.get(apiUrl);
+        const res = response.data;
 
-        // 2. Try to send Voice Note
-        try {
-            const audioUrl = `${AI_CONFIG.base}/api/elevenlabs?text=${encodeURIComponent(aiText)}&voice=${AI_CONFIG.model}&key=${AI_CONFIG.key}`;
-            
-            await conn.sendPresenceUpdate('recording', from);
-            await conn.sendMessage(from, { 
-                audio: { url: audioUrl }, 
-                mimetype: "audio/mpeg", 
-                ptt: true 
-            }, { quoted: mek });
-
-        } catch (vnError) {
-            // 3. Fallback: Agar Voice API fail ho jaye to Text bhej do
-            console.log("Voice API Failed, sending text instead...");
-            await conn.sendMessage(from, { text: aiText }, { quoted: mek });
+        // Check if API returned success
+        if (!res || !res.status || !res.result) {
+            return reply("❌ *Error:* Failed to fetch download link. Make sure the URL is valid and public.");
         }
 
-    } catch (err) {
-        console.error("AutoAI Error:", err.message);
-    }
-});
+        const data = res.result;
+        
+        // Extract info (API results vary by platform, so we handle common fields)
+        const title = data.title || "AIO Downloader";
+        const downloadUrl = data.url || data.video || data.mp4 || data.nowatermark;
+        const thumbnail = data.thumbnail || data.thumb;
 
-// Command to turn it on/off
-cmd({
-    pattern: "autoai",
-    category: "owner",
-    filename: __filename,
-}, async (conn, mek, m, { from, q, reply, isOwner }) => {
-    if (!isOwner) return reply("❌ Owner only.");
-    if (q === "on") { autoAiEnabled = true; reply("✅ Auto AI ON"); }
-    else if (q === "off") { autoAiEnabled = false; reply("❌ Auto AI OFF"); }
-    else reply(`Status: ${autoAiEnabled ? "ON" : "OFF"}`);
+        if (!downloadUrl) return reply("❌ *Error:* Could not find a downloadable video link.");
+
+        // 3. Send the Media
+        await conn.sendMessage(from, {
+            video: { url: downloadUrl },
+            caption: `✅ *Download Successful*\n\n📌 *Title:* ${title}\n🔗 *Source:* ${q}\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`,
+            contextInfo: {
+                externalAdReply: {
+                    title: "AIO VIDEO DOWNLOADER",
+                    body: title,
+                    mediaType: 1,
+                    sourceUrl: q,
+                    thumbnailUrl: thumbnail,
+                    renderLargerThumbnail: true
+                }
+            }
+        }, { quoted: mek });
+
+        // Final Success Reaction
+        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+
+    } catch (e) {
+        console.error("AIO Error:", e);
+        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+        reply(`❌ *API Error:* ${e.message || "Failed to process the request."}`);
+    }
 });
