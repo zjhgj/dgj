@@ -1,86 +1,90 @@
+//---------------------------------------------------------------------------
+//           KAMRAN-MD - AUTO AI VOICE NOTE (PTT)
+//---------------------------------------------------------------------------
+//  🚀 AUTOMATICALLY RESPOND TO TEXT WITH AI VOICE (JOKOWI/MIKU/ETC)
+//---------------------------------------------------------------------------
+
 const { cmd } = require('../command');
-const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
-const FormData = require('form-data');
-const crypto = require('crypto');
+
+// --- SETTINGS ---
+const AI_CONFIG = {
+    base: "https://hoshino-apis.vercel.app",
+    key: "zionjs",
+    model: "jokowi", // Available: jokowi, bella, prabowo, miku
+    prompt: `✨ kamu Hoshino AI, sistem auto-intelligent assistant. 
+    TUGASKU: - Pahami maksud user. - Jawab cepat, rapi, tanpa ribet. 
+    - Bisa coding, rewrite, analisa, dan lainnya. - Selalu jawab santai tapi jelas. 
+    Gaya bicara: casual profesional, friendly, gak kaku. Selalu jawab langsung inti.`
+};
+
+// Toggle for Auto AI (Set to true to enable global auto-response)
+let autoAiEnabled = true; 
 
 /**
- * Helper: Upload to Catbox
+ * Main Auto AI Function
+ * This logic handles non-command messages
  */
-async function CatBox(filePath) {
-    try {
-        const bodyForm = new FormData();
-        bodyForm.append("fileToUpload", fs.createReadStream(filePath));
-        bodyForm.append("reqtype", "fileupload");
-        
-        const { data } = await axios.post("https://catbox.moe/user/api.php", bodyForm, {
-            headers: bodyForm.getHeaders(),
-        });
-        return data; 
-    } catch (err) {
-        throw new Error("Cloud Upload Failed");
-    }
-}
-
 cmd({
-    pattern: "tobugil",
-    alias: ["bugil"],
-    desc: "AI Image processing (Fixed Download).",
-    category: "ai",
-    use: ".tobugil (reply to image)",
-    filename: __filename,
-}, async (conn, mek, m, { from, reply, prefix, command }) => {
-    let tempPath = null;
+    on: "text" // This listens to every text message
+}, async (conn, mek, m, { from, body, isCmd, isGroup, sender }) => {
     try {
-        const q = m.quoted ? m.quoted : m;
-        const mime = (q.msg || q).mimetype || q.mediaType || '';
+        // ❌ Guard Clauses
+        if (!autoAiEnabled) return;
+        if (isCmd) return; // Skip if it's a bot command
+        if (m.key.fromMe) return; // Skip if message is from the bot itself
+        if (!body || body.length < 2) return; // Skip very short messages or empty ones
 
-        if (!/image/.test(mime)) {
-            return reply(`📸 Mana fotonya? Silakan balas gambar dengan perintah \`${prefix + command}\``);
-        }
+        // 1️⃣ REQUEST TO AI (Gemini/Hoshino)
+        const aiUrl = `${AI_CONFIG.base}/api/ai?q=${encodeURIComponent(body)}&prompt=${encodeURIComponent(AI_CONFIG.prompt)}`;
+        
+        const aiRes = await axios.get(aiUrl);
+        if (!aiRes.data || !aiRes.data.status) return;
 
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        const aiMessage = aiRes.data.response;
+        if (!aiMessage) return;
 
-        // --- MANUAL DOWNLOAD LOGIC (Bypass broken helper) ---
-        const messageType = mime.split('/')[0];
-        const stream = await downloadContentFromMessage(q.msg || q, messageType);
-        let buffer = Buffer.from([]);
-        for await (const chunk of stream) {
-            buffer = Buffer.concat([buffer, chunk]);
-        }
+        // 2️⃣ TEXT → VOICE (ElevenLabs via Hoshino API)
+        const audioUrl = `${AI_CONFIG.base}/api/elevenlabs` + 
+                         `?text=${encodeURIComponent(aiMessage)}` + 
+                         `&voice=${AI_CONFIG.model}` + 
+                         `&pitch=0&speed=0.9` + 
+                         `&key=${AI_CONFIG.key}`;
 
-        // Save to a temp file
-        const filename = `${crypto.randomBytes(6).toString('hex')}.jpg`;
-        tempPath = path.join(__dirname, `../${filename}`);
-        fs.writeFileSync(tempPath, buffer);
+        // 3️⃣ SEND AS VOICE NOTE (PTT)
+        await conn.sendMessage(
+            from,
+            { 
+                audio: { url: audioUrl }, 
+                mimetype: "audio/mpeg", 
+                ptt: true 
+            }, 
+            { quoted: mek }
+        );
 
-        // --- UPLOAD & API CALL ---
-        const directLink = await CatBox(tempPath);
+    } catch (err) {
+        // Silent error to prevent console spam during auto-chat
+        console.error("AutoAI VN Error:", err.message);
+    }
+});
 
-        const response = await axios.get(`https://api.baguss.xyz/api/edits/tobugil?image=${encodeURIComponent(directLink)}`, {
-            timeout: 60000 
-        });
-
-        const result = response.data.url;
-
-        if (!result) return reply("❌ API server error. Try again later.");
-
-        await conn.sendMessage(from, {
-            image: { url: result },
-            caption: "✅ *Processed Successfully.*",
-        }, { quoted: mek });
-
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-
-    } catch (e) {
-        console.error("Critical Error:", e);
-        reply(`❌ *System Error:* ${e.message}`);
-    } finally {
-        // Cleanup temp file
-        if (tempPath && fs.existsSync(tempPath)) {
-            fs.unlinkSync(tempPath);
-        }
+// --- TOGGLE COMMAND ---
+cmd({
+    pattern: "autoai",
+    desc: "Enable/Disable Auto AI Voice response",
+    category: "owner",
+    use: ".autoai on/off",
+    filename: __filename,
+}, async (conn, mek, m, { from, q, reply, isOwner }) => {
+    if (!isOwner) return reply("❌ Owner only.");
+    
+    if (q === "on") {
+        autoAiEnabled = true;
+        reply("✅ Auto AI Voice Note has been enabled.");
+    } else if (q === "off") {
+        autoAiEnabled = false;
+        reply("❌ Auto AI Voice Note has been disabled.");
+    } else {
+        reply(`Current status: *${autoAiEnabled ? "ON" : "OFF"}*\nUse \`.autoai on\` or \`.autoai off\``);
     }
 });
