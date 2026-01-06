@@ -1,39 +1,38 @@
 const { cmd } = require('../command');
+const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const axios = require('axios');
 const fs = require('fs');
+const path = require('path');
 const FormData = require('form-data');
+const crypto = require('crypto');
 
 /**
  * Helper: Upload to Catbox
  */
-async function CatBox(path) {
+async function CatBox(filePath) {
     try {
-        if (!fs.existsSync(path)) throw new Error("File not found for upload.");
-        
         const bodyForm = new FormData();
-        bodyForm.append("fileToUpload", fs.createReadStream(path));
+        bodyForm.append("fileToUpload", fs.createReadStream(filePath));
         bodyForm.append("reqtype", "fileupload");
         
         const { data } = await axios.post("https://catbox.moe/user/api.php", bodyForm, {
             headers: bodyForm.getHeaders(),
-            timeout: 30000 // 30 seconds timeout
         });
         return data; 
     } catch (err) {
-        console.error("Catbox Error:", err.message);
-        throw new Error("Failed to upload image to cloud.");
+        throw new Error("Cloud Upload Failed");
     }
 }
 
 cmd({
     pattern: "tobugil",
     alias: ["bugil"],
-    desc: "AI Image processing.",
+    desc: "AI Image processing (Fixed Download).",
     category: "ai",
     use: ".tobugil (reply to image)",
     filename: __filename,
 }, async (conn, mek, m, { from, reply, prefix, command }) => {
-    let mediaPath = null;
+    let tempPath = null;
     try {
         const q = m.quoted ? m.quoted : m;
         const mime = (q.msg || q).mimetype || q.mediaType || '';
@@ -44,48 +43,44 @@ cmd({
 
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // Download Media safely
-        mediaPath = await conn.downloadAndSaveMediaMessage(q);
+        // --- MANUAL DOWNLOAD LOGIC (Bypass broken helper) ---
+        const messageType = mime.split('/')[0];
+        const stream = await downloadContentFromMessage(q.msg || q, messageType);
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk]);
+        }
 
-        // Upload to Catbox
-        const directLink = await CatBox(mediaPath);
+        // Save to a temp file
+        const filename = `${crypto.randomBytes(6).toString('hex')}.jpg`;
+        tempPath = path.join(__dirname, `../${filename}`);
+        fs.writeFileSync(tempPath, buffer);
 
-        // Fetch from API
-        const apiUrl = `https://api.baguss.xyz/api/edits/tobugil?image=${encodeURIComponent(directLink)}`;
-        const response = await axios.get(apiUrl, { timeout: 60000 }); // Longer timeout for AI processing
-        
+        // --- UPLOAD & API CALL ---
+        const directLink = await CatBox(tempPath);
+
+        const response = await axios.get(`https://api.baguss.xyz/api/edits/tobugil?image=${encodeURIComponent(directLink)}`, {
+            timeout: 60000 
+        });
+
         const result = response.data.url;
 
-        if (!result) {
-            return reply("❌ API did not return a valid result. The server might be processing slowly or is down.");
-        }
+        if (!result) return reply("❌ API server error. Try again later.");
 
         await conn.sendMessage(from, {
             image: { url: result },
             caption: "✅ *Processed Successfully.*",
-            contextInfo: {
-                externalAdReply: {
-                    title: "AI PHOTO EDITOR",
-                    body: "KAMRAN-MD SYSTEM",
-                    mediaType: 1,
-                    sourceUrl: "https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O",
-                    thumbnailUrl: result,
-                    renderLargerThumbnail: true
-                }
-            }
         }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error("Plugin Error:", e);
-        let errorMsg = e.message;
-        if (e.response) errorMsg = `Server Error (${e.response.status})`;
-        reply(`❌ *Error:* ${errorMsg}`);
+        console.error("Critical Error:", e);
+        reply(`❌ *System Error:* ${e.message}`);
     } finally {
-        // Safe Cleanup
-        if (mediaPath && fs.existsSync(mediaPath)) {
-            fs.unlinkSync(mediaPath);
+        // Cleanup temp file
+        if (tempPath && fs.existsSync(tempPath)) {
+            fs.unlinkSync(tempPath);
         }
     }
 });
