@@ -1,41 +1,55 @@
-//---------------------------------------------------------------------------
-//           KAMRAN-MD - RIMURU STYLISH BUTTON MENU
-//---------------------------------------------------------------------------
-
-const { cmd } = require('../command');
-const moment = require('moment-timezone');
+const { cmd } = require('../command')
+const fs = require('fs')
+const path = require('path')
+const moment = require('moment-timezone')
 
 cmd({
     pattern: "menu3",
     alias: ["murumenu", "help"],
-    desc: "Main menu for Rimuru with buttons",
+    desc: "Main menu for Rimuru",
     category: "main",
     filename: __filename
-}, async (conn, mek, m, { from, sender, pushname, reply }) => {
+}, async (conn, mek, m, { from, reply, pushname }) => {
     try {
-        // 1️⃣ React loading ⏳
-        await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
+        let name = pushname || "User"
 
-        // 2️⃣ Auto greeting (PKT Timezone)
-        let hour = moment.tz('Asia/Karachi').hour();
-        let greeting = 'Good night';
-        if (hour >= 4 && hour < 11) greeting = 'Good morning';
-        else if (hour >= 11 && hour < 15) greeting = 'Good afternoon';
-        else if (hour >= 15 && hour < 18) greeting = 'Good evening';
+        // 1️⃣ React loading ⏳
+        await conn.sendMessage(from, {
+            react: { text: '⏳', key: mek.key }
+        })
+
+        // 2️⃣ Auto greeting WIB
+        let hour = moment.tz('Asia/Jakarta').hour()
+        let greeting = 'Selamat malam'
+        if (hour >= 4 && hour < 11) greeting = 'Selamat pagi'
+        else if (hour >= 11 && hour < 15) greeting = 'Selamat siang'
+        else if (hour >= 15 && hour < 18) greeting = 'Selamat sore'
 
         let caption = `
-${greeting}, *${pushname || 'User'}!*
+${greeting}, *${name}!*
 Hello I'm *Rimuru*, here is my information:
 
 ┏━━  *RIMURU INFO* ━━━━━━┓
-┃ *✲ Bot name:* DRKAMRAN
-┃ *彡 Developer:* Kamran & Ryuhan
-┃ *❖ Version:* KAMRAN-MD
-┃ *✾ Type:* Hybrid Plugin
+┃ *✲ Bot name:* Rimuru
+┃ *彡 Developer:* Ryuhan
+┃ *❖ Baileys:* @ryuhan/baileys
+┃ *✾ Type:* Plugins CJS
 ┗━━━━━━━━━━━━━━━━━━━┛
 
-Please select a category from the buttons below.
-`.trim();
+Silakan pilih menu di bawah
+atau ketik perintah langsung.
+`.trim()
+
+        // Handle images (pastikan folder img dan filenya ada di bot kamu)
+        let thumb1, thumb2
+        try {
+            thumb1 = fs.readFileSync('./img/thumbnail.jpg')
+            thumb2 = fs.readFileSync('./img/thumbnail2.jpg')
+        } catch (e) {
+            // Fallback jika file tidak ditemukan agar bot tidak crash
+            thumb1 = { url: 'https://i.pinimg.com/736x/8e/f4/63/8ef46399c585227d826227c95e99f0b1.jpg' }
+            thumb2 = { url: 'https://i.pinimg.com/736x/8e/f4/63/8ef46399c585227d826227c95e99f0b1.jpg' }
+        }
 
         // 3️⃣ Fake verified vCard
         const verifiedVcard = `
@@ -45,8 +59,9 @@ N:Rimuru;Verified;;;
 FN:Rimuru Verified
 ORG:RIMURU AI SYSTEM
 TITLE:Tensura Interactive
-TEL;waid=923154475891:+92 315-4475-891
-END:VCARD`.trim();
+TEL;waid=6285279522326:+62 852-7952-2326
+END:VCARD
+`.trim()
 
         const fakeVerifiedQuote = {
             key: {
@@ -61,41 +76,44 @@ END:VCARD`.trim();
                     vcard: verifiedVcard
                 }
             }
-        };
+        }
 
-        // 4️⃣ Button Construction
-        const buttons = [
-            { buttonId: '.allmenu', buttonText: { displayText: '📜 ALL MENU' }, type: 1 },
-            { buttonId: '.owner', buttonText: { displayText: '👤 OWNER' }, type: 1 },
-            { buttonId: '.ping', buttonText: { displayText: '⚡ PING' }, type: 1 }
-        ];
-
-        // 5️⃣ Send Menu with Buttons
-        await conn.sendMessage(from, {
-            image: { url: "https://i.pinimg.com/736x/8e/f4/63/8ef46399c585227d826227c95e99f0b1.jpg" },
-            caption: caption,
-            footer: 'KAMRAN - MD',
-            buttons: buttons,
-            headerType: 4,
-            contextInfo: {
-                isForwarded: true,
-                forwardingScore: 999,
-                externalAdReply: {
-                    title: 'Rimuru Tempest AI',
-                    body: 'Interactive KAMRAN Menu',
-                    mediaType: 1,
-                    sourceUrl: 'https://github.com/Kamran-MD',
-                    thumbnailUrl: "https://i.pinimg.com/736x/8e/f4/63/8ef46399c585227d826227c95e99f0b1.jpg",
-                    renderLargerThumbnail: true
+        // 4️⃣ Kirim menu dengan buttons
+        await conn.sendMessage(
+            from,
+            {
+                image: thumb1,
+                caption,
+                footer: 'RIMURU - MD',
+                buttons: [
+                    { buttonId: '.allmenu', buttonText: { displayText: 'ıllı All Menu' }, type: 1 },
+                    { buttonId: '.owner', buttonText: { displayText: '⏏ Owner' }, type: 1 },
+                    { buttonId: '.ping', buttonText: { displayText: '⌗ Ping' }, type: 1 }
+                ],
+                headerType: 4,
+                contextInfo: {
+                    isForwarded: true,
+                    forwardingScore: 999,
+                    externalAdReply: {
+                        title: 'Rimuru Tempest',
+                        body: 'Tensura Interactive',
+                        thumbnail: thumb2,
+                        sourceUrl: 'https://github.com/ryuhandev',
+                        mediaType: 1,
+                        renderLargerThumbnail: true
+                    }
                 }
-            }
-        }, { quoted: fakeVerifiedQuote });
+            },
+            { quoted: fakeVerifiedQuote }
+        )
 
-        // 6️⃣ React finished 💧
-        await conn.sendMessage(from, { react: { text: '💧', key: mek.key } });
+        // 5️⃣ React selesai 💧
+        await conn.sendMessage(from, {
+            react: { text: '💧', key: mek.key }
+        })
 
     } catch (e) {
-        console.error("Button Menu Error:", e);
-        reply("❌ Button menu feature might be restricted on your WhatsApp version.");
+        console.log(e)
+        reply("Error: " + e.message)
     }
-});
+})
