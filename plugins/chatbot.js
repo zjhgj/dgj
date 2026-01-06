@@ -55,7 +55,7 @@ cmd({ on: "body" }, async (client, message, chat, { from, body, isGroup, isCmd }
 // === Chatbot Toggle Command ===
 cmd({
   pattern: "chatbot",
-  alias: ["autoai", "aichat"],
+  alias: ["autoi", "aichat"],
   desc: "Toggle Auto AI Chatbot feature",
   category: "owner",
   react: "🤖",
