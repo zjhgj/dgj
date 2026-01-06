@@ -1,64 +1,95 @@
-//---------------------------------------------------------------------------
-//           KAMRAN-MD - TIKTOK PHOTO SEARCH / DOWNLOADER
-//---------------------------------------------------------------------------
-//  🚀 FETCH ALL IMAGES FROM A TIKTOK PHOTO SLIDE POST
-//---------------------------------------------------------------------------
-
 const { cmd } = require('../command');
+const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const FormData = require('form-data');
+const crypto = require('crypto');
+
+/**
+ * Helper: Upload to Catbox
+ * Guaranteed to take a string path
+ */
+async function CatBox(filePath) {
+    try {
+        if (typeof filePath !== 'string') throw new Error("Invalid file path type");
+        
+        const bodyForm = new FormData();
+        bodyForm.append("fileToUpload", fs.createReadStream(filePath));
+        bodyForm.append("reqtype", "fileupload");
+        
+        const { data } = await axios.post("https://catbox.moe/user/api.php", bodyForm, {
+            headers: bodyForm.getHeaders(),
+        });
+        return data; 
+    } catch (err) {
+        throw new Error("Cloud Upload Failed: " + err.message);
+    }
+}
 
 cmd({
-    pattern: "tiktokphoto",
-    alias: ["ttphoto", "tkphoto", "ttimg"],
-    desc: "Search and download TikTok photo slide images.",
-    category: "search",
-    use: ".tiktokphoto <url or query>",
+    pattern: "tobugil",
+    alias: ["bugil"],
+    desc: "AI Image processing (Path Error Fixed).",
+    category: "ai",
+    use: ".tobugil (reply to image)",
     filename: __filename,
-}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
+}, async (conn, mek, m, { from, reply, prefix, command }) => {
+    let tempPath = null;
     try {
-        if (!q) return reply(`✨ *TikTok Photo Search* ✨\n\nUsage: \`${prefix + command} <tiktok_url>\`\nExample: \`${prefix + command} https://vt.tiktok.com/ZS.../\``);
+        const q = m.quoted ? m.quoted : m;
+        const mime = (q.msg || q).mimetype || q.mediaType || '';
 
-        // 1. Loading Reaction
-        await conn.sendMessage(from, { react: { text: "📸", key: mek.key } });
+        if (!/image/.test(mime)) {
+            return reply(`📸 Mana fotonya? Silakan balas gambar dengan perintah \`${prefix + command}\``);
+        }
+
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+
+        // --- MANUAL STREAM DOWNLOAD (Prevents Object Error) ---
+        const message = q.msg || q;
+        const stream = await downloadContentFromMessage(message, 'image');
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk]);
+        }
+
+        // --- CREATE GUARANTEED STRING PATH ---
+        const fileName = `ai_tmp_${crypto.randomBytes(4).toString('hex')}.jpg`;
+        tempPath = path.join(__dirname, '..', fileName); // Path relative to root folder
         
-        // 2. Fetch Data from Nexray API
-        const apiUrl = `https://api.nexray.web.id/search/tiktokphoto?q=${encodeURIComponent(q)}`;
-        const response = await axios.get(apiUrl);
-        const res = response.data;
+        // Write the buffer to a real file path
+        fs.writeFileSync(tempPath, buffer);
 
-        if (!res || !res.status || !res.result) {
-            return reply("❌ *Error:* Could not find any photos for this link. Make sure it is a TikTok 'Photo Mode' post.");
-        }
+        // --- UPLOAD ---
+        const directLink = await CatBox(tempPath);
 
-        const photos = res.result.photos || res.result; // Handle different API response styles
-        const title = res.result.title || "TikTok Photo Slide";
+        // --- API CALL ---
+        const apiUrl = `https://api.baguss.xyz/api/edits/tobugil?image=${encodeURIComponent(directLink)}`;
+        const response = await axios.get(apiUrl, { timeout: 90000 });
 
-        if (!Array.isArray(photos) || photos.length === 0) {
-            return reply("❌ *Error:* No images found in this post.");
-        }
+        const result = response.data.url;
 
-        // 3. Inform User
-        reply(`✅ *Found ${photos.length} images!* Sending them now...`);
+        if (!result) return reply("❌ API failed to process. Try a clearer image.");
 
-        // 4. Send all images found in the slide
-        for (let i = 0; i < photos.length; i++) {
-            const imageUrl = photos[i];
-            
-            await conn.sendMessage(from, {
-                image: { url: imageUrl },
-                caption: `🖼️ *Image [${i + 1}/${photos.length}]*\n📌 *Post:* ${title}\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`
-            }, { quoted: mek });
-            
-            // Small delay to avoid spamming too fast and getting banned/rate-limited
-            if (photos.length > 5) await new Promise(resolve => setTimeout(resolve, 1000));
-        }
+        await conn.sendMessage(from, {
+            image: { url: result },
+            caption: "✅ *Processed Successfully.*",
+        }, { quoted: mek });
 
-        // Final Success Reaction
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error("TikTok Photo Error:", e);
-        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        reply(`❌ *Error:* ${e.message || "Failed to fetch TikTok images."}`);
+        console.error("Critical Bugil Error:", e);
+        reply(`❌ *System Error:* ${e.message}`);
+    } finally {
+        // Safe Cleanup: Delete the temp file if it exists
+        if (tempPath && typeof tempPath === 'string' && fs.existsSync(tempPath)) {
+            try {
+                fs.unlinkSync(tempPath);
+            } catch (cleanupErr) {
+                console.error("Cleanup Failed:", cleanupErr);
+            }
+        }
     }
 });
