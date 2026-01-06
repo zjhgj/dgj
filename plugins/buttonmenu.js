@@ -1,7 +1,5 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - AUTO AI VOICE NOTE (PTT)
-//---------------------------------------------------------------------------
-//  🚀 AUTOMATICALLY RESPOND TO TEXT WITH AI VOICE (JOKOWI/MIKU/ETC)
+//           KAMRAN-MD - IMPROVED AUTO AI VOICE NOTE
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
@@ -11,47 +9,48 @@ const axios = require('axios');
 const AI_CONFIG = {
     base: "https://hoshino-apis.vercel.app",
     key: "zionjs",
-    model: "jokowi", // Available: jokowi, bella, prabowo, miku
-    prompt: `✨ kamu Hoshino AI, sistem auto-intelligent assistant. 
-    TUGASKU: - Pahami maksud user. - Jawab cepat, rapi, tanpa ribet. 
-    - Bisa coding, rewrite, analisa, dan lainnya. - Selalu jawab santai tapi jelas. 
-    Gaya bicara: casual profesional, friendly, gak kaku. Selalu jawab langsung inti.`
+    model: "jokowi", 
+    prompt: `Kamu Hoshino AI, assistant yang cerdas. Jawab dengan santai, singkat, padat, dan jelas. Langsung ke inti jawaban.`
 };
 
-// Toggle for Auto AI (Set to true to enable global auto-response)
-let autoAiEnabled = true; 
+// Global toggle
+let autoAiEnabled = true;
 
-/**
- * Main Auto AI Function
- * This logic handles non-command messages
- */
 cmd({
-    on: "text" // This listens to every text message
-}, async (conn, mek, m, { from, body, isCmd, isGroup, sender }) => {
+    on: "text"
+}, async (conn, mek, m, { from, body, isCmd, isGroup, sender, pushname }) => {
     try {
-        // ❌ Guard Clauses
+        // 1. Validation logic
         if (!autoAiEnabled) return;
-        if (isCmd) return; // Skip if it's a bot command
-        if (m.key.fromMe) return; // Skip if message is from the bot itself
-        if (!body || body.length < 2) return; // Skip very short messages or empty ones
+        if (isCmd) return; 
+        if (m.key.fromMe) return;
+        if (!body || body.length < 1) return;
 
-        // 1️⃣ REQUEST TO AI (Gemini/Hoshino)
+        // 2. Add "Typing" status so user knows bot is thinking
+        await conn.sendPresenceUpdate('composing', from);
+
+        // 3. Get AI Response
         const aiUrl = `${AI_CONFIG.base}/api/ai?q=${encodeURIComponent(body)}&prompt=${encodeURIComponent(AI_CONFIG.prompt)}`;
         
-        const aiRes = await axios.get(aiUrl);
-        if (!aiRes.data || !aiRes.data.status) return;
+        const aiRes = await axios.get(aiUrl, { timeout: 20000 });
+        
+        if (!aiRes.data || !aiRes.data.status || !aiRes.data.response) {
+            // If AI fails, we stop here silently
+            return;
+        }
 
-        const aiMessage = aiRes.data.response;
-        if (!aiMessage) return;
+        const aiText = aiRes.data.response;
 
-        // 2️⃣ TEXT → VOICE (ElevenLabs via Hoshino API)
+        // 4. Generate Audio (Voice Note)
         const audioUrl = `${AI_CONFIG.base}/api/elevenlabs` + 
-                         `?text=${encodeURIComponent(aiMessage)}` + 
+                         `?text=${encodeURIComponent(aiText)}` + 
                          `&voice=${AI_CONFIG.model}` + 
                          `&pitch=0&speed=0.9` + 
                          `&key=${AI_CONFIG.key}`;
 
-        // 3️⃣ SEND AS VOICE NOTE (PTT)
+        // 5. Send as Recording (VN)
+        await conn.sendPresenceUpdate('recording', from);
+        
         await conn.sendMessage(
             from,
             { 
@@ -63,28 +62,26 @@ cmd({
         );
 
     } catch (err) {
-        // Silent error to prevent console spam during auto-chat
-        console.error("AutoAI VN Error:", err.message);
+        console.error("AutoAI Error:", err.message);
     }
 });
 
 // --- TOGGLE COMMAND ---
 cmd({
     pattern: "autoai",
-    desc: "Enable/Disable Auto AI Voice response",
+    desc: "Turn Auto AI VN On/Off",
     category: "owner",
-    use: ".autoai on/off",
     filename: __filename,
 }, async (conn, mek, m, { from, q, reply, isOwner }) => {
-    if (!isOwner) return reply("❌ Owner only.");
+    if (!isOwner) return reply("❌ Only Owner can use this.");
     
     if (q === "on") {
         autoAiEnabled = true;
-        reply("✅ Auto AI Voice Note has been enabled.");
+        reply("✅ Auto AI Voice enabled.");
     } else if (q === "off") {
         autoAiEnabled = false;
-        reply("❌ Auto AI Voice Note has been disabled.");
+        reply("❌ Auto AI Voice disabled.");
     } else {
-        reply(`Current status: *${autoAiEnabled ? "ON" : "OFF"}*\nUse \`.autoai on\` or \`.autoai off\``);
+        reply(`Status: *${autoAiEnabled ? "ON" : "OFF"}*\nUse \`.autoai on\` or \`.autoai off\``);
     }
 });
