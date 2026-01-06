@@ -1,111 +1,117 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - AI PHOTO EDIT (TOBUGIL)
+//           KAMRAN-MD - AMOYSHEAR AIO DOWNLOADER
+//---------------------------------------------------------------------------
+//  🚀 DOWNLOAD FROM FB, IG, TIKTOK, YT, ETC.
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
-const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
-const FormData = require('form-data');
 const crypto = require('crypto');
 
-/**
- * Built-in Catbox Uploader
- * Ensures we have a string path and valid upload
- */
-async function CatBox(filePath) {
-    try {
-        const bodyForm = new FormData();
-        bodyForm.append("fileToUpload", fs.createReadStream(filePath));
-        bodyForm.append("reqtype", "fileupload");
+// --- AMOYSHEAR CORE LOGIC ---
+const amoyshare = {
+    generateHeader: () => {
+        const date = new Date();
+        const yyyy = date.getFullYear();
+        let mm = date.getMonth() + 1;
+        let dd = date.getDate();
+
+        mm = mm > 9 ? mm : "0" + mm;
+        dd = dd > 9 ? dd : "0" + dd;
+
+        const dateStr = `${yyyy}${mm}${dd}`;
+        const constant = "786638952";
+
+        const randomVal = 1000 + Math.round(8999 * Math.random());
+        const key = `${dateStr}${constant}${randomVal}`;
+        const hashInput = `${dateStr}${randomVal}${constant}`;
         
-        const { data } = await axios.post("https://catbox.moe/user/api.php", bodyForm, {
-            headers: bodyForm.getHeaders(),
+        const signature = crypto.createHash('md5')
+            .update(hashInput)
+            .digest('hex');
+
+        return `${key}-${signature}`;
+    },
+
+    request: async (url, params = {}) => {
+        const dynamicHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Referer': 'https://www.amoyshare.com/',
+            'Origin': 'https://www.amoyshare.com',
+            'amoyshare': amoyshare.generateHeader()
+        };
+
+        const response = await axios.get(url, {
+            params: params,
+            headers: dynamicHeaders
         });
-        return data; // Returns the direct link string
-    } catch (err) {
-        throw new Error("Cloud Upload Failed: " + err.message);
+
+        return response.data;
     }
-}
+};
 
 cmd({
-    pattern: "tobugil",
-    alias: ["bugil"],
-    desc: "AI Image processing (Fixed & Stable).",
-    category: "ai",
-    use: ".tobugil (reply to image)",
+    pattern: "amoyshare",
+    alias: ["adl", "amoy"],
+    desc: "Download videos using AmoyShare AIO platform.",
+    category: "download",
+    use: ".amoyshare <url>",
     filename: __filename,
-}, async (conn, mek, m, { from, reply, isPremium, prefix, command }) => {
-    let tempPath = null;
+}, async (conn, mek, m, { from, q, reply, react }) => {
     try {
-        // 1. Check Premium
-        if (!isPremium) return reply("❌ This command is for Premium users only.");
+        if (!q) return reply("❌ Please provide a video URL (FB, IG, YT, etc.)");
 
-        const q = m.quoted ? m.quoted : m;
-        const mime = (q.msg || q).mimetype || q.mediaType || '';
+        await react("📥");
 
-        // 2. Validate Image
-        if (!/image/.test(mime)) {
-            return reply(`📸 Mana fotonya? Balas gambar dengan perintah \`${prefix + command}\``);
+        // Request URL parsing
+        const parseUrl = 'https://line.1010diy.com/web/free-mp3-finder/urlParse';
+        const data = await amoyshare.request(parseUrl, {
+            url: q,
+            phonydata: 'false'
+        });
+
+        if (!data || !data.data || !data.data.list || data.data.list.length === 0) {
+            return reply("❌ *Error:* Could not fetch download links. The video might be private or unsupported.");
         }
 
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        const videoInfo = data.data;
+        const bestQuality = videoInfo.list.filter(v => v.type === 'video').sort((a, b) => parseInt(b.quality) - parseInt(a.quality))[0];
+        
+        if (!bestQuality) return reply("❌ No downloadable video found.");
 
-        // 3. Manual Download (Bypasses the "FileType.fromBuffer" error)
-        const message = q.msg || q;
-        const stream = await downloadContentFromMessage(message, 'image');
-        let buffer = Buffer.from([]);
-        for await (const chunk of stream) {
-            buffer = Buffer.concat([buffer, chunk]);
-        }
+        const caption = `
+✅ *AIO Download Success*
 
-        // 4. Save to a guaranteed string path
-        const fileName = `ai_${crypto.randomBytes(5).toString('hex')}.jpg`;
-        tempPath = path.join(__dirname, '..', fileName); 
-        fs.writeFileSync(tempPath, buffer);
+📌 *Title:* ${videoInfo.title || "AmoyShare Video"}
+🎬 *Quality:* ${bestQuality.quality || "Default"}
+🔗 *Source:* ${q}
 
-        // 5. Upload to Catbox
-        const directLink = await CatBox(tempPath);
+> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ
+`.trim();
 
-        // 6. Request API
-        const apiUrl = `https://api.baguss.xyz/api/edits/tobugil?image=${encodeURIComponent(directLink)}`;
-        const response = await axios.get(apiUrl, { timeout: 90000 });
-
-        if (!response.data || !response.data.url) {
-            throw new Error("Gagal mendapatkan hasil dari API");
-        }
-
-        const resultUrl = response.data.url;
-
-        // 7. Send Final Message
+        // Send Video
         await conn.sendMessage(from, {
-            image: { url: resultUrl },
-            caption: "✅ *Done.*",
+            video: { url: bestQuality.url },
+            caption: caption,
             contextInfo: {
                 externalAdReply: {
-                    title: "AI PHOTO EDITOR",
-                    body: "KAMRAN-MD SYSTEM",
+                    title: "AMOYSHEAR DOWNLOADER",
+                    body: videoInfo.title,
                     mediaType: 1,
-                    sourceUrl: "https://catbox.moe",
-                    thumbnailUrl: resultUrl,
+                    sourceUrl: q,
+                    thumbnailUrl: videoInfo.thumbnail,
                     renderLargerThumbnail: true
                 }
             }
         }, { quoted: mek });
 
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        await react("✅");
 
-    } catch (err) {
-        console.error(err);
-        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        reply(`❌ Terjadi kesalahan saat memproses gambar, coba lagi nanti.\n\n*Error:* ${err.message || err}`);
-    } finally {
-        // Cleanup local file
-        if (tempPath && fs.existsSync(tempPath)) {
-            try {
-                fs.unlinkSync(tempPath);
-            } catch (e) {}
-        }
+    } catch (e) {
+        console.error("AmoyShare Error:", e);
+        await react("❌");
+        reply(`❌ *Error:* ${e.message || "Failed to process the request."}`);
     }
 });
