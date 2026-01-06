@@ -1,67 +1,64 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - GPT IMAGE GENERATOR (FIXED)
+//           KAMRAN-MD - TIKTOK PHOTO SEARCH / DOWNLOADER
+//---------------------------------------------------------------------------
+//  🚀 FETCH ALL IMAGES FROM A TIKTOK PHOTO SLIDE POST
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
 
 cmd({
-    pattern: "gptimage",
-    alias: ["genimage", "aiimage"],
-    desc: "Generate AI images from a text prompt.",
-    category: "ai",
-    use: ".gptimage <prompt>",
+    pattern: "tiktokphoto",
+    alias: ["ttphoto", "tkphoto", "ttimg"],
+    desc: "Search and download TikTok photo slide images.",
+    category: "search",
+    use: ".tiktokphoto <url or query>",
     filename: __filename,
 }, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        if (!q) return reply(`✨ *AI Image Generator* ✨\n\nUsage: \`${prefix + command} <prompt>\``);
+        if (!q) return reply(`✨ *TikTok Photo Search* ✨\n\nUsage: \`${prefix + command} <tiktok_url>\`\nExample: \`${prefix + command} https://vt.tiktok.com/ZS.../\``);
 
-        await conn.sendMessage(from, { react: { text: "🎨", key: mek.key } });
-        await reply("⏳ *Processing your AI Image...* This can take up to 30-60 seconds.");
-
-        const apiUrl = `https://api.nexray.web.id/ai/gptimage?prompt=${encodeURIComponent(q)}`;
+        // 1. Loading Reaction
+        await conn.sendMessage(from, { react: { text: "📸", key: mek.key } });
         
-        // Increased timeout to 2 minutes (120000ms) for slow AI generation
-        const response = await axios.get(apiUrl, { 
-            timeout: 120000 
-        });
+        // 2. Fetch Data from Nexray API
+        const apiUrl = `https://api.nexray.web.id/search/tiktokphoto?q=${encodeURIComponent(q)}`;
+        const response = await axios.get(apiUrl);
+        const res = response.data;
 
-        // Robust data parsing to find the URL
-        let imageUrl = null;
-        if (typeof response.data === 'string' && response.data.startsWith('http')) {
-            imageUrl = response.data;
-        } else if (response.data) {
-            imageUrl = response.data.result || response.data.url || response.data.image || response.data.data;
+        if (!res || !res.status || !res.result) {
+            return reply("❌ *Error:* Could not find any photos for this link. Make sure it is a TikTok 'Photo Mode' post.");
         }
 
-        if (!imageUrl) {
-            return reply("❌ *API Error:* The server responded but didn't provide an image link. Try a simpler prompt.");
+        const photos = res.result.photos || res.result; // Handle different API response styles
+        const title = res.result.title || "TikTok Photo Slide";
+
+        if (!Array.isArray(photos) || photos.length === 0) {
+            return reply("❌ *Error:* No images found in this post.");
         }
 
-        await conn.sendMessage(from, {
-            image: { url: imageUrl },
-            caption: `✨ *AI GENERATED IMAGE* ✨\n\n📝 *Prompt:* ${q}\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`,
-            contextInfo: {
-                externalAdReply: {
-                    title: "GPT-IMAGE GENERATOR",
-                    body: "Created via Nexray AI",
-                    mediaType: 1,
-                    sourceUrl: "https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O",
-                    thumbnailUrl: imageUrl,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: mek });
+        // 3. Inform User
+        reply(`✅ *Found ${photos.length} images!* Sending them now...`);
 
+        // 4. Send all images found in the slide
+        for (let i = 0; i < photos.length; i++) {
+            const imageUrl = photos[i];
+            
+            await conn.sendMessage(from, {
+                image: { url: imageUrl },
+                caption: `🖼️ *Image [${i + 1}/${photos.length}]*\n📌 *Post:* ${title}\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`
+            }, { quoted: mek });
+            
+            // Small delay to avoid spamming too fast and getting banned/rate-limited
+            if (photos.length > 5) await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        // Final Success Reaction
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error("GPTImage Error:", e);
-        let errorMsg = "API Server is busy or down.";
-        if (e.code === 'ECONNABORTED') errorMsg = "Generation took too long. Please try again.";
-        if (e.response && e.response.status === 404) errorMsg = "API Endpoint not found.";
-        
+        console.error("TikTok Photo Error:", e);
         await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        reply(`❌ *Error:* ${errorMsg}`);
+        reply(`❌ *Error:* ${e.message || "Failed to fetch TikTok images."}`);
     }
 });
