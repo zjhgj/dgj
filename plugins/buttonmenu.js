@@ -1,117 +1,107 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - AMOYSHEAR AIO DOWNLOADER
-//---------------------------------------------------------------------------
-//  🚀 DOWNLOAD FROM FB, IG, TIKTOK, YT, ETC.
+//           KAMRAN-MD - LYRICS SEARCH (LRCLIB)
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
-const crypto = require('crypto');
 
-// --- AMOYSHEAR CORE LOGIC ---
-const amoyshare = {
-    generateHeader: () => {
-        const date = new Date();
-        const yyyy = date.getFullYear();
-        let mm = date.getMonth() + 1;
-        let dd = date.getDate();
+// Local cache to store search results per chat
+if (!global.lyricCache) global.lyricCache = new Map();
 
-        mm = mm > 9 ? mm : "0" + mm;
-        dd = dd > 9 ? dd : "0" + dd;
-
-        const dateStr = `${yyyy}${mm}${dd}`;
-        const constant = "786638952";
-
-        const randomVal = 1000 + Math.round(8999 * Math.random());
-        const key = `${dateStr}${constant}${randomVal}`;
-        const hashInput = `${dateStr}${randomVal}${constant}`;
-        
-        const signature = crypto.createHash('md5')
-            .update(hashInput)
-            .digest('hex');
-
-        return `${key}-${signature}`;
-    },
-
-    request: async (url, params = {}) => {
-        const dynamicHeaders = {
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-            'Accept': 'application/json, text/javascript, */*; q=0.01',
-            'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Referer': 'https://www.amoyshare.com/',
-            'Origin': 'https://www.amoyshare.com',
-            'amoyshare': amoyshare.generateHeader()
-        };
-
-        const response = await axios.get(url, {
-            params: params,
-            headers: dynamicHeaders
-        });
-
-        return response.data;
-    }
-};
+function formatDuration(sec) {
+    if (!sec) return 'N/A';
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
 cmd({
-    pattern: "amoyshare",
-    alias: ["adl", "amoy"],
-    desc: "Download videos using AmoyShare AIO platform.",
-    category: "download",
-    use: ".amoyshare <url>",
+    pattern: "lirik",
+    alias: ["lyrics", "songlyric"],
+    desc: "Search for song lyrics.",
+    category: "music",
+    use: ".lirik Yellow - Coldplay",
     filename: __filename,
-}, async (conn, mek, m, { from, q, reply, react }) => {
+}, async (conn, mek, m, { from, q, reply, prefix }) => {
     try {
-        if (!q) return reply("❌ Please provide a video URL (FB, IG, YT, etc.)");
+        if (!q) return reply(`Contoh:\n${prefix}lirik Yellow - Coldplay`);
 
-        await react("📥");
+        await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
 
-        // Request URL parsing
-        const parseUrl = 'https://line.1010diy.com/web/free-mp3-finder/urlParse';
-        const data = await amoyshare.request(parseUrl, {
-            url: q,
-            phonydata: 'false'
+        const { data } = await axios.get('https://lrclib.net/api/search', {
+            params: { q: q }
         });
 
-        if (!data || !data.data || !data.data.list || data.data.list.length === 0) {
-            return reply("❌ *Error:* Could not fetch download links. The video might be private or unsupported.");
+        if (!Array.isArray(data) || data.length === 0) {
+            return reply("❌ Lirik Tidak Ditemukan.");
         }
 
-        const videoInfo = data.data;
-        const bestQuality = videoInfo.list.filter(v => v.type === 'video').sort((a, b) => parseInt(b.quality) - parseInt(a.quality))[0];
+        const results = data.slice(0, 10);
+        global.lyricCache.set(from, results);
+
+        // If only one result, send it immediately
+        if (results.length === 1) {
+            const song = results[0];
+            const { data: lyric } = await axios.get(`https://lrclib.net/api/get/${song.id}`);
+            
+            let msg = `🎵 *LIRIK DITEMUKAN*\n\n`;
+            msg += `• *Judul* : ${lyric.trackName}\n`;
+            msg += `• *Artis* : ${lyric.artistName}\n`;
+            msg += `• *Album* : ${lyric.albumName || 'N/A'}\n`;
+            msg += `• *Durasi* : ${formatDuration(lyric.duration)}\n\n`;
+            msg += `──────────────────\n\n`;
+            msg += lyric.plainLyrics || lyric.syncedLyrics || '_Lirik tidak tersedia_';
+            
+            return reply(msg);
+        }
+
+        // Multiple results
+        let list = `🔍 *Ditemukan ${results.length} hasil*\n\n`;
+        results.forEach((v, i) => {
+            list += `*${i + 1}.* ${v.trackName} — ${v.artistName}\n`;
+        });
+        list += `\nKetik: *${prefix}getlirik <nomor>*\nContoh: *${prefix}getlirik 1*`;
         
-        if (!bestQuality) return reply("❌ No downloadable video found.");
-
-        const caption = `
-✅ *AIO Download Success*
-
-📌 *Title:* ${videoInfo.title || "AmoyShare Video"}
-🎬 *Quality:* ${bestQuality.quality || "Default"}
-🔗 *Source:* ${q}
-
-> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ
-`.trim();
-
-        // Send Video
-        await conn.sendMessage(from, {
-            video: { url: bestQuality.url },
-            caption: caption,
-            contextInfo: {
-                externalAdReply: {
-                    title: "AMOYSHEAR DOWNLOADER",
-                    body: videoInfo.title,
-                    mediaType: 1,
-                    sourceUrl: q,
-                    thumbnailUrl: videoInfo.thumbnail,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: mek });
-
-        await react("✅");
+        return reply(list);
 
     } catch (e) {
-        console.error("AmoyShare Error:", e);
-        await react("❌");
-        reply(`❌ *Error:* ${e.message || "Failed to process the request."}`);
+        console.error(e);
+        reply(`❌ Kesalahan: ${e.message}`);
+    }
+});
+
+cmd({
+    pattern: "getlirik",
+    desc: "Retrieve specific lyrics from previous search.",
+    category: "music",
+    use: ".getlirik 1",
+    filename: __filename,
+}, async (conn, mek, m, { from, q, reply }) => {
+    try {
+        const cache = global.lyricCache.get(from);
+        if (!cache) return reply('❌ Silakan cari lirik dulu dengan command .lirik');
+
+        const idx = parseInt(q);
+        if (isNaN(idx) || idx < 1 || idx > cache.length)
+            return reply('❌ Nomor list tidak valid!');
+
+        await conn.sendMessage(from, { react: { text: "🎶", key: mek.key } });
+
+        const song = cache[idx - 1];
+        const { data: lyric } = await axios.get(`https://lrclib.net/api/get/${song.id}`);
+
+        let msg = `🎶 *LIRIK LAGU*\n\n`;
+        msg += `• *Judul* : ${lyric.trackName}\n`;
+        msg += `• *Artis* : ${lyric.artistName}\n`;
+        msg += `• *Album* : ${lyric.albumName || 'N/A'}\n`;
+        msg += `• *Durasi* : ${formatDuration(lyric.duration)}\n\n`;
+        msg += `──────────────────\n\n`;
+        msg += lyric.plainLyrics || lyric.syncedLyrics || '_Lirik tidak tersedia_';
+
+        return reply(msg);
+
+    } catch (e) {
+        console.error(e);
+        reply(`❌ Kesalahan: ${e.message}`);
     }
 });
