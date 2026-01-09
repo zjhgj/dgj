@@ -1,75 +1,53 @@
 //---------------------------------------------------------------------------
-//           KAMRAN-MD - TIKTOK DOWNLOADER (VIDEO & AUDIO)
-//---------------------------------------------------------------------------
-//  🚀 DOWNLOAD TIKTOK VIDEOS NO WATERMARK & MP3
-//  Credit: Fauzialifatah (API)
+//           KAMRAN-MD - TIKTOK DOWNLOADER (LINK FIX)
 //---------------------------------------------------------------------------
 
 const { cmd } = require('../command');
 const axios = require('axios');
 
 cmd({
-    pattern: "tiktok2",
+    pattern: "tiktok",
     alias: ["tt", "ttdl"],
-    desc: "Download TikTok videos without watermark and get audio.",
+    desc: "Download TikTok videos (Fixed Link Detection).",
     category: "download",
     use: ".tiktok <url>",
     filename: __filename,
 }, async (conn, mek, m, { from, q, reply, react, prefix, command }) => {
     try {
-        if (!q) return reply(`📥 *TikTok Downloader* ✨\n\nUsage: \`${prefix + command} <tiktok_url>\`\nExample: \`${prefix + command} https://vt.tiktok.com/ZSfEbDw89/\``);
-
-        // 1. Validate URL
-        if (!/^https?:\/\/(www\.)?(vm\.tiktok\.com|vt\.tiktok\.com|tiktok\.com)\//i.test(q.trim())) {
-            return reply("❌ Link tidak valid. Pastikan itu link TikTok yang benar.");
+        // 1. Link extract karne ke liye regex (taki aage-piche text ho to bhi kaam kare)
+        const tiktokRegex = /(https?:\/\/(?:vm|vt|www)\.tiktok\.com\/[^\s]+)/gi;
+        const match = q.match(tiktokRegex);
+        
+        if (!match) {
+            return reply(`❌ *Link missing!* \n\nKripya sahi TikTok link dein.\nUsage: \`${prefix + command} https://vt.tiktok.com/xxxx/\``);
         }
 
-        await react("🎬");
+        const cleanUrl = match[0]; // Sirf link uthayega
+        await react("⏳");
 
-        // 2. Fetch Data from API
-        const apiUrl = `https://api.elrayyxml.web.id/api/downloader/tiktok?url=${encodeURIComponent(q.trim())}`;
-        const response = await axios.get(apiUrl);
-        const result = response.data;
+        // --- STABLE API URL ---
+        const apiUrl = `https://api.tiklydown.eu.org/api/download?url=${encodeURIComponent(cleanUrl)}`;
+        
+        const response = await axios.get(apiUrl, { timeout: 30000 });
+        const res = response.data;
 
-        if (!result || result.status !== true || !result.result) {
-            return reply("❌ Gagal mengambil data dari API TikTok. Coba lagi nanti.");
+        if (!res || !res.video) {
+            throw new Error("API Limit reached or Invalid URL");
         }
 
-        const data = result.result;
-        const videoUrl = data.data; // Watermark-free video
-        const music = data.music_info || {};
-        const audioUrl = music.url;
+        const videoUrl = res.video.noWatermark || res.video.watermark;
+        const title = res.title || "TikTok Video";
 
-        if (!videoUrl) return reply("❌ Link video tidak ditemukan.");
-
-        // 3. Prepare Caption
-        let captionText = `📥 *TIKTOK DOWNLOADER*\n\n`;
-        if (data.title) captionText += `🎬 *Judul:* ${data.title}\n`;
-        if (data.author && data.author.fullname) captionText += `👤 *Author:* ${data.author.fullname}\n`;
-        if (data.region) captionText += `🌍 *Region:* ${data.region}\n`;
-        if (data.duration) captionText += `⏱ *Durasi:* ${data.duration}\n`;
-        captionText += `\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`;
-
-        // 4. Send Video
+        // 2. Video Send Karein
         await conn.sendMessage(from, {
             video: { url: videoUrl },
-            caption: captionText,
-            contextInfo: {
-                externalAdReply: {
-                    title: "TIKTOK DOWNLOADER",
-                    body: data.title || "KAMRAN-MD DOWNLOADER",
-                    mediaType: 1,
-                    sourceUrl: q,
-                    thumbnailUrl: data.cover || "",
-                    renderLargerThumbnail: true
-                }
-            }
+            caption: `✅ *Download Successful*\n\n🎬 *Title:* ${title}\n👤 *User:* ${res.author.nickname}\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`,
         }, { quoted: mek });
 
-        // 5. Send Audio (Optional if exists)
-        if (audioUrl && audioUrl.startsWith("http")) {
+        // 3. Audio Send Karein (Optional)
+        if (res.music && res.music.play_url) {
             await conn.sendMessage(from, { 
-                audio: { url: audioUrl }, 
+                audio: { url: res.music.play_url }, 
                 mimetype: "audio/mpeg", 
                 ptt: false 
             }, { quoted: mek });
@@ -78,8 +56,24 @@ cmd({
         await react("✅");
 
     } catch (e) {
-        console.error("TikTok Error:", e);
-        await react("❌");
-        reply("❌ Terjadi kesalahan saat memproses TikTok. Pastikan API sedang aktif.");
+        console.error("TT Error:", e.message);
+        
+        // --- FALLBACK AGAR PEHLA FAIL HO ---
+        try {
+            const fallbackUrl = `https://api.nexray.web.id/downloader/aio?url=${encodeURIComponent(q.trim())}`;
+            const fbRes = await axios.get(fallbackUrl);
+            const fbData = fbRes.data.result;
+
+            if (fbData && (fbData.url || fbData.video)) {
+                await conn.sendMessage(from, {
+                    video: { url: fbData.url || fbData.video },
+                    caption: `✅ *Downloaded via Fallback Server*\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`,
+                }, { quoted: mek });
+                return await react("✅");
+            }
+        } catch (err2) {
+            await react("❌");
+            reply("❌ *Error:* Link process nahi ho pa raha hai. Shayad server down hai ya link private hai.");
+        }
     }
 });
