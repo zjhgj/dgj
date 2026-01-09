@@ -57,7 +57,7 @@ async (conn, mek, m, { from, q, reply, prefix }) => {
             return reply("❌ Failed to fetch TikTok media. Make sure the link is valid and public.");
         }
 
-        let caption = `🎬 *TIKTOK DOWNLOADER* 🎬\n\n📌 *Title:* ${data.title}\n\n*LID Fix Active - Knight Bot*`;
+        let caption = `🎬 *TIKTOK DOWNLOADER* 🎬\n\n📌 *Title:* ${data.title}\n\n*LID Fix Active - KAMRAN MD*`;
 
         // 1. Handle Photos (SlideShow)
         if (data.foto && data.foto.length > 0) {
