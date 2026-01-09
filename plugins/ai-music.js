@@ -1,79 +1,88 @@
 const { cmd } = require('../command');
+const axios = require('axios');
 
-cmd({
-    pattern: "tiktok",
-    alias: ["tt", "ttdl"],
-    react: "🎬",
-    desc: "Download TikTok videos without watermark (LID Fixed).",
-    category: "downloader",
-    filename: __filename
-},           
-async (conn, mek, m, { from, q, reply, fetchJson, prefix }) => {
+// --- Global Settings ---
+global.api = { base: "https://hoshino-apis.vercel.app", key: "zionjs" };
+global.prompt = `✨ kamu Hoshino AI, sistem auto-intelligent assistant. ✨ TUGASKU: - Pahami maksud user. - Jawab cepat, rapi, tanpa ribet. - Bisa coding, rewrite, analisa, dan lainnya. - Selalu jawab santai tapi jelas. Gaya bicara: casual profesional, friendly, gak kaku. Selalu jawab langsung inti.`;
+global.model = "jokowi"; // Options: jokowi, bella, prabowo, miku
+global.autoAi = true; // Default system state
+
+/**
+ * Auto AI Voice Note Handler (LID Fixed)
+ */
+async function autoAIVN(m, sock, isCmd) {
     try {
+        // --- GUARDS ---
+        if (isCmd) return; // Commands پر ٹرگر نہیں ہوگا
+        if (!m.text) return; // خالی میسج پر ٹرگر نہیں ہوگا
+        if (m.key.fromMe) return; // بوٹ اپنے میسج پر جواب نہیں دے گا
+        if (!global.autoAi) return; // اگر سسٹم آف ہے تو کام نہیں کرے گا
+
+        const userText = m.text;
+        
         // --- TRUE LID FIX ---
         // Decode JID to handle LID groups and private chats correctly
-        const targetChat = conn.decodeJid(from);
+        const targetChat = sock.decodeJid(m.chat);
 
-        if (!q) {
-            return reply(`*Usage:* ${prefix}tiktok <link>\n*Example:* ${prefix}tiktok https://vt.tiktok.com/ZSfEbDw89/`);
-        }
+        // 1️⃣ REQUEST KE AI (Gemini)
+        const aiUrl = `${global.api.base}/api/ai?q=${encodeURIComponent(userText)}&prompt=${encodeURIComponent(global.prompt)}`;
+        const aiRes = await axios.get(aiUrl);
+        
+        if (!aiRes.data || !aiRes.data.status) return;
+        const aiMessage = aiRes.data.response;
+        if (!aiMessage) return;
 
-        const ttUrl = q.trim();
-        if (!/^https?:\/\/(www\.)?(vm\.tiktok\.com|vt\.tiktok\.com|tiktok\.com)\//i.test(ttUrl)) {
-            return reply("❌ Invalid TikTok link. Please provide a valid URL.");
-        }
+        // 2️⃣ TEXT → VOICE (TTS)
+        const audioUrl = `${global.api.base}/api/elevenlabs` + 
+                         `?text=${encodeURIComponent(aiMessage)}` + 
+                         `&voice=${global.model}` + 
+                         `&pitch=0&speed=0.9` + 
+                         `&key=${global.api.key}`;
 
-        // Send Reaction to decoded JID
-        await conn.sendMessage(targetChat, { react: { text: "⏳", key: m.key } });
+        // 3️⃣ KIRIM VN (To Decoded JID)
+        await sock.sendMessage(
+            targetChat, 
+            { 
+                audio: { url: audioUrl }, 
+                mimetype: "audio/mpeg", 
+                ptt: true 
+            }, 
+            { quoted: m }
+        );
 
-        const apiUrl = `https://api.elrayyxml.web.id/api/downloader/tiktok?url=${encodeURIComponent(ttUrl)}`;
-        const result = await fetchJson(apiUrl);
+    } catch (err) {
+        console.error("AutoAI VN Error:", err.message);
+    }
+}
 
-        if (!result || result.status !== true || !result.result) {
-            return reply("❌ Failed to fetch data from TikTok API.");
-        }
+// --- Control Command ---
+cmd({
+    pattern: "autovoice",
+    alias: ["autoai", "vnai"],
+    react: "🎙️",
+    desc: "Turn Auto AI Voice response ON or OFF (LID Fixed).",
+    category: "config",
+    filename: __filename
+},           
+async (conn, mek, m, { from, q, reply, isOwner }) => {
+    if (!isOwner) return reply("❌ This command is only for the Bot Owner.");
 
-        const data = result.result;
-        const videoUrl = data.data;
+    if (!q) {
+        return reply(`*Current Status:* ${global.autoAi ? "ON ✅" : "OFF ❌"}\n\n*Usage:* \n.autovoice on\n.autovoice off`);
+    }
 
-        if (!videoUrl || !videoUrl.startsWith("http")) {
-            return reply("❌ Video link not found or invalid.");
-        }
+    const action = q.toLowerCase().trim();
+    const targetChat = conn.decodeJid(from);
 
-        const music = data.music_info || {};
-        const audioUrl = music.url;
-
-        let captionText = `📥 *TIKTOK DOWNLOADER* 📥\n\n`;
-        if (data.title) captionText += `🎬 *Judul:* ${data.title}\n`;
-        if (data.author?.fullname) captionText += `👤 *Author:* ${data.author.fullname}\n`;
-        if (data.region) captionText += `🌍 *Region:* ${data.region}\n`;
-        if (data.duration) captionText += `⏱️ *Durasi:* ${data.duration}\n`;
-        captionText += `\n*LID Fix Active - Powered by Knight Bot*`;
-
-        // Sending Video to Decoded JID (Ensures delivery in LID groups)
-        await conn.sendMessage(targetChat, {
-            video: { url: videoUrl },
-            caption: captionText,
-            mimetype: "video/mp4"
-        }, { quoted: mek });
-
-        // Sending Audio to Decoded JID
-        if (audioUrl && audioUrl.startsWith("http")) {
-            await conn.sendMessage(targetChat, {
-                audio: { url: audioUrl },
-                mimetype: "audio/mpeg",
-                fileName: `${data.title || "tiktok"}.mp3`
-            }, { quoted: mek });
-        } else {
-            await reply("⚠️ Audio could not be found for this video.");
-        }
-
-        await conn.sendMessage(targetChat, { react: { text: "✅", key: m.key } });
-
-    } catch (e) {
-        console.error("TikTok Error:", e);
-        reply("❌ An error occurred while processing the TikTok video. Please try again later.");
+    if (action === 'on') {
+        global.autoAi = true;
+        reply("🎙️ *Auto AI Voice:* Turned ON.");
+    } else if (action === 'off') {
+        global.autoAi = false;
+        reply("🎙️ *Auto AI Voice:* Turned OFF.");
+    } else {
+        reply("❌ Use 'on' or 'off'.");
     }
 });
 
-            
+module.exports = { autoAIVN };
