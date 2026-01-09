@@ -1,79 +1,79 @@
-//---------------------------------------------------------------------------
-//           KAMRAN-MD - TIKTOK DOWNLOADER (LINK FIX)
-//---------------------------------------------------------------------------
-
 const { cmd } = require('../command');
-const axios = require('axios');
 
 cmd({
     pattern: "tiktok",
     alias: ["tt", "ttdl"],
-    desc: "Download TikTok videos (Fixed Link Detection).",
-    category: "download",
-    use: ".tiktok <url>",
-    filename: __filename,
-}, async (conn, mek, m, { from, q, reply, react, prefix, command }) => {
+    react: "🎬",
+    desc: "Download TikTok videos without watermark (LID Fixed).",
+    category: "downloader",
+    filename: __filename
+},           
+async (conn, mek, m, { from, q, reply, fetchJson, prefix }) => {
     try {
-        // 1. Link extract karne ke liye regex (taki aage-piche text ho to bhi kaam kare)
-        const tiktokRegex = /(https?:\/\/(?:vm|vt|www)\.tiktok\.com\/[^\s]+)/gi;
-        const match = q.match(tiktokRegex);
-        
-        if (!match) {
-            return reply(`❌ *Link missing!* \n\nKripya sahi TikTok link dein.\nUsage: \`${prefix + command} https://vt.tiktok.com/xxxx/\``);
+        // --- TRUE LID FIX ---
+        // Decode JID to handle LID groups and private chats correctly
+        const targetChat = conn.decodeJid(from);
+
+        if (!q) {
+            return reply(`*Usage:* ${prefix}tiktok <link>\n*Example:* ${prefix}tiktok https://vt.tiktok.com/ZSfEbDw89/`);
         }
 
-        const cleanUrl = match[0]; // Sirf link uthayega
-        await react("⏳");
-
-        // --- STABLE API URL ---
-        const apiUrl = `https://api.tiklydown.eu.org/api/download?url=${encodeURIComponent(cleanUrl)}`;
-        
-        const response = await axios.get(apiUrl, { timeout: 30000 });
-        const res = response.data;
-
-        if (!res || !res.video) {
-            throw new Error("API Limit reached or Invalid URL");
+        const ttUrl = q.trim();
+        if (!/^https?:\/\/(www\.)?(vm\.tiktok\.com|vt\.tiktok\.com|tiktok\.com)\//i.test(ttUrl)) {
+            return reply("❌ Invalid TikTok link. Please provide a valid URL.");
         }
 
-        const videoUrl = res.video.noWatermark || res.video.watermark;
-        const title = res.title || "TikTok Video";
+        // Send Reaction to decoded JID
+        await conn.sendMessage(targetChat, { react: { text: "⏳", key: m.key } });
 
-        // 2. Video Send Karein
-        await conn.sendMessage(from, {
+        const apiUrl = `https://api.elrayyxml.web.id/api/downloader/tiktok?url=${encodeURIComponent(ttUrl)}`;
+        const result = await fetchJson(apiUrl);
+
+        if (!result || result.status !== true || !result.result) {
+            return reply("❌ Failed to fetch data from TikTok API.");
+        }
+
+        const data = result.result;
+        const videoUrl = data.data;
+
+        if (!videoUrl || !videoUrl.startsWith("http")) {
+            return reply("❌ Video link not found or invalid.");
+        }
+
+        const music = data.music_info || {};
+        const audioUrl = music.url;
+
+        let captionText = `📥 *TIKTOK DOWNLOADER* 📥\n\n`;
+        if (data.title) captionText += `🎬 *Judul:* ${data.title}\n`;
+        if (data.author?.fullname) captionText += `👤 *Author:* ${data.author.fullname}\n`;
+        if (data.region) captionText += `🌍 *Region:* ${data.region}\n`;
+        if (data.duration) captionText += `⏱️ *Durasi:* ${data.duration}\n`;
+        captionText += `\n*LID Fix Active - Powered by Knight Bot*`;
+
+        // Sending Video to Decoded JID (Ensures delivery in LID groups)
+        await conn.sendMessage(targetChat, {
             video: { url: videoUrl },
-            caption: `✅ *Download Successful*\n\n🎬 *Title:* ${title}\n👤 *User:* ${res.author.nickname}\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`,
+            caption: captionText,
+            mimetype: "video/mp4"
         }, { quoted: mek });
 
-        // 3. Audio Send Karein (Optional)
-        if (res.music && res.music.play_url) {
-            await conn.sendMessage(from, { 
-                audio: { url: res.music.play_url }, 
-                mimetype: "audio/mpeg", 
-                ptt: false 
+        // Sending Audio to Decoded JID
+        if (audioUrl && audioUrl.startsWith("http")) {
+            await conn.sendMessage(targetChat, {
+                audio: { url: audioUrl },
+                mimetype: "audio/mpeg",
+                fileName: `${data.title || "tiktok"}.mp3`
             }, { quoted: mek });
+        } else {
+            await reply("⚠️ Audio could not be found for this video.");
         }
 
-        await react("✅");
+        await conn.sendMessage(targetChat, { react: { text: "✅", key: m.key } });
 
     } catch (e) {
-        console.error("TT Error:", e.message);
-        
-        // --- FALLBACK AGAR PEHLA FAIL HO ---
-        try {
-            const fallbackUrl = `https://api.nexray.web.id/downloader/aio?url=${encodeURIComponent(q.trim())}`;
-            const fbRes = await axios.get(fallbackUrl);
-            const fbData = fbRes.data.result;
-
-            if (fbData && (fbData.url || fbData.video)) {
-                await conn.sendMessage(from, {
-                    video: { url: fbData.url || fbData.video },
-                    caption: `✅ *Downloaded via Fallback Server*\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`,
-                }, { quoted: mek });
-                return await react("✅");
-            }
-        } catch (err2) {
-            await react("❌");
-            reply("❌ *Error:* Link process nahi ho pa raha hai. Shayad server down hai ya link private hai.");
-        }
+        console.error("TikTok Error:", e);
+        reply("❌ An error occurred while processing the TikTok video. Please try again later.");
     }
 });
+
+            
