@@ -1,67 +1,113 @@
-const { cmd } = require("../command");
-const axios = require("axios");
+const { cmd } = require('../command');
+const axios = require('axios');
+const cheerio = require('cheerio');
 
-cmd({
-    pattern: "playstore",
-    react: '📲',
-    alias: ["ps", "app"],
-    desc: "Search for an app on the Play Store",
-    category: "search",
-    filename: __filename
-},
-async (conn, mek, m, { from, q, sender, reply }) => {
+// --- SCRAPER FUNCTIONS ---
+async function searchDonghua(search) {
     try {
-        if (!q) return reply("❌ Please provide an app name to search.");
+        const { data: html } = await axios.get("https://donghuafilm.com/", { params: { s: search } });
+        const $ = cheerio.load(html);
+        let result = [];
+        $("article.bs").each((i, v) => {
+            const $article = $(v);
+            const $link = $article.find('a[itemprop="url"]');
+            result.push({
+                title: $link.attr("title") || "",
+                url: $link.attr("href") || "",
+                image: $article.find("img").attr("data-src") || $article.find("img").attr("src") || "",
+                status: $article.find(".status, .epx").first().text().trim() || "",
+                type: $article.find(".typez").text().trim() || ""
+            });
+        });
+        return result;
+    } catch (e) { return []; }
+}
 
-        // React: Processing ⏳
-        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
+async function detailDonghua(url) {
+    try {
+        const { data: html } = await axios.get(url);
+        const $ = cheerio.load(html);
+        const description = $(".desc, .info-content .desc, .ninfo .desc").text().trim();
+        const details = {
+            title: $(".entry-title").text().trim(),
+            description: description,
+            coverImage: $(".bigcover img").attr("data-src") || $(".bigcover img").attr("src") || "",
+            status: $('span:contains("Status:")').next().text().trim(),
+            studio: $('span:contains("Studio:") a').text().trim(),
+            episodes: []
+        };
+        $(".eplister li").each((i, v) => {
+            details.episodes.push({
+                number: $(i).find(".epl-num").text().trim(),
+                title: $(v).find(".epl-title").text().trim(),
+                url: $(v).find("a").attr("href") || ""
+            });
+        });
+        return details;
+    } catch (e) { return null; }
+}
 
-        const apiUrl = `https://apis.davidcyriltech.my.id/search/playstore?q=${encodeURIComponent(q)}`;
-        const response = await axios.get(apiUrl);
+// --- COMMAND: SEARCH ---
+cmd({
+    pattern: "donghua",
+    alias: ["dhsearch"],
+    react: "🔍",
+    desc: "Search for Donghua (Chinese Anime).",
+    category: "anime",
+    filename: __filename
+},           
+async (conn, mek, m, { from, q, reply, prefix }) => {
+    try {
+        if (!q) return reply(`*Usage:* ${prefix}donghua <name>\n*Example:* ${prefix}donghua soul`);
+        
+        const targetChat = conn.decodeJid(from);
+        const results = await searchDonghua(q);
 
-        if (!response.data.success || !response.data.result) {
-            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return reply("❌ No results found for the given app name.");
-        }
+        if (results.length === 0) return reply("❌ No Donghua found with that name.");
 
-        const app = response.data.result;
+        let caption = `🎬 *DONGHUA SEARCH RESULTS* 🎬\n\n`;
+        results.forEach((v, i) => {
+            caption += `*${i + 1}.* ${v.title}\n📌 *Status:* ${v.status}\n🔗 *Link:* ${v.url}\n\n`;
+        });
+        caption += `*LID Fix Active - Knight Bot*`;
 
-        const infoMessage = `
-📲 *PLAY STORE SEARCH*
-╭──────────────◆
-│• 📌 Name: ${app.title}
-│• 📖 Summary: ${app.summary}
-│• 📥 Installs: ${app.installs}
-│• ⭐ Rating: ${app.score}
-│• 💲 Price: ${app.price}
-│• 📦 Size: ${app.size || 'Not available'}
-│• 📱 Android: ${app.androidVersion}
-│• 👨‍💻 Developer: ${app.developer}
-│• 📅 Released: ${app.released}
-│• 🔄 Updated: ${app.updated}
-│• 🔗 Link: ${app.url}
-╰─────────────────
-*Powered By JawadTechX 🤍*`.trim();
+        await conn.sendMessage(targetChat, { 
+            image: { url: results[0].image }, 
+            caption: caption 
+        }, { quoted: mek });
 
-        if (app.icon) {
-            await conn.sendMessage(
-                from,
-                {
-                    image: { url: app.icon },
-                    caption: infoMessage
-                },
-                { quoted: mek }
-            );
-        } else {
-            await reply(infoMessage);
-        }
+    } catch (e) { reply("❌ Error searching Donghua."); }
+});
 
-        // React: Success ✅
-        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+// --- COMMAND: DETAIL ---
+cmd({
+    pattern: "dhdetail",
+    alias: ["donghuainfo"],
+    react: "ℹ️",
+    desc: "Get detailed info of a Donghua via URL.",
+    category: "anime",
+    filename: __filename
+},           
+async (conn, mek, m, { from, q, reply }) => {
+    try {
+        if (!q || !q.startsWith("http")) return reply("⚠️ Please provide a valid Donghua Film URL.");
 
-    } catch (error) {
-        console.error("Play Store Error:", error);
-        await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-        reply("❌ Error searching for the app. Please try again.");
-    }
+        const targetChat = conn.decodeJid(from);
+        const data = await detailDonghua(q.trim());
+
+        if (!data) return reply("❌ Failed to fetch details.");
+
+        let caption = `✨ *${data.title}* ✨\n\n` +
+                      `📝 *Description:* ${data.description.slice(0, 500)}...\n\n` +
+                      `📊 *Status:* ${data.status}\n` +
+                      `🎥 *Studio:* ${data.studio}\n` +
+                      `🎞️ *Total Episodes Found:* ${data.episodes.length}\n\n` +
+                      `*LID Fix Active - Knight Bot*`;
+
+        await conn.sendMessage(targetChat, { 
+            image: { url: data.coverImage }, 
+            caption: caption 
+        }, { quoted: mek });
+
+    } catch (e) { reply("❌ Error fetching Donghua details."); }
 });
