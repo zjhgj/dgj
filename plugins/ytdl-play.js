@@ -4,8 +4,8 @@ const yts = require('yt-search');
 const axios = require('axios');
 
 cmd({
-    pattern: "play22",
-    alias: ["song22", "music", "ytplay"],
+    pattern: "play",
+    alias: ["song", "music", "ytplay"],
     react: "🛰️",
     desc: "Download audio from YouTube with stylish selection.",
     category: "download",
@@ -15,7 +15,7 @@ cmd({
     try {
         if (!q) return await reply("⚠️ *KAMRAN-MD CORE:* Search query or URL is required.");
 
-        // --- PHASE 1: DATA ACQUISITION ---
+        // --- PHASE 1: DATA SEARCH ---
         let video;
         const isUrl = q.match(/(youtube\.com|youtu\.be)/);
 
@@ -24,13 +24,13 @@ cmd({
             video = search.videos[0];
         } else {
             const search = await yts(q);
-            if (!search.videos.length) return await reply("❌ *KAMRAN-MD ERROR:* No results found.");
+            if (!search || !search.videos.length) return await reply("❌ *KAMRAN-MD ERROR:* No results found.");
             video = search.videos[0];
         }
 
         const { url, title, timestamp, thumbnail, views, author } = video;
 
-        // --- PHASE 2: STYLISH UI ---
+        // --- PHASE 2: UI DESIGN ---
         let selectionMsg = `✨ *𝐊𝐀𝐌𝐑𝐀𝐍-𝐌𝐃 𝐂𝐎𝐑𝐄* ✨
 ▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 📝 *ᴛɪᴛʟᴇ:* ${title.toUpperCase().substring(0, 35)}...
@@ -47,41 +47,44 @@ cmd({
 ▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 > 🚩 *Reply with 1, 2 or 3 to select*`;
 
-        const { key } = await conn.sendMessage(from, { 
+        const sentMsg = await conn.sendMessage(from, { 
             image: { url: thumbnail }, 
             caption: selectionMsg 
         }, { quoted: m });
 
-        // --- PHASE 3: INTERACTION HANDLER ---
-        const listener = async (msg) => {
+        const messageId = sentMsg.key.id;
+
+        // --- PHASE 3: RELIABLE RESPONSE LISTENER ---
+        conn.ev.on('messages.upsert', async (chatUpdate) => {
+            const msg = chatUpdate.messages[0];
             if (!msg.message) return;
-            const isReply = msg.message?.extendedTextMessage?.contextInfo?.stanzaId === key.id;
-            const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
 
-            if (isReply && msg.key.remoteJid === from && ['1', '2', '3'].includes(body)) {
-                // Remove listener immediately
-                conn.ev.off('messages.upsert', listener);
+            const body = msg.message.conversation || msg.message.extendedTextMessage?.text;
+            const context = msg.message.extendedTextMessage?.contextInfo;
 
-                // Update UI to Processing State
+            // Check if it's a reply to our selection message
+            if (context && context.stanzaId === messageId && ['1', '2', '3'].includes(body)) {
+                
+                // Show Processing State
                 await conn.sendMessage(from, { 
-                    text: `🛰️ *ᴘʀᴏᴄᴇssɪɴɢ:* [▰▰▰▰▱▱▱▱] 50%\n\nFetching high-quality audio stream...`, 
-                    edit: key 
+                    text: `🛰️ *ᴘʀᴏᴄᴇssɪɴɢ:* [▰▰▰▰▱▱▱▱] 50%\n\nFetching audio stream for *${title}*...`, 
+                    edit: sentMsg.key 
                 });
 
                 try {
-                    // API Call
+                    // Using Workers API for high speed
                     const apiUrl = `https://yt-dl.officialhectormanuel.workers.dev/?url=${encodeURIComponent(url)}`;
                     const response = await axios.get(apiUrl);
                     const data = response.data;
 
                     if (!data.status || !data.audio) {
-                        return await conn.sendMessage(from, { text: "❌ *FATAL ERROR:* Stream extraction failed.", edit: key });
+                        return await conn.sendMessage(from, { text: "❌ *FATAL ERROR:* Extraction failed.", edit: sentMsg.key });
                     }
 
-                    // Update UI to Success State
+                    // Success UI
                     await conn.sendMessage(from, { 
                         text: `✅ *ᴄᴏᴍᴘʟᴇᴛᴇ:* [▰▰▰▰▰▰▰▰▰▰] 100%\n\nSending data packet...`, 
-                        edit: key 
+                        edit: sentMsg.key 
                     });
 
                     const audioConfig = {
@@ -100,7 +103,6 @@ cmd({
                         }
                     };
 
-                    // Execution based on selection
                     if (body === '1') {
                         await conn.sendMessage(from, { ...audioConfig, ptt: false }, { quoted: m });
                     } else if (body === '2') {
@@ -116,16 +118,10 @@ cmd({
 
                     await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
 
-                } catch (apiErr) {
-                    console.error(apiErr);
-                    await conn.sendMessage(from, { text: "❌ *API ERROR:* Connection failed.", edit: key });
+                } catch (err) {
+                    console.error(err);
+                    await conn.sendMessage(from, { text: "❌ *API ERROR:* Server disconnected.", edit: sentMsg.key });
                 }
-            }
-        };
-
-        conn.ev.on('messages.upsert', async (chatUpdate) => {
-            for (const msg of chatUpdate.messages) {
-                await listener(msg);
             }
         });
 
