@@ -1,117 +1,136 @@
 const config = require('../config');
 const { cmd } = require('../command');
 const yts = require('yt-search');
+const axios = require('axios');
 
 cmd({
-    pattern: "play55",
-    alias: ["ytplay55", "music55"],
+    pattern: "play22",
+    alias: ["song22", "music", "ytplay"],
     react: "🛰️",
-    desc: "Download audio from YouTube",
+    desc: "Download audio from YouTube with stylish selection.",
     category: "download",
     use: ".play <query or url>",
     filename: __filename
-}, async (conn, m, mek, { from, q, reply, sender }) => {
+}, async (conn, mek, m, { from, q, reply }) => {
     try {
-        if (!q) return await reply("⚙️ *SYSTEM:* Input required. Please provide a song name or URL.");
+        if (!q) return await reply("⚠️ *KAMRAN-MD CORE:* Search query or URL is required.");
 
-        // --- PHASE 1: SEARCH DATA ---
-        let videoUrl, title, timestamp, thumbnail;
-        
-        if (q.match(/(youtube\.com|youtu\.be)/)) {
-            videoUrl = q;
-            const videoId = q.split(/[=/]/).pop();
-            const videoInfo = await yts({ videoId });
-            title = videoInfo.title;
-            timestamp = videoInfo.timestamp || 'N/A';
-            thumbnail = videoInfo.thumbnail;
+        // --- PHASE 1: DATA ACQUISITION ---
+        let video;
+        const isUrl = q.match(/(youtube\.com|youtu\.be)/);
+
+        if (isUrl) {
+            const search = await yts(q);
+            video = search.videos[0];
         } else {
             const search = await yts(q);
-            if (!search.videos.length) return await reply("❌ **CORE ERROR:** NOT FOUND");
-            videoUrl = search.videos[0].url;
-            title = search.videos[0].title;
-            timestamp = search.videos[0].timestamp;
-            thumbnail = search.videos[0].thumbnail;
+            if (!search.videos.length) return await reply("❌ *KAMRAN-MD ERROR:* No results found.");
+            video = search.videos[0];
         }
 
-        // --- PHASE 2: IMMEDIATE SELECTION BOX ---
-        let selectionMsg = `╔═══════════════╗
-   ✰  **KAMRAN-𝐌𝐃 𝐂𝐎𝐑𝐄** ✰
-╟──────────────╢
-│ ✞︎ **ᴛɪᴛʟᴇ:** ${title.toUpperCase().substring(0, 20)}
-│ ✞︎ **ᴅᴜʀᴀᴛɪᴏɴ:** ${timestamp}
-╟──────────────╢
-│  **sᴇʟᴇᴄᴛ ᴛʀᴀɴsᴍɪssɪᴏɴ:**
-│
-│  1 ➮ ᴀᴜᴅɪᴏ (ᴍᴘ3) 🎵
-│  2 ➮ ᴅᴏᴄᴜᴍᴇɴᴛ (ғɪʟᴇ) 📂
-│  3 ➮ ᴠᴏɪᴄᴇ ɴᴏᴛᴇ (ᴘᴛᴛ) 🎤
-╚═══════════════╝
-> *Reply with 1, 2, or 3*`;
+        const { url, title, timestamp, thumbnail, views, author } = video;
 
-        const { key } = await conn.sendMessage(from, { text: selectionMsg }, { quoted: mek });
+        // --- PHASE 2: STYLISH UI ---
+        let selectionMsg = `✨ *𝐊𝐀𝐌𝐑𝐀𝐍-𝐌𝐃 𝐂𝐎𝐑𝐄* ✨
+▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+📝 *ᴛɪᴛʟᴇ:* ${title.toUpperCase().substring(0, 35)}...
+🕒 *ᴅᴜʀᴀᴛɪᴏɴ:* ${timestamp}
+👁‍🗨 *ᴠɪᴇᴡs:* ${views.toLocaleString()}
+👤 *ᴄʜᴀɴɴᴇʟ:* ${author.name}
+▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+*📡 ᴛʀᴀɴsᴍɪssɪᴏɴ ᴍᴏᴅᴇs:*
 
-        // --- PHASE 3: RESPONSE LISTENER ---
+  [1] 🎵 *ᴀᴜᴅɪᴏ (ᴍᴘ3)*
+  [2] 📂 *ᴅᴏᴄᴜᴍᴇɴᴛ (ғɪʟᴇ)*
+  [3] 🎤 *ᴠᴏɪᴄᴇ ɴᴏᴛᴇ (ᴘᴛᴛ)*
+
+▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+> 🚩 *Reply with 1, 2 or 3 to select*`;
+
+        const { key } = await conn.sendMessage(from, { 
+            image: { url: thumbnail }, 
+            caption: selectionMsg 
+        }, { quoted: m });
+
+        // --- PHASE 3: INTERACTION HANDLER ---
         const listener = async (msg) => {
+            if (!msg.message) return;
             const isReply = msg.message?.extendedTextMessage?.contextInfo?.stanzaId === key.id;
             const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
 
             if (isReply && msg.key.remoteJid === from && ['1', '2', '3'].includes(body)) {
+                // Remove listener immediately
                 conn.ev.off('messages.upsert', listener);
 
-                // Start Loading animation ONLY after selection
-                let processingMsg = selectionMsg.replace('sᴇʟᴇᴄᴛ ᴛʀᴀɴsᴍɪssɪᴏɴ:', '📥 **ᴘʀᴏᴄᴇssɪɴɢ ᴅᴀᴛᴀ...**');
-                processingMsg += `\n [▬▬▬▭▭▭▭▭▭▭] 40%`;
-                await conn.sendMessage(from, { text: processingMsg, edit: key });
+                // Update UI to Processing State
+                await conn.sendMessage(from, { 
+                    text: `🛰️ *ᴘʀᴏᴄᴇssɪɴɢ:* [▰▰▰▰▱▱▱▱] 50%\n\nFetching high-quality audio stream...`, 
+                    edit: key 
+                });
 
-                const apiUrl = `https://api.davidcyriltech.my.id/download/ytmp3?url=${encodeURIComponent(videoUrl)}`;
-                const response = await fetch(apiUrl);
-                const data = await response.json();
+                try {
+                    // API Call
+                    const apiUrl = `https://yt-dl.officialhectormanuel.workers.dev/?url=${encodeURIComponent(url)}`;
+                    const response = await axios.get(apiUrl);
+                    const data = response.data;
 
-                if (!data.success) return await conn.sendMessage(from, { text: "❌ **FATAL ERROR:** DOWNLOAD FAILED", edit: key });
-
-                // Finish Loader
-                let finishMsg = selectionMsg.replace('sᴇʟᴇᴄᴛ ᴛʀᴀɴsᴍɪssɪᴏɴ:', '✅ **ᴛʀᴀɴsᴍɪssɪᴏɴ ʀᴇᴀᴅʏ**');
-                finishMsg += `\n [▬▬▬▬▬▬▬▬▬▬▬] 100%`;
-                await conn.sendMessage(from, { text: finishMsg, edit: key });
-
-                let commonConfig = {
-                    audio: { url: data.result.download_url },
-                    mimetype: 'audio/mpeg',
-                    contextInfo: {
-                        externalAdReply: {
-                            title: "『 KAMRAN-𝐌𝐃 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃𝐄𝐑 』",
-                            body: title,
-                            thumbnailUrl: thumbnail,
-                            sourceUrl: videoUrl,
-                            mediaType: 1,
-                            renderLargerThumbnail: true
-                        }
+                    if (!data.status || !data.audio) {
+                        return await conn.sendMessage(from, { text: "❌ *FATAL ERROR:* Stream extraction failed.", edit: key });
                     }
-                };
 
-                if (body === '1') {
-                    await conn.sendMessage(from, { ...commonConfig, ptt: false }, { quoted: mek });
-                } else if (body === '2') {
-                    await conn.sendMessage(from, {
-                        document: { url: data.result.download_url },
+                    // Update UI to Success State
+                    await conn.sendMessage(from, { 
+                        text: `✅ *ᴄᴏᴍᴘʟᴇᴛᴇ:* [▰▰▰▰▰▰▰▰▰▰] 100%\n\nSending data packet...`, 
+                        edit: key 
+                    });
+
+                    const audioConfig = {
+                        audio: { url: data.audio },
                         mimetype: 'audio/mpeg',
-                        fileName: `${title}.mp3`
-                    }, { quoted: mek });
-                } else if (body === '3') {
-                    await conn.sendMessage(from, { ...commonConfig, ptt: true }, { quoted: mek });
-                }
+                        contextInfo: {
+                            externalAdReply: {
+                                title: "𝐊𝐀𝐌𝐑𝐀𝐍-𝐌𝐃 𝐀𝐔𝐃𝐈𝐎 𝐏𝐋𝐀𝐘𝐄𝐑",
+                                body: title,
+                                thumbnail: (await axios.get(thumbnail, { responseType: 'arraybuffer' })).data,
+                                sourceUrl: url,
+                                mediaType: 1,
+                                showAdAttribution: true,
+                                renderLargerThumbnail: true
+                            }
+                        }
+                    };
 
-                await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+                    // Execution based on selection
+                    if (body === '1') {
+                        await conn.sendMessage(from, { ...audioConfig, ptt: false }, { quoted: m });
+                    } else if (body === '2') {
+                        await conn.sendMessage(from, {
+                            document: { url: data.audio },
+                            mimetype: 'audio/mpeg',
+                            fileName: `${title}.mp3`,
+                            caption: `*✅ Transmitted by Kamran-MD*`
+                        }, { quoted: m });
+                    } else if (body === '3') {
+                        await conn.sendMessage(from, { ...audioConfig, ptt: true }, { quoted: m });
+                    }
+
+                    await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+
+                } catch (apiErr) {
+                    console.error(apiErr);
+                    await conn.sendMessage(from, { text: "❌ *API ERROR:* Connection failed.", edit: key });
+                }
             }
         };
 
         conn.ev.on('messages.upsert', async (chatUpdate) => {
-            for (const msg of chatUpdate.messages) { await listener(msg); }
+            for (const msg of chatUpdate.messages) {
+                await listener(msg);
+            }
         });
 
     } catch (error) {
         console.error(error);
-        await reply(`❌ **SYSTEM ERROR:** ${error.message}`);
+        await reply(`❌ *KAMRAN-MD SYSTEM ERROR:* ${error.message}`);
     }
 });
-            
