@@ -1,125 +1,117 @@
-const { cmd, commands } = require('../command');
-const axios = require('axios');
+const config = require('../config');
+const { cmd } = require('../command');
 const yts = require('yt-search');
 
-const AXIOS_DEFAULTS = {
-    timeout: 60000,
-    headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*'
-    }
-};
-
-/**
- * Helper to retry requests with exponential backoff
- */
-async function tryRequest(getter, attempts = 3) {
-    let lastError;
-    for (let attempt = 1; attempt <= attempts; attempt++) {
-        try {
-            return await getter();
-        } catch (err) {
-            lastError = err;
-            if (attempt < attempts) {
-                await new Promise(r => setTimeout(r, 1000 * attempt));
-            }
-        }
-    }
-    throw lastError;
-}
-
-// API Fetchers
-async function getIzumiUrl(url) {
-    const res = await tryRequest(() => axios.get(`https://izumiiiiiiii.dpdns.org/downloader/youtube?url=${encodeURIComponent(url)}&format=mp3`, AXIOS_DEFAULTS));
-    return res.data?.result?.download ? res.data.result : null;
-}
-
-async function getIzumiQuery(query) {
-    const res = await tryRequest(() => axios.get(`https://izumiiiiiiii.dpdns.org/downloader/youtube-play?query=${encodeURIComponent(query)}`, AXIOS_DEFAULTS));
-    return res.data?.result?.download ? res.data.result : null;
-}
-
-async function getOkatsuUrl(url) {
-    const res = await tryRequest(() => axios.get(`https://okatsu-rolezapiiz.vercel.app/downloader/ytmp3?url=${encodeURIComponent(url)}`, AXIOS_DEFAULTS));
-    if (res.data?.dl) {
-        return { download: res.data.dl, title: res.data.title, thumbnail: res.data.thumb };
-    }
-    return null;
-}
-
 cmd({
-    pattern: "song10",
-    alias: ["play12", "ytmp33", "music2"],
-    react: "🎵",
-    desc: "Download high-quality audio from YouTube.",
+    pattern: "play55",
+    alias: ["ytplay55", "music55"],
+    react: "🛰️",
+    desc: "Download audio from YouTube",
     category: "download",
+    use: ".play <query or url>",
     filename: __filename
-},           
-async (conn, mek, m, { from, q, reply }) => {
+}, async (conn, m, mek, { from, q, reply, sender }) => {
     try {
-        if (!q) return reply("❌ Please provide a song name or YouTube link!\n\nExample: .song Atif Aslam - Dil Diyan Gallan");
+        if (!q) return await reply("⚙️ *SYSTEM:* Input required. Please provide a song name or URL.");
 
-        await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
-
-        let video;
-        if (q.includes('youtube.com') || q.includes('youtu.be')) {
-            // URL provided, but we still search to get metadata (thumbnail/title)
-            const search = await yts(q);
-            video = search.videos[0] || { url: q, title: "YouTube Audio", thumbnail: "https://i.ibb.co/Y7m7L3K/yt.png", timestamp: "N/A" };
+        // --- PHASE 1: SEARCH DATA ---
+        let videoUrl, title, timestamp, thumbnail;
+        
+        if (q.match(/(youtube\.com|youtu\.be)/)) {
+            videoUrl = q;
+            const videoId = q.split(/[=/]/).pop();
+            const videoInfo = await yts({ videoId });
+            title = videoInfo.title;
+            timestamp = videoInfo.timestamp || 'N/A';
+            thumbnail = videoInfo.thumbnail;
         } else {
-            // Keyword search
             const search = await yts(q);
-            if (!search || !search.videos.length) return reply("❌ No results found for your query.");
-            video = search.videos[0];
+            if (!search.videos.length) return await reply("❌ **CORE ERROR:** NOT FOUND");
+            videoUrl = search.videos[0].url;
+            title = search.videos[0].title;
+            timestamp = search.videos[0].timestamp;
+            thumbnail = search.videos[0].thumbnail;
         }
 
-        // Inform user about search result
-        await conn.sendMessage(from, {
-            image: { url: video.thumbnail },
-            caption: `*🎵 KAMRAN-MD SONG DOWNLOADER*\n\n*📌 Title:* ${video.title}\n*⏱ Duration:* ${video.timestamp}\n*🔗 Link:* ${video.url}\n\n_📥 Downloading audio, please wait..._`
-        }, { quoted: mek });
+        // --- PHASE 2: IMMEDIATE SELECTION BOX ---
+        let selectionMsg = `╔═══════════════╗
+   ✰  **KAMRAN-𝐌𝐃 𝐂𝐎𝐑𝐄** ✰
+╟──────────────╢
+│ ✞︎ **ᴛɪᴛʟᴇ:** ${title.toUpperCase().substring(0, 20)}
+│ ✞︎ **ᴅᴜʀᴀᴛɪᴏɴ:** ${timestamp}
+╟──────────────╢
+│  **sᴇʟᴇᴄᴛ ᴛʀᴀɴsᴍɪssɪᴏɴ:**
+│
+│  1 ➮ ᴀᴜᴅɪᴏ (ᴍᴘ3) 🎵
+│  2 ➮ ᴅᴏᴄᴜᴍᴇɴᴛ (ғɪʟᴇ) 📂
+│  3 ➮ ᴠᴏɪᴄᴇ ɴᴏᴛᴇ (ᴘᴛᴛ) 🎤
+╚═══════════════╝
+> *Reply with 1, 2, or 3*`;
 
-        let audioData = null;
-        let errorLog = "";
+        const { key } = await conn.sendMessage(from, { text: selectionMsg }, { quoted: mek });
 
-        // Attempt 1: Izumi by URL
-        try {
-            audioData = await getIzumiUrl(video.url);
-        } catch (e) { errorLog += "IzumiURL: fail; "; }
+        // --- PHASE 3: RESPONSE LISTENER ---
+        const listener = async (msg) => {
+            const isReply = msg.message?.extendedTextMessage?.contextInfo?.stanzaId === key.id;
+            const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
 
-        // Attempt 2: Izumi by Query (Fallback)
-        if (!audioData) {
-            try {
-                audioData = await getIzumiQuery(video.title || q);
-            } catch (e) { errorLog += "IzumiQuery: fail; "; }
-        }
+            if (isReply && msg.key.remoteJid === from && ['1', '2', '3'].includes(body)) {
+                conn.ev.off('messages.upsert', listener);
 
-        // Attempt 3: Okatsu (Last Fallback)
-        if (!audioData) {
-            try {
-                audioData = await getOkatsuUrl(video.url);
-            } catch (e) { errorLog += "Okatsu: fail; "; }
-        }
+                // Start Loading animation ONLY after selection
+                let processingMsg = selectionMsg.replace('sᴇʟᴇᴄᴛ ᴛʀᴀɴsᴍɪssɪᴏɴ:', '📥 **ᴘʀᴏᴄᴇssɪɴɢ ᴅᴀᴛᴀ...**');
+                processingMsg += `\n [▬▬▬▭▭▭▭▭▭▭] 40%`;
+                await conn.sendMessage(from, { text: processingMsg, edit: key });
 
-        if (!audioData) {
-            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
-            return reply(`❌ Audio extraction failed across all sources.\n\n*Debug info:* ${errorLog}`);
-        }
+                const apiUrl = `https://api.davidcyriltech.my.id/download/ytmp3?url=${encodeURIComponent(videoUrl)}`;
+                const response = await fetch(apiUrl);
+                const data = await response.json();
 
-        const finalUrl = audioData.download || audioData.dl || audioData.url;
+                if (!data.success) return await conn.sendMessage(from, { text: "❌ **FATAL ERROR:** DOWNLOAD FAILED", edit: key });
 
-        // Send Audio File
-        await conn.sendMessage(from, {
-            audio: { url: finalUrl },
-            mimetype: 'audio/mpeg',
-            fileName: `${(audioData.title || video.title)}.mp3`,
-            ptt: false
-        }, { quoted: mek });
+                // Finish Loader
+                let finishMsg = selectionMsg.replace('sᴇʟᴇᴄᴛ ᴛʀᴀɴsᴍɪssɪᴏɴ:', '✅ **ᴛʀᴀɴsᴍɪssɪᴏɴ ʀᴇᴀᴅʏ**');
+                finishMsg += `\n [▬▬▬▬▬▬▬▬▬▬▬] 100%`;
+                await conn.sendMessage(from, { text: finishMsg, edit: key });
 
-        await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
+                let commonConfig = {
+                    audio: { url: data.result.download_url },
+                    mimetype: 'audio/mpeg',
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "『 KAMRAN-𝐌𝐃 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃𝐄𝐑 』",
+                            body: title,
+                            thumbnailUrl: thumbnail,
+                            sourceUrl: videoUrl,
+                            mediaType: 1,
+                            renderLargerThumbnail: true
+                        }
+                    }
+                };
 
-    } catch (err) {
-        console.error("Song Error:", err);
-        reply("❌ System error occurred: " + err.message);
+                if (body === '1') {
+                    await conn.sendMessage(from, { ...commonConfig, ptt: false }, { quoted: mek });
+                } else if (body === '2') {
+                    await conn.sendMessage(from, {
+                        document: { url: data.result.download_url },
+                        mimetype: 'audio/mpeg',
+                        fileName: `${title}.mp3`
+                    }, { quoted: mek });
+                } else if (body === '3') {
+                    await conn.sendMessage(from, { ...commonConfig, ptt: true }, { quoted: mek });
+                }
+
+                await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+            }
+        };
+
+        conn.ev.on('messages.upsert', async (chatUpdate) => {
+            for (const msg of chatUpdate.messages) { await listener(msg); }
+        });
+
+    } catch (error) {
+        console.error(error);
+        await reply(`❌ **SYSTEM ERROR:** ${error.message}`);
     }
-})
+});
+            
