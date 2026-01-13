@@ -4,8 +4,8 @@ const yts = require('yt-search');
 const axios = require('axios');
 
 cmd({
-    pattern: "play33",
-    alias: ["song33", "music33", "ytplay33"],
+    pattern: "play",
+    alias: ["song", "music", "ytplay"],
     react: "🛰️",
     desc: "Download audio from YouTube with stylish selection.",
     category: "download",
@@ -13,24 +13,23 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
     try {
-        if (!q) return await reply("⚠️ *KAMRAN-MD CORE:* Search query or URL is required.");
+        if (!q) return await reply("⚠️ *KAMRAN-MD CORE:* Input required (Name or URL).");
 
-        // --- PHASE 1: DATA SEARCH ---
+        // --- PHASE 1: SEARCH ---
         let video;
         const isUrl = q.match(/(youtube\.com|youtu\.be)/);
-
         if (isUrl) {
             const search = await yts(q);
             video = search.videos[0];
         } else {
             const search = await yts(q);
-            if (!search || !search.videos.length) return await reply("❌ *KAMRAN-MD ERROR:* No results found.");
+            if (!search || !search.videos.length) return await reply("❌ *KAMRAN-MD:* Result not found.");
             video = search.videos[0];
         }
 
         const { url, title, timestamp, thumbnail, views, author } = video;
 
-        // --- PHASE 2: UI DESIGN ---
+        // --- PHASE 2: STYLISH UI ---
         let selectionMsg = `✨ *𝐊𝐀𝐌𝐑𝐀𝐍-𝐌𝐃 𝐂𝐎𝐑𝐄* ✨
 ▬▬▬▬▬▬▬▬▬▬▬▬▬▬
 📝 *ᴛɪᴛʟᴇ:* ${title.toUpperCase().substring(0, 35)}...
@@ -45,7 +44,7 @@ cmd({
   [3] 🎤 *ᴠᴏɪᴄᴇ ɴᴏᴛᴇ (ᴘᴛᴛ)*
 
 ▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-> 🚩 *Reply with 1, 2 or 3 to select*`;
+> 🚩 *Please reply with 1, 2 or 3*`;
 
         const sentMsg = await conn.sendMessage(from, { 
             image: { url: thumbnail }, 
@@ -54,36 +53,35 @@ cmd({
 
         const messageId = sentMsg.key.id;
 
-        // --- PHASE 3: RELIABLE RESPONSE LISTENER ---
-        conn.ev.on('messages.upsert', async (chatUpdate) => {
+        // --- PHASE 3: ROBUST LISTENER ---
+        const handler = async (chatUpdate) => {
             const msg = chatUpdate.messages[0];
             if (!msg.message) return;
 
-            const body = msg.message.conversation || msg.message.extendedTextMessage?.text;
+            const body = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim();
             const context = msg.message.extendedTextMessage?.contextInfo;
 
-            // Check if it's a reply to our selection message
+            // Check if user is replying to the menu
             if (context && context.stanzaId === messageId && ['1', '2', '3'].includes(body)) {
                 
-                // Show Processing State
+                // Stop listening once valid reply is received
+                conn.ev.off('messages.upsert', handler);
+
                 await conn.sendMessage(from, { 
-                    text: `🛰️ *ᴘʀᴏᴄᴇssɪɴɢ:* [▰▰▰▰▱▱▱▱] 50%\n\nFetching audio stream for *${title}*...`, 
+                    text: `🛰️ *ᴘʀᴏᴄᴇssɪɴɢ:* Loading *${title}* stream...`, 
                     edit: sentMsg.key 
                 });
 
                 try {
-                    // Using Workers API for high speed
+                    // Fastest Worker API
                     const apiUrl = `https://yt-dl.officialhectormanuel.workers.dev/?url=${encodeURIComponent(url)}`;
                     const response = await axios.get(apiUrl);
                     const data = response.data;
 
-                    if (!data.status || !data.audio) {
-                        return await conn.sendMessage(from, { text: "❌ *FATAL ERROR:* Extraction failed.", edit: sentMsg.key });
-                    }
+                    if (!data.status || !data.audio) throw new Error("API Failure");
 
-                    // Success UI
                     await conn.sendMessage(from, { 
-                        text: `✅ *ᴄᴏᴍᴘʟᴇᴛᴇ:* [▰▰▰▰▰▰▰▰▰▰] 100%\n\nSending data packet...`, 
+                        text: `✅ *ᴄᴏᴍᴘʟᴇᴛᴇ:* Transmitting file...`, 
                         edit: sentMsg.key 
                     });
 
@@ -109,8 +107,7 @@ cmd({
                         await conn.sendMessage(from, {
                             document: { url: data.audio },
                             mimetype: 'audio/mpeg',
-                            fileName: `${title}.mp3`,
-                            caption: `*✅ Transmitted by Kamran-MD*`
+                            fileName: `${title}.mp3`
                         }, { quoted: m });
                     } else if (body === '3') {
                         await conn.sendMessage(from, { ...audioConfig, ptt: true }, { quoted: m });
@@ -119,14 +116,20 @@ cmd({
                     await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
 
                 } catch (err) {
-                    console.error(err);
-                    await conn.sendMessage(from, { text: "❌ *API ERROR:* Server disconnected.", edit: sentMsg.key });
+                    await conn.sendMessage(from, { text: "❌ *ERROR:* Failed to fetch audio.", edit: sentMsg.key });
                 }
             }
-        });
+        };
+
+        // Add listener
+        conn.ev.on('messages.upsert', handler);
+
+        // Auto-remove listener after 60 seconds if no reply (Timeout)
+        setTimeout(() => {
+            conn.ev.off('messages.upsert', handler);
+        }, 60000);
 
     } catch (error) {
-        console.error(error);
-        await reply(`❌ *KAMRAN-MD SYSTEM ERROR:* ${error.message}`);
+        reply(`❌ *KAMRAN-MD:* ${error.message}`);
     }
 });
