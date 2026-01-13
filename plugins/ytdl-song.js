@@ -22,7 +22,7 @@ function normalizeYouTubeUrl(url) {
 async function fetchAudioData(url, retries = 2) {
   try {
     // We prioritize the dedicated audio endpoint for better MP3 conversion
-    const audioApiUrl = `https://jawad-tech.vercel.app/download/audio?url=${encodeURIComponent(url)}`;
+    const audioApiUrl = `https://drkamran-api.vercel.app/api/downloader/ytmp3?url=${encodeURIComponent(url)}`;
     const response = await axios.get(audioApiUrl, { timeout: 20000 });
     const data = response.data;
 
