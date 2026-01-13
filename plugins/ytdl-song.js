@@ -34,7 +34,7 @@ async function fetchAudioData(url, retries = 2) {
     }
     
     // Fallback to general YTDL if dedicated audio fails
-    const fallbackUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
+    const fallbackUrl = `https://drkamran-api.vercel.app/api/downloader/ytmp3?url=${encodeURIComponent(url)}`;
     const fbRes = await axios.get(fallbackUrl);
     if (fbRes.data.status && fbRes.data.result.mp3) {
         return {
