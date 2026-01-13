@@ -1,151 +1,114 @@
-//---------------------------------------------------------------------------
-//           KAMRAN-MD - PREMIUM YOUTUBE DOWNLOADER
-//---------------------------------------------------------------------------
-//  🚀 DOWNLOAD MP3/MP4 WITH INTERACTIVE SELECTION & STYLISH UI
-//---------------------------------------------------------------------------
+const config = require('../config');
+const { cmd } = require('../command');
+const yts = require('yt-search');
+const fetch = require('node-fetch');
 
-const { cmd } = require("../command");
-const yts = require("yt-search");
-const axios = require("axios");
-
-// Cache to prevent redundant API calls
-const cache = new Map();
-
-/**
- * Normalizes different YouTube URL formats
- */
-function normalizeYouTubeUrl(url) {
-  const match = url.match(/(?:youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/.*[?&]v=)([a-zA-Z0-9_-]{11})/);
-  return match ? `https://youtube.com/watch?v=${match[1]}` : null;
-}
-
-/**
- * Fetches Download Data (MP4/MP3) from the Jawad-Tech API
- */
-async function fetchMediaData(url) {
-  try {
-    const apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(url)}`;
-    const response = await axios.get(apiUrl, { timeout: 15000 });
-    if (response.data && response.data.status) {
-        return response.data.result;
-    }
-    return null;
-  } catch (e) {
-    console.error("API Error:", e.message);
-    return null;
-  }
-}
-
-cmd(
-  {
+cmd({
     pattern: "play",
-    alias: ["song4", "video3", "yt", "yta", "ytv"],
-    desc: "Download YouTube audio/video with a stylish UI.",
+    alias: ["ytplay", "music", "video"],
+    react: "🛰️",
+    desc: "Download Audio or Video from YouTube",
     category: "download",
-    use: ".play <song name>",
-    filename: __filename,
-  },
-  async (conn, mek, m, { from, q, reply, prefix, command }) => {
+    use: ".play <query or url>",
+    filename: __filename
+}, async (conn, m, mek, { from, q, reply }) => {
     try {
-      if (!q) return reply(`✨ *YouTube Downloader* ✨\n\nUsage: \`${prefix + command} <song name/url>\``);
+        if (!q) return await reply("⚙️ *SYSTEM:* Input required. Please provide a song name or URL.");
 
-      await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
+        // --- PHASE 1: SEARCH DATA ---
+        let videoUrl, title, timestamp, thumbnail;
+        
+        const search = await yts(q);
+        if (!search.videos.length) return await reply("❌ **CORE ERROR:** NOT FOUND");
+        
+        videoUrl = search.videos[0].url;
+        title = search.videos[0].title;
+        timestamp = search.videos[0].timestamp;
+        thumbnail = search.videos[0].thumbnail;
 
-      // Search Logic
-      const searchUrl = normalizeYouTubeUrl(q);
-      const searchResults = await yts(searchUrl ? { videoId: searchUrl.split('v=')[1] } : q);
-      const video = searchUrl ? searchResults : searchResults.videos[0];
+        // --- PHASE 2: SELECTION BOX ---
+        let selectionMsg = `╔═══════════════╗
+   ✰  **KAMRAN-𝐌𝐃 𝐂𝐎𝐑𝐄** ✰
+╟──────────────╢
+│ ✞︎ **ᴛɪᴛʟᴇ:** ${title.toUpperCase().substring(0, 25)}
+│ ✞︎ **ᴅᴜʀᴀᴛɪᴏɴ:** ${timestamp}
+╟──────────────╢
+│  **sᴇʟᴇᴄᴛ ᴛʀᴀɴsᴍɪssɪᴏɴ:**
+│
+│  1 ➮ ᴠɪᴅᴇᴏ (ᴍᴘ4) 🎬
+│  2 ➮ ᴀᴜᴅɪᴏ (ᴍᴘ3) 🎵
+╚═══════════════╝
+> *Reply with 1 or 2*`;
 
-      if (!video) return reply("❌ *Media not found!* Check the name or link.");
+        const { key } = await conn.sendMessage(from, { 
+            image: { url: thumbnail }, 
+            caption: selectionMsg 
+        }, { quoted: mek });
 
-      // STYLISH UI TEXT
-      let premiumCard = `
-┏━━━━━━━  『 **YOUTUBE DOWNLOADER** 』  ━━━━━━┓
-┃
-┃  ✨ **ᴛɪᴛʟᴇ:** ${video.title}
-┃  👤 **ᴄʜᴀɴɴᴇʟ:** ${video.author.name}
-┃  ⏱️ **ᴅᴜʀᴀᴛɪᴏɴ:** ${video.timestamp}
-┃  👁️ **ᴠɪᴇᴡꜱ:** ${video.views.toLocaleString()}
-┃  📅 **ᴜᴘʟᴏᴀᴅᴇᴅ:** ${video.ago}
-┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+        // --- PHASE 3: RESPONSE LISTENER ---
+        const listener = async (msg) => {
+            const isReply = msg.message?.extendedTextMessage?.contextInfo?.stanzaId === key.id;
+            const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
 
-🔢 *ʀᴇᴘʟʏ ᴡɪᴛʜ ᴀ ɴᴜᴍʙᴇʀ:*
-1️⃣ | **MP4 (Video) 🎥**
-2️⃣ | **MP3 (Audio) 🎶**
+            if (isReply && msg.key.remoteJid === from && ['1', '2'].includes(body)) {
+                conn.ev.off('messages.upsert', listener);
 
-> ᴘᴏᴡᴇʀᴇᴅ ʙʏ **ᴋᴀᴍʀᴀɴ-ᴍᴅ** 🚀`;
+                // Show processing status
+                await conn.sendMessage(from, { react: { text: "⏳", key: msg.key } });
 
-      // Send Search Card
-      const sentMsg = await conn.sendMessage(
-        from,
-        { 
-          image: { url: video.thumbnail || video.image }, 
-          caption: premiumCard,
-          contextInfo: {
-            externalAdReply: {
-              title: "YT-DOWNLOADER",
-              body: video.title,
-              mediaType: 1,
-              sourceUrl: video.url,
-              thumbnailUrl: video.thumbnail || video.image,
-              renderLargerThumbnail: true
+                if (body === '1') {
+                    // --- VIDEO DOWNLOAD (Using Jawad-Tech API) ---
+                    const videoApi = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(videoUrl)}`;
+                    const response = await fetch(videoApi);
+                    const data = await response.json();
+
+                    if (!data.result || !data.result.video) {
+                        return await reply("❌ **ERROR:** Video download failed.");
+                    }
+
+                    await conn.sendMessage(from, { 
+                        video: { url: data.result.video }, 
+                        caption: `*${title}*\n\n> © KAMRAN-MD`,
+                        mimetype: 'video/mp4'
+                    }, { quoted: mek });
+
+                } else if (body === '2') {
+                    // --- AUDIO DOWNLOAD (Using David Cyril API) ---
+                    const audioApi = `https://api.davidcyriltech.my.id/download/ytmp3?url=${encodeURIComponent(videoUrl)}`;
+                    const response = await fetch(audioApi);
+                    const data = await response.json();
+
+                    if (!data.success || !data.result.download_url) {
+                        return await reply("❌ **ERROR:** Audio download failed.");
+                    }
+
+                    await conn.sendMessage(from, { 
+                        audio: { url: data.result.download_url }, 
+                        mimetype: 'audio/mpeg',
+                        ptt: false,
+                        contextInfo: {
+                            externalAdReply: {
+                                title: "KAMRAN-MD DOWNLOADER",
+                                body: title,
+                                thumbnailUrl: thumbnail,
+                                sourceUrl: videoUrl,
+                                mediaType: 1,
+                                showAdAttribution: true
+                            }
+                        }
+                    }, { quoted: mek });
+                }
+
+                await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
             }
-          }
-        },
-        { quoted: mek }
-      );
+        };
 
-      await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        conn.ev.on('messages.upsert', async (chatUpdate) => {
+            for (const msg of chatUpdate.messages) { await listener(msg); }
+        });
 
-      // --- LISTENER FOR SELECTION ---
-      conn.ev.on("messages.upsert", async (msgUpdate) => {
-        const msg = msgUpdate.messages[0];
-        if (!msg.message || !msg.message.extendedTextMessage) return;
-        
-        const context = msg.message.extendedTextMessage.contextInfo;
-        if (context.stanzaId !== sentMsg.key.id) return;
-
-        const selection = msg.message.extendedTextMessage.text.trim();
-        if (!["1", "2"].includes(selection)) return;
-
-        await conn.sendMessage(from, { react: { text: "⏳", key: msg.key } });
-        
-        // Fetch API Data
-        const apiData = await fetchMediaData(video.url);
-        if (!apiData) return reply("❌ *Server Error:* Could not fetch download links.");
-
-        const isAudio = selection === "2";
-        let downloadUrl = isAudio ? apiData.mp3 : apiData.mp4;
-
-        // Custom Audio API override for higher quality (as per previous code request)
-        if (isAudio) {
-           try {
-             const audioApi = `https://jawad-tech.vercel.app/download/audio?url=${encodeURIComponent(video.url)}`;
-             const audioRes = await axios.get(audioApi);
-             if (audioRes.data.status) downloadUrl = audioRes.data.result;
-           } catch (e) { console.log("Falling back to standard MP3..."); }
-        }
-
-        // Send Media
-        await conn.sendMessage(
-          from,
-          {
-            [isAudio ? 'audio' : 'video']: { url: downloadUrl },
-            mimetype: isAudio ? 'audio/mpeg' : 'video/mp4',
-            fileName: `${video.title}.${isAudio ? 'mp3' : 'mp4'}`,
-            caption: isAudio ? undefined : `✅ **${video.title}**\n📥 *Downloaded via KAMRAN-MD*`,
-            headerType: 4
-          },
-          { quoted: msg }
-        );
-
-        await conn.sendMessage(from, { react: { text: "✅", key: msg.key } });
-      });
-
-    } catch (e) {
-      console.error(e);
-      reply("❌ *Error:* Processing failed.");
+    } catch (error) {
+        console.error(error);
+        await reply(`❌ **SYSTEM ERROR:** ${error.message}`);
     }
-  }
-);
+});
