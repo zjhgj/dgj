@@ -12,16 +12,16 @@ cmd({
     if (!mentioned.includes(botNumber)) return;
 
     const voiceClips = [
-      "https://files.catbox.moe/45wv9h.mp3",
-      "https://files.catbox.moe/1jm58d.mp3",
-      "https://files.catbox.moe/alvx4o.mp3",
-      "https://files.catbox.moe/zu5igz.mp3",
-      "https://files.catbox.moe/4m1ufp.mp3",
-      "https://files.catbox.moe/45wv9h.mp3",
-      "https://files.catbox.moe/niyhai.mp3",
-      "https://files.catbox.moe/alvx4o.mp3",
-      "https://files.catbox.moe/1jm58d.mp3",
-      "https://files.catbox.moe/45wv9h.mp3"
+      "https://cdn.ironman.my.id/i/7p5plg.mp4",
+      "https://cdn.ironman.my.id/i/l4dyvg.mp4",
+      "https://cdn.ironman.my.id/i/4z93dg.mp4",
+      "https://cdn.ironman.my.id/i/m9gwk0.mp4",
+      "https://cdn.ironman.my.id/i/gr1jjc.mp4",
+      "https://cdn.ironman.my.id/i/lbr8of.mp4",
+      "https://cdn.ironman.my.id/i/0z95mz.mp4",
+      "https://cdn.ironman.my.id/i/rldpwy.mp4",
+      "https://cdn.ironman.my.id/i/lz2z87.mp4",
+      "https://cdn.ironman.my.id/i/gg5jct.mp4"
     ];
 
     const randomClip = voiceClips[Math.floor(Math.random() * voiceClips.length)];
@@ -52,23 +52,23 @@ cmd({
 }, async (conn, m) => {
     try {
         const voiceClips = [
-      "https://files.catbox.moe/45wv9h.mp3",
-      "https://files.catbox.moe/1jm58d.mp3",
-      "https://files.catbox.moe/alvx4o.mp3",
-      "https://files.catbox.moe/zu5igz.mp3",
-      "https://files.catbox.moe/4m1ufp.mp3",
-      "https://files.catbox.moe/45wv9h.mp3",
-      "https://files.catbox.moe/niyhai.mp3",
-      "https://files.catbox.moe/alvx4o.mp3",
-      "https://files.catbox.moe/1jm58d.mp3",
-      "https://files.catbox.moe/45wv9h.mp3"
-    ];
+            "https://files.catbox.moe/876n3e.mp4",
+            "https://files.catbox.moe/876n3e.mp4",
+            "https://files.catbox.moe/876n3e.mp4",
+            "https://files.catbox.moe/876n3e.mp4",
+            "https://files.catbox.moe/876n3e.mp4",
+            "https://files.catbox.moe/876n3e.mp4",
+            "https://files.catbox.moe/876n3e.mp4",
+            "https://files.catbox.moe/876n3e.mp4",
+            "https://files.catbox.moe/876n3e.mp4",
+            "https://files.catbox.moe/876n3e.mp4"
+        ];
 
         const randomClip = voiceClips[Math.floor(Math.random() * voiceClips.length)];
 
         await conn.sendMessage(m.chat, {
             audio: { url: randomClip },
-            mimetype: 'audio/mp3',
+            mimetype: 'audio/mp4',
             ptt: true
         }, { quoted: m });
     } catch (e) {
@@ -76,4 +76,3 @@ cmd({
         await conn.sendMessage(m.chat, { text: "❌ Failed to send random clip." }, { quoted: m });
     }
 });
-      
