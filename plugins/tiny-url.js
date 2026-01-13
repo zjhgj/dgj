@@ -5,7 +5,7 @@ const fetch = require('node-fetch');
 
 cmd({
     pattern: "play",
-    alias: ["ytplay", "music", "video"],
+    alias: ["ytplay2", "music2", "video2"],
     react: "🛰️",
     desc: "Download Video or Audio from YouTube",
     category: "download",
