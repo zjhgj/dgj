@@ -5,9 +5,9 @@ const fetch = require('node-fetch');
 
 cmd({
     pattern: "play",
-    alias: ["ytplay2", "music2", "video2"],
+    alias: ["ytplay", "music2", "video3"],
     react: "🛰️",
-    desc: "Download Video or Audio from YouTube",
+    desc: "Download Video or Audio from YouTube via Search or Link",
     category: "download",
     use: ".play <query or url>",
     filename: __filename
@@ -15,14 +15,25 @@ cmd({
     try {
         if (!q) return await reply("⚙️ *SYSTEM:* Input required. Please provide a song name or YouTube URL.");
 
-        // --- PHASE 1: DATA LOOKUP ---
-        const search = await yts(q);
-        const video = search.videos[0];
-        if (!video) return await reply("❌ **CORE ERROR:** No results found.");
+        // --- PHASE 1: SMART DATA LOOKUP (LINK OR SEARCH) ---
+        let video;
+        const isUrl = q.match(/(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/);
+
+        if (isUrl) {
+            // Fetch info directly if it's a URL
+            const search = await yts({ videoId: q.split(/[=/]/).pop() });
+            video = search;
+        } else {
+            // Perform search if it's text
+            const search = await yts(q);
+            video = search.videos[0];
+        }
+
+        if (!video || !video.url) return await reply("❌ **CORE ERROR:** Video not found. Please check the link or query.");
 
         const videoUrl = video.url;
         const title = video.title;
-        const timestamp = video.timestamp;
+        const timestamp = video.timestamp || "N/A";
         const thumbnail = video.thumbnail;
 
         // --- PHASE 2: SELECTION MENU ---
@@ -53,9 +64,7 @@ cmd({
             const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
 
             if (isReply && ['1', '2'].includes(body)) {
-                // Turn off listener after selection
                 conn.ev.off('messages.upsert', listener);
-
                 await conn.sendMessage(from, { react: { text: "⏳", key: msg.key } });
 
                 if (body === '1') {
@@ -115,7 +124,6 @@ cmd({
             }
         };
 
-        // Activate the listener
         conn.ev.on('messages.upsert', async (chatUpdate) => {
             for (const msg of chatUpdate.messages) {
                 await listener(msg);
@@ -127,4 +135,4 @@ cmd({
         await reply(`❌ **SYSTEM ERROR:** ${error.message}`);
     }
 });
-        
+                                                       
