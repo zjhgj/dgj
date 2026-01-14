@@ -10,19 +10,20 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, reply }) => {
     try {
-        // --- PREPARE DATA ---
+        // --- 1. SET DEFAULTS (To prevent errors if config is missing) ---
         const botName = config.BOT_NAME || "KAMRAN-MD";
         const ownerName = config.OWNER_NAME || "KAMRAN";
-        const menuImg = config.MENU_IMAGE_URL || 'https://files.catbox.moe/ly6553.jpg';
+        const menuImg = "https://files.catbox.moe/ly6553.jpg"; // Using a direct link to ensure it shows
 
+        // --- 2. BUILD CAPTION ---
         const menuCaption = `╭━━━〔 *${botName}* 〕━━━┈⊷
 ┃★╭──────────────
 ┃★│ 👑 Owner : *${ownerName}*
 ┃★│ ⏳ Runtime : *${runtime(process.uptime())}*
 ┃★╰──────────────
 ╰━━━━━━━━━━━━━━━┈⊷
-📋 *ᴄʜᴏᴏsᴇ ᴀ ᴄᴀᴛᴇɢᴏʀʏ ᴛᴏ ᴇxᴘʟᴏʀᴇ:*
-> _ʀᴇᴘʟʏ ᴡɪᴛʜ ᴛʜᴇ ᴍᴀᴛᴄʜɪɴɢ ɴᴜᴍʙᴇʀ_
+📋 *ᴄʜᴏᴏsᴇ ᴀ ᴄᴀᴛᴇɢᴏʀʏ:*
+_Reply with the matching number_
 
  ➦✧ -〘 *ʙᴏᴛ ᴍᴇɴᴜ* 〙 -  ✧━┈⊷
 ┃✧│  ❶  *ᴅᴏᴡɴʟᴏᴅᴇᴅ ᴍᴇɴᴜ*
@@ -36,78 +37,67 @@ cmd({
 ┃✧│  ❾  *ʀᴇᴀᴄʏ ᴍᴇɴᴜ*
 ┃✧│  ❿  *ᴍᴀɪɴ ᴍᴇɴᴜ*
 ┃✧ ➥ ⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆✧━┈⊷
-> ${config.DESCRIPTION || "Multi-Device WhatsApp Bot"}`;
+> ${config.DESCRIPTION || "Powered by Kamran-MD"}`;
 
-        const contextInfo = {
-            mentionedJid: [m.sender],
-            forwardingScore: 999,
-            isForwarded: true,
-            externalAdReply: {
-                title: botName,
-                body: `STATUS: ONLINE`,
-                thumbnailUrl: menuImg,
-                sourceUrl: 'https://whatsapp.com/channel/0029VaoS9S9K0IBoJ6L7O40B',
-                mediaType: 1,
-                renderLargerThumbnail: true
-            }
-        };
-
-        // --- SEND THE MAIN MENU ---
+        // --- 3. SEND MENU WITH DP ---
         const sentMsg = await conn.sendMessage(from, {
             image: { url: menuImg },
             caption: menuCaption,
-            contextInfo: contextInfo
+            contextInfo: {
+                mentionedJid: [m.sender],
+                forwardingScore: 999,
+                isForwarded: true,
+                externalAdReply: {
+                    title: botName,
+                    body: "SYSTEM ONLINE",
+                    thumbnailUrl: menuImg,
+                    sourceUrl: "https://github.com",
+                    mediaType: 1,
+                    renderLargerThumbnail: true
+                }
+            }
         }, { quoted: mek });
 
         const messageID = sentMsg.key.id;
 
-        // --- CATEGORIES CONTENT ---
+        // --- 4. DEFINE DATA ---
         const menuData = {
-            '1': `╭━━━〔 *Download Menu* 〕━━━┈⊷\n• play [song]\n• video [url]\n• facebook [url]\n• tiktok [url]\n• insta [url]\n• apk [app]\n> ${botName}`,
-            '2': `╭━━━〔 *Group Menu* 〕━━━┈⊷\n• mute/unmute\n• kick/add\n• promote/demote\n• tagall\n• hidetag\n• lockgc/unlockgc\n> ${botName}`,
-            '3': `╭━━━〔 *Fun Menu* 〕━━━┈⊷\n• joke\n• fact\n• hack\n• rate\n• ship\n• character\n> ${botName}`,
-            '4': `╭━━━〔 *Owner Menu* 〕━━━┈⊷\n• block/unblock\n• setpp\n• restart\n• shutdown\n> ${botName}`,
-            '5': `╭━━━〔 *AI Menu* 〕━━━┈⊷\n• ai [query]\n• gpt [query]\n• imagine [text]\n> ${botName}`,
-            '6': `╭━━━〔 *Anime Menu* 〕━━━┈⊷\n• waifu\n• neko\n• naruto\n• animegirl\n> ${botName}`,
-            '7': `╭━━━〔 *Convert Menu* 〕━━━┈⊷\n• sticker\n• tomp3\n• fancy\n• tts\n• trt\n> ${botName}`,
-            '8': `╭━━━〔 *Other Menu* 〕━━━┈⊷\n• weather\n• news\n• movie\n• calculate\n> ${botName}`,
-            '9': `╭━━━〔 *Reactions Menu* 〕━━━┈⊷\n• hug\n• kiss\n• slap\n• kill\n• pat\n> ${botName}`,
-            '10': `╭━━━〔 *Main Menu* 〕━━━┈⊷\n• ping\n• alive\n• runtime\n• repo\n• owner\n> ${botName}`
+            '1': "📥 *DOWNLOAD MENU*\n\n• Play\n• Video\n• FB\n• Insta\n• Tiktok\n• APK",
+            '2': "👥 *GROUP MENU*\n\n• Mute\n• Unmute\n• Tagall\n• Kick\n• Add\n• Promote",
+            '3': "🎮 *FUN MENU*\n\n• Joke\n• Fact\n• Hack\n• Ship\n• Rate",
+            '4': "👑 *OWNER MENU*\n\n• Restart\n• Shutdown\n• Block\n• Unblock\n• Setpp",
+            '5': "🤖 *AI MENU*\n\n• AI\n• GPT\n• Imagine\n• Blackbox",
+            '6': "🎎 *ANIME MENU*\n\n• Waifu\n• Neko\n• Naruto\n• Animegirl",
+            '7': "🔄 *CONVERT MENU*\n\n• Sticker\n• ToMp3\n• Fancy\n• TTS",
+            '8': "📌 *OTHER MENU*\n\n• Weather\n• News\n• Movie\n• Calculate",
+            '9': "💞 *REACTION MENU*\n\n• Hug\n• Kiss\n• Slap\n• Kill\n• Pat",
+            '10': "🏠 *MAIN MENU*\n\n• Ping\n• Alive\n• Runtime\n• Owner\n• Repo"
         };
 
-        // --- REPLY HANDLER ---
+        // --- 5. RESPONSE HANDLER ---
         const handler = async (msgData) => {
-            const receivedMsg = msgData.messages[0];
-            if (!receivedMsg?.message) return;
+            const up = msgData.messages[0];
+            if (!up.message) return;
+            const text = (up.message.conversation || up.message.extendedTextMessage?.text || "").trim();
+            const isReply = up.message.extendedTextMessage?.contextInfo?.stanzaId === messageID;
 
-            const isReplyToMenu = receivedMsg.message.extendedTextMessage?.contextInfo?.stanzaId === messageID;
-            
-            if (isReplyToMenu) {
-                const receivedText = (receivedMsg.message.conversation || receivedMsg.message.extendedTextMessage?.text || "").trim();
-                const senderID = receivedMsg.key.remoteJid;
-
-                if (menuData[receivedText]) {
-                    await conn.sendMessage(senderID, {
-                        image: { url: menuImg },
-                        caption: menuData[receivedText],
-                        contextInfo: contextInfo
-                    }, { quoted: receivedMsg });
-                    
-                    await conn.sendMessage(senderID, { react: { text: '✅', key: receivedMsg.key } });
-                }
+            if (isReply && menuData[text]) {
+                await conn.sendMessage(from, {
+                    image: { url: menuImg },
+                    caption: menuData[text] + `\n\n> ${botName}`,
+                    contextInfo: { externalAdReply: { title: botName, mediaType: 1, thumbnailUrl: menuImg, renderLargerThumbnail: true } }
+                }, { quoted: up });
+                await conn.sendMessage(from, { react: { text: "✅", key: up.key } });
             }
         };
 
         conn.ev.on("messages.upsert", handler);
-
-        // Auto-kill listener after 5 minutes to save RAM
-        setTimeout(() => {
-            conn.ev.off("messages.upsert", handler);
-        }, 300000);
+        setTimeout(() => conn.ev.off("messages.upsert", handler), 300000);
 
     } catch (e) {
-        console.error('Menu Error:', e);
-        reply("❌ *ERROR:* Failed to load the menu. Check the console for logs.");
+        console.error(e);
+        // Fallback to simple text if image fails
+        reply("❌ DP failed to load, sending text menu:\n\n" + menuCaption);
     }
 });
-            
+                    
