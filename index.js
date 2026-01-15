@@ -166,32 +166,45 @@ async function connectToWA() {
             console.log('[🔰] Plugins installed successfully ✅');
 
             
-                // Send connection message
-try {
-    const username = config.REPO.split('/').slice(3, 4)[0] || 'KAMRAN-SMD';
-    
-    const upMessage = `╭─〔 *🤖KAMRAN-MD BOT* 〕  
-├─▸ *Ultra Super Fast Powerfull ⚠️* │     *World Best BOT KAMRAN-MD* ╰─➤ *Your Smart WhatsApp Bot is Ready To use 🍁!* - *🖤 Thank You for Choosing KAMRAN-MD!* ╭──〔 🔗 *Information* 〕  
+                // --- SEND CONNECTION MESSAGE TO IB ---
+            try {
+                const username = config.REPO.split('/').slice(3, 4)[0] || 'KAMRAN-SMD';
+                const prefix = config.PREFIX || '.'; // Ensure prefix is defined
+
+                const upMessage = `╭─〔 *🤖KAMRAN-MD BOT* 〕  
+├─▸ *Ultra Super Fast Powerfull ⚠️*
+│   *World Best BOT KAMRAN-MD* ╰─➤ *Your Smart WhatsApp Bot is Ready To use 🍁!*
+
+- *🖤 Thank You for Choosing KAMRAN-MD!* ╭──〔 🔗 *Information* 〕  
 ├─ 🧩 *Prefix:* = ${prefix}
 ├─ 📢 *Join Channel:* │    https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O  
 ├─ 🌟 *Star the Repo:* │    https://github.com/KAMRAN-SMD/KAMRAN-MD  
 ╰─🚀 *Powered by DR KAMRAN*`;
 
-    // --- 100% FIXED INBOX PATH LOGIC FOR BAILEYS OFFICIAL ---
-    // Pehle check karega ki LID hai ya nahi, kyunki naye accounts LID par hi message receive karte hain.
-    const inboxPath = conn.user.lid || 
-                     (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
-    
-    // Yahan mistake thi: conn.user.id ki jagah inboxPath use karna zaroori hai
-    await conn.sendMessage(inboxPath, { 
-        image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
-        caption: upMessage 
-    });
+                // --- 100% SECURE INBOX PATH FOR BAILEYS ---
+                const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
 
-} catch (sendError) {
-    console.error('[🔰] Error sending messages to IB:', sendError);
-                }
+                // Connection stable hone ke liye 5 second ka wait
+                setTimeout(async () => {
+                    try {
+                        await conn.sendMessage(inboxPath, { 
+                            image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
+                            caption: upMessage 
+                        });
+                        console.log('[✅] Connection message sent to IB successfully.');
+                    } catch (innerError) {
+                        // Fallback: Agar inboxPath fail ho toh original conn.user.id use karein
+                        await conn.sendMessage(conn.user.id, { 
+                            image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
+                            caption: upMessage 
+                        });
+                    }
+                }, 5000); 
+
+            } catch (sendError) {
+                console.error('[🔰] Error sending messages to IB:', sendError);
             }
+        }
 
         if (qr) {
             console.log('[🔰] Scan the QR code to connect or use session ID');
