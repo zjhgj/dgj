@@ -166,9 +166,9 @@ async function connectToWA() {
             console.log('[🔰] Plugins installed successfully ✅');
 
             
-                // --- SEND CONNECTION MESSAGE TO IB ---
-            try {
-                const username = config.REPO.split('/').slice(3, 4)[0] || 'KAMRAN-SMD';
+                // Send connection message
+try {
+    const username = config.REPO.split('/').slice(3, 4)[0] || 'KAMRAN-SMD';
                 const prefix = config.PREFIX || '.'; // Ensure prefix is defined
 
                 const upMessage = `╭─〔 *🤖KAMRAN-MD BOT* 〕  
