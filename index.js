@@ -169,7 +169,6 @@ async function connectToWA() {
                 // Send connection message
 try {
     const username = config.REPO.split('/').slice(3, 4)[0] || 'KAMRAN-SMD';
-    const mrfrank = `https://github.com/${username}`;
     
     const upMessage = `╭─〔 *🤖KAMRAN-MD BOT* 〕  
 ├─▸ *Ultra Super Fast Powerfull ⚠️* │     *World Best BOT KAMRAN-MD* ╰─➤ *Your Smart WhatsApp Bot is Ready To use 🍁!* - *🖤 Thank You for Choosing KAMRAN-MD!* ╭──〔 🔗 *Information* 〕  
@@ -177,19 +176,20 @@ try {
 ├─ 📢 *Join Channel:* │    https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O  
 ├─ 🌟 *Star the Repo:* │    https://github.com/KAMRAN-SMD/KAMRAN-MD  
 ╰─🚀 *Powered by DR KAMRAN*`;
+
+    // --- 100% FIXED INBOX PATH LOGIC FOR BAILEYS OFFICIAL ---
+    // Pehle check karega ki LID hai ya nahi, kyunki naye accounts LID par hi message receive karte hain.
+    const inboxPath = conn.user.lid || 
+                     (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
     
-    // --- 100% FIXED INBOX PATH LOGIC ---
-    // Pehle LID check karega, agar nahi mili toh clean number nikalega
-    const inboxPath = conn.user.lid || (conn.user.id.split(':')[0].includes('@') ? conn.user.id.split(':')[0] : conn.user.id.split(':')[0] + "@s.whatsapp.net");
-    
-    // --- SEND MESSAGE TO THE CORRECT PATH ---
+    // Yahan mistake thi: conn.user.id ki jagah inboxPath use karna zaroori hai
     await conn.sendMessage(inboxPath, { 
         image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
         caption: upMessage 
     });
-    
+
 } catch (sendError) {
-    console.error('[🔰] Error sending messages:', sendError);
+    console.error('[🔰] Error sending messages to IB:', sendError);
                 }
             }
 
