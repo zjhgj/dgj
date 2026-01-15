@@ -13,7 +13,7 @@ cmd({
         // --- 1. SET DEFAULTS (To prevent errors if config is missing) ---
         const botName = config.BOT_NAME || "KAMRAN-MD";
         const ownerName = config.OWNER_NAME || "KAMRAN";
-        const menuImg = "https://files.catbox.moe/ly6553.jpg"; // Using a direct link to ensure it shows
+        const menuImg = "https://files.catbox.moe/d2n3fc.jpg"; // Using a direct link to ensure it shows
 
         // --- 2. BUILD CAPTION ---
         const menuCaption = `╭━━━〔 *${botName}* 〕━━━┈⊷
