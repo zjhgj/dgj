@@ -167,35 +167,29 @@ async function connectToWA() {
 
             
                 // Send connection message
-                try {
-                    const username = config.REPO.split('/').slice(3, 4)[0];
-                    const mrfrank = `https://github.com/${username}`;
-                    
-                    const upMessage = `╭─〔 *🤖KAMRAN-MD BOT* 〕  
-├─▸ *Ultra Super Fast Powerfull ⚠️*  
-│     *World Best BOT KAMRAN-MD* 
-╰─➤ *Your Smart WhatsApp Bot is Ready To use 🍁!*  
-
-- *🖤 Thank You for Choosing KAMRAN-MD!* 
-
-╭──〔 🔗 *Information* 〕  
+try {
+    const username = config.REPO.split('/').slice(3, 4)[0] || 'KAMRAN-SMD';
+    const mrfrank = `https://github.com/${username}`;
+    
+    const upMessage = `╭─〔 *🤖KAMRAN-MD BOT* 〕  
+├─▸ *Ultra Super Fast Powerfull ⚠️* │     *World Best BOT KAMRAN-MD* ╰─➤ *Your Smart WhatsApp Bot is Ready To use 🍁!* - *🖤 Thank You for Choosing KAMRAN-MD!* ╭──〔 🔗 *Information* 〕  
 ├─ 🧩 *Prefix:* = ${prefix}
-├─ 📢 *Join Channel:*  
-│    https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O  
-├─ 🌟 *Star the Repo:*  
-│    https://github.com/KAMRAN-SMD/KAMRAN-MD  
+├─ 📢 *Join Channel:* │    https://whatsapp.com/channel/0029VbAhxYY90x2vgwhXJV3O  
+├─ 🌟 *Star the Repo:* │    https://github.com/KAMRAN-SMD/KAMRAN-MD  
 ╰─🚀 *Powered by DR KAMRAN*`;
-                    
-                    // Apply inbox path logic
-                    const inboxPath = conn.user.lid || conn.user.id.split(':')[0] + "@s.whatsapp.net";
-                    
-                    await conn.sendMessage(conn.user.id, { 
-                        image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
-                        caption: upMessage 
-                    });
-                    
-                } catch (sendError) {
-                    console.error('[🔰] Error sending messages:', sendError);
+    
+    // --- 100% FIXED INBOX PATH LOGIC ---
+    // Pehle LID check karega, agar nahi mili toh clean number nikalega
+    const inboxPath = conn.user.lid || (conn.user.id.split(':')[0].includes('@') ? conn.user.id.split(':')[0] : conn.user.id.split(':')[0] + "@s.whatsapp.net");
+    
+    // --- SEND MESSAGE TO THE CORRECT PATH ---
+    await conn.sendMessage(inboxPath, { 
+        image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
+        caption: upMessage 
+    });
+    
+} catch (sendError) {
+    console.error('[🔰] Error sending messages:', sendError);
                 }
             }
 
