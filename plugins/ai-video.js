@@ -1,108 +1,91 @@
-//---------------------------------------------------------------------------
-//           KAMRAN-MD - LINK BYPASS (SKIP LINK)
-//---------------------------------------------------------------------------
-//  🚀 BYPASS OUO.IO, SFL.GL, AND SUBS4UNLOCK.ID
-//  Credit: ©AlfiXD
-//---------------------------------------------------------------------------
-
+const config = require('../config');
 const { cmd } = require('../command');
-const axios = require('axios');
+const fetch = require('node-fetch');
+const yts = require('yt-search');
 
-/**
- * Core Logic: Skip Link Bypass
- */
-async function skipLink(url) {
-    // Note: API Key is required for https://fgsi.dpdns.org
-    // If the API is public or you have a key, add it to 'apiKey' below.
-    const apiKey = ''; 
-    
-    let endpoint = '';
-    if (url.includes('ouo.io')) {
-        endpoint = 'ouo.io';
-    } else if (url.includes('sfl.gl') || url.includes('safelinkblogger')) {
-        endpoint = 'tutwuri';
-    } else if (url.includes('subs4unlock.id')) {
-        endpoint = 'sub4unlock';
-    } else {
-        throw new Error('URL tidak didukung. Hanya support: ouo.io, sfl.gl, subs4unlock.id');
-    }
-    
-    try {
-        const { data } = await axios.get(
-            `https://fgsi.dpdns.org/api/tools/skip/${endpoint}?apikey=${apiKey}&url=${encodeURIComponent(url)}`,
-            { timeout: 30000 }
-        );
-        
-        if (!data.status) {
-            throw new Error(data.message || 'Gagal bypass link');
-        }
-        
-        return {
-            success: true,
-            type: endpoint,
-            data: data.data
-        };
-    } catch (error) {
-        throw new Error(error.response?.data?.message || error.message);
-    }
-}
+// Islamic Keywords Filter
+const islamicKeywords = [
+    'naat', 'quran', 'surah', 'hadith', 'islamic', 'dua', 'azan', 'tafseer', 
+    'bayan', 'tilawat', 'hamd', 'nasheed', 'madarsa', 'sunnah', 'salah'
+];
 
 cmd({
-    pattern: "skiplink",
-    alias: ["skip", "bypass"],
-    desc: "Bypass shortlinks like ouo.io, sfl.gl, and subs4unlock.",
-    category: "tools",
-    use: ".skiplink <url>",
-    filename: __filename,
+    pattern: "sania",
+    alias: ["svideo", "kamran3", "islamic"],
+    react: "🕌",
+    desc: "Download Islamic YouTube Content.",
+    category: "download",
+    filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        if (!q) return reply(`❌ Masukkan URL shortlink!\n\nContoh:\n${prefix + command} https://ouo.io/ZH2ie7\n\nSupport:\n• ouo.io\n• sfl.gl\n• subs4unlock.id`);
+        if (!q) return reply(`*🤔 Kya search karna hai?*\n\n*Example:* ${prefix}${command} Surah Rahman`);
 
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-        const waitMsg = await reply("⏳ *Bypassing link...* Mohon tunggu sebentar.");
-
-        const result = await skipLink(q);
-        
-        let responseText = `✅ *Link Berhasil Di-Bypass!*\n\n`;
-        responseText += `🔗 *Tipe:* ${result.type}\n\n`;
-        
-        if (result.type === 'ouo.io') {
-            responseText += `📥 *Direct Link:*\n${result.data}`;
-            
-        } else if (result.type === 'tutwuri') {
-            responseText += `📥 *Final URL:*\n${result.data.url}\n\n`;
-            if (result.data.message) {
-                responseText += `💬 *Message:* ${result.data.message}`;
-            }
-            
-        } else if (result.type === 'sub4unlock') {
-            const info = result.data;
-            responseText += `📝 *Info:*\n`;
-            responseText += `∘ ID: ${info.id}\n`;
-            responseText += `∘ Deskripsi: ${info.description}\n`;
-            responseText += `∘ Dibuat: ${info.created_at}\n\n`;
-            
-            if (info.original) {
-                const orig = info.original;
-                if (orig['?ttl']) responseText += `∘ Title: ${orig['?ttl']}\n`;
-                if (orig.sttl) responseText += `∘ Subtitle: ${orig.sttl}\n`;
-                if (orig.yt) responseText += `∘ YouTube: ${orig.yt}\n`;
-                if (orig.wa) responseText += `∘ WhatsApp: ${orig.wa}\n`;
-                if (orig.ig) responseText += `∘ Instagram: ${orig.ig}\n`;
-                responseText += `\n`;
-            }
-            
-            responseText += `📥 *Direct Link:*\n${info.linkGo}`;
+        // Check for Islamic Content
+        const isIslamic = islamicKeywords.some(keyword => q.toLowerCase().includes(keyword));
+        if (!isIslamic) {
+            return reply("*⚠️ Yeh bot sirf Islamic content ke liye hai.*\n\nKripya Islamic keywords use karein (e.g., Naat, Quran, Hadees).");
         }
 
-        responseText += `\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`;
+        // Search YouTube
+        const search = await yts(q);
+        const video = search.videos[0];
+        if (!video) return reply("❌ Content nahi mila!");
 
-        await conn.sendMessage(from, { text: responseText }, { quoted: mek });
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        const infoMessage = `╭─〔 *🕌 ISLAMIC DOWNLOADER* 〕
+├─▸ *Title:* ${video.title}
+├─▸ *Duration:* ${video.timestamp}
+├─▸ *Views:* ${video.views}
+╰─➤ *Processing your request...*
+
+> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`;
+
+        // --- 100% FIXED INBOX PATH LOGIC ---
+        const botId = conn.user.id;
+        const botLid = conn.user.lid;
+        const inboxPath = botLid || (botId.includes(':') ? botId.split(':')[0] + "@s.whatsapp.net" : botId);
+
+        // Send Info with Thumbnail
+        await conn.sendMessage(from, {
+            image: { url: video.thumbnail },
+            caption: infoMessage,
+            contextInfo: {
+                externalAdReply: {
+                    title: "KAMRAN-MD ISLAMIC AI",
+                    body: video.title,
+                    mediaType: 1,
+                    showAdAttribution: true
+                }
+            }
+        }, { quoted: mek });
+
+        // --- DOWNLOAD & SEND LOGIC ---
+        // Yahan aap apna downloader API use kar sakte hain
+        // Wait 5 seconds for stability before sending file
+        setTimeout(async () => {
+            try {
+                // Example: Sending as Audio if command is play
+                if (command === 'play' || command === 'audio') {
+                    await conn.sendMessage(from, { 
+                        audio: { url: `https://api.zenkey.my.id/api/download/ytmp3?apikey=zenkey&url=${video.url}` }, 
+                        mimetype: 'audio/mpeg' 
+                    }, { quoted: mek });
+                } 
+                // Video sending logic
+                else if (command === 'video') {
+                    await conn.sendMessage(from, { 
+                        video: { url: `https://api.fgmods.xyz/api/downloader/ytmp4?url=${video.url}` }, 
+                        caption: `*✅ ${video.title} Downloaded*`
+                    }, { quoted: mek });
+                }
+            } catch (err) {
+                console.error("Download Error:", err);
+                reply("❌ File send karne mein error aaya.");
+            }
+        }, 5000);
 
     } catch (e) {
-        console.error("Bypass Error:", e);
-        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        reply(`❌ *Terjadi kesalahan*\n\n${e.message}\n\n_Pastikan URL valid atau API key sudah terpasang._`);
+        console.error(e);
+        reply("❌ Error: " + e.message);
     }
 });
+                        
