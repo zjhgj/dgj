@@ -2,9 +2,9 @@ const { cmd } = require('../command');
 const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
-const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
+const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 
-// --- Helper Functions ---
+// --- API Helpers ---
 async function createJob(sourcePath, targetPath) {
     const form = new FormData();
     form.append('source_image', fs.createReadStream(sourcePath), { filename: 'source.jpg', contentType: 'image/jpeg' });
@@ -28,56 +28,56 @@ async function checkJob(jobId) {
     return res.data.data;
 }
 
-// --- Command Logic ---
+// --- Main Command ---
 cmd({
     pattern: "faceswap",
     alias: ["swap"],
-    desc: "Swap faces between two images.",
+    desc: "Faceswap between two images.",
     category: "tools",
     filename: __filename
 }, async (conn, mek, m, { from, reply, quoted }) => {
     try {
-        // Image Detection Check
-        const isMsgImage = m.type === 'imageMessage' || (m.type === 'extendedTextMessage' && m.content?.includes('imageMessage'));
-        const isQuotedImage = m.quoted && (m.quoted.type === 'imageMessage');
+        // 1. Check if both images exist
+        const isImage = m.type === 'imageMessage' || (m.type === 'viewOnceMessage' && m.msg.type === 'imageMessage');
+        const isQuotedImage = quoted && (quoted.type === 'imageMessage' || (quoted.type === 'viewOnceMessage' && quoted.msg.type === 'imageMessage'));
 
-        if (!isMsgImage || !isQuotedImage) {
-            return reply("⚠️ *Instruction:* Ek image bhejein (caption mein .faceswap likhein) aur dusri image ko reply karein.");
+        if (!isImage || !isQuotedImage) {
+            return reply("⚠️ *Error:* Use karne ka sahi tarika:\n1. Ek photo ko *Reply* karein.\n2. Nayi photo upload karein aur caption mein *.faceswap* likhein.");
         }
 
         await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
 
-        // Paths for temp files
+        // 2. Download Images
         const sourcePath = `./source_${Date.now()}.jpg`;
         const targetPath = `./target_${Date.now()}.jpg`;
 
-        // Download Source (Current Message)
-        const buffSource = await m.download();
+        const buffSource = await m.download(); // Downloader fix
         fs.writeFileSync(sourcePath, buffSource);
 
-        // Download Target (Quoted Message)
-        const buffTarget = await m.quoted.download();
+        const buffTarget = await quoted.download(); // Quoted downloader fix
         fs.writeFileSync(targetPath, buffTarget);
 
-        reply("_🚀 Faceswap process shuru ho gaya hai..._");
+        reply("_🚀 Faceswap process shuru ho gaya hai, thoda intezar karein..._");
 
+        // 3. Process to API
         const jobId = await createJob(sourcePath, targetPath);
 
         let result;
         let attempts = 0;
         do {
-            await new Promise(r => setTimeout(r, 4000));
+            await new Promise(r => setTimeout(r, 5000)); // 5 sec wait
             result = await checkJob(jobId);
             attempts++;
-            if (attempts > 25) throw new Error("Server ne zyada time liya. Phir koshish karein.");
+            if (attempts > 30) throw new Error("Processing Timeout! Server busy hai.");
         } while (!result.image_url || result.image_url.length === 0);
 
+        // 4. Send Result
         await conn.sendMessage(from, { 
             image: { url: result.image_url[0] }, 
             caption: `*✅ Face Swap Completed!*\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ` 
         }, { quoted: mek });
 
-        // Delete temp files
+        // Clean up
         if (fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath);
         if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
         
@@ -85,6 +85,7 @@ cmd({
 
     } catch (e) {
         console.error(e);
-        reply("❌ Error: " + e.message);
+        reply("❌ *System Error:* " + e.message);
     }
 });
+    
