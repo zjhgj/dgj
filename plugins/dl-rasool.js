@@ -2,90 +2,108 @@ const { cmd } = require('../command');
 const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
+const path = require('path');
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 
-// --- API Helpers ---
+// --- API HELPER FUNCTIONS ---
+
 async function createJob(sourcePath, targetPath) {
     const form = new FormData();
-    form.append('source_image', fs.createReadStream(sourcePath), { filename: 'source.jpg', contentType: 'image/jpeg' });
-    form.append('target_image', fs.createReadStream(targetPath), { filename: 'target.jpg', contentType: 'image/jpeg' });
+    form.append('source_image', fs.createReadStream(sourcePath), {
+        filename: 'source.jpg',
+        contentType: 'image/jpeg'
+    });
 
-    const headers = {
-        ...form.getHeaders(),
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
-        'origin': 'https://lovefaceswap.com',
-        'referer': 'https://lovefaceswap.com/'
-    };
+    form.append('target_image', fs.createReadStream(targetPath), {
+        filename: 'target.jpg',
+        contentType: 'image/jpeg'
+    });
 
-    const res = await axios.post('https://api.lovefaceswap.com/api/face-swap/create-poll', form, { headers });
-    return res.data.data.task_id;
+    const response = await axios.post('https://api.lovefaceswap.com/api/face-swap/create-poll', form, {
+        headers: {
+            ...form.getHeaders(),
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
+            'Accept': 'application/json',
+            'Origin': 'https://lovefaceswap.com',
+            'Referer': 'https://lovefaceswap.com/'
+        }
+    });
+
+    return response.data.data.task_id;
 }
 
 async function checkJob(jobId) {
-    const res = await axios.get(`https://api.lovefaceswap.com/api/common/get?job_id=${jobId}`, {
-        headers: { 'User-Agent': 'Mozilla/5.0' }
+    const response = await axios.get(`https://api.lovefaceswap.com/api/common/get?job_id=${jobId}`, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
+            'Origin': 'https://lovefaceswap.com',
+            'Referer': 'https://lovefaceswap.com/'
+        }
     });
-    return res.data.data;
+    return response.data.data;
 }
 
-// --- Main Command ---
+// --- COMMAND DEFINITION ---
+
 cmd({
     pattern: "faceswap",
-    alias: ["swap"],
-    desc: "Faceswap between two images.",
-    category: "tools",
+    alias: ["swap", "fs"],
+    react: "🎭",
+    desc: "Swap faces between two images.",
+    category: "ai",
+    use: "Reply to an image with .faceswap (Must reply to target image while source image is provided first)",
     filename: __filename
-}, async (conn, mek, m, { from, reply, quoted }) => {
+},           
+async (conn, mek, m, { from, reply, quoted }) => {
     try {
-        // 1. Check if both images exist
-        const isImage = m.type === 'imageMessage' || (m.type === 'viewOnceMessage' && m.msg.type === 'imageMessage');
-        const isQuotedImage = quoted && (quoted.type === 'imageMessage' || (quoted.type === 'viewOnceMessage' && quoted.msg.type === 'imageMessage'));
+        // Step 1: Validation
+        const isQuotedImage = m.quoted ? (m.quoted.type === 'imageMessage' || (m.quoted.type === 'viewOnceMessage' && m.quoted.msg.type === 'imageMessage')) : false;
+        
+        if (!isQuotedImage) return reply("❌ Please reply to the *TARGET* image (the body) and attach the *SOURCE* image (the face) or vice-versa.");
 
-        if (!isImage || !isQuotedImage) {
-            return reply("⚠️ *Error:* Use karne ka sahi tarika:\n1. Ek photo ko *Reply* karein.\n2. Nayi photo upload karein aur caption mein *.faceswap* likhein.");
-        }
+        await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
+        reply("⏳ *KAMRAN-MD AI:* Processing face swap... please wait about 10-20 seconds.");
 
-        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+        // Step 2: Download Images
+        const sourceBuffer = await m.download(); // Current image
+        const targetBuffer = await m.quoted.download(); // Replied image
 
-        // 2. Download Images
-        const sourcePath = `./source_${Date.now()}.jpg`;
-        const targetPath = `./target_${Date.now()}.jpg`;
+        const sourcePath = path.join(__dirname, `source_${Date.now()}.jpg`);
+        const targetPath = path.join(__dirname, `target_${Date.now()}.jpg`);
 
-        const buffSource = await m.download(); // Downloader fix
-        fs.writeFileSync(sourcePath, buffSource);
+        fs.writeFileSync(sourcePath, sourceBuffer);
+        fs.writeFileSync(targetPath, targetBuffer);
 
-        const buffTarget = await quoted.download(); // Quoted downloader fix
-        fs.writeFileSync(targetPath, buffTarget);
-
-        reply("_🚀 Faceswap process shuru ho gaya hai, thoda intezar karein..._");
-
-        // 3. Process to API
+        // Step 3: Start AI Job
         const jobId = await createJob(sourcePath, targetPath);
-
+        
+        // Step 4: Polling for Result
         let result;
         let attempts = 0;
+        const maxAttempts = 20; // Max 60 seconds
+
         do {
-            await new Promise(r => setTimeout(r, 5000)); // 5 sec wait
+            await new Promise(r => setTimeout(r, 3000));
             result = await checkJob(jobId);
             attempts++;
-            if (attempts > 30) throw new Error("Processing Timeout! Server busy hai.");
-        } while (!result.image_url || result.image_url.length === 0);
+        } while ((!result.image_url || result.image_url.length === 0) && attempts < maxAttempts);
 
-        // 4. Send Result
-        await conn.sendMessage(from, { 
-            image: { url: result.image_url[0] }, 
-            caption: `*✅ Face Swap Completed!*\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ` 
-        }, { quoted: mek });
+        // Step 5: Clean up temp files
+        fs.unlinkSync(sourcePath);
+        fs.unlinkSync(targetPath);
 
-        // Clean up
-        if (fs.existsSync(sourcePath)) fs.unlinkSync(sourcePath);
-        if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
-        
-        await conn.sendMessage(from, { react: { text: "🎭", key: m.key } });
+        if (result.image_url && result.image_url.length > 0) {
+            await conn.sendMessage(from, { 
+                image: { url: result.image_url[0] }, 
+                caption: "✨ *FACE SWAP COMPLETED BY KAMRAN-MD AI* ✨" 
+            }, { quoted: mek });
+            await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
+        } else {
+            reply("❌ AI failed to process images. Make sure faces are clearly visible.");
+        }
 
     } catch (e) {
         console.error(e);
-        reply("❌ *System Error:* " + e.message);
+        reply("❌ *SYSTEM ERROR:* " + e.message);
     }
 });
-    
