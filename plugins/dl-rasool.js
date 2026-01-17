@@ -1,136 +1,102 @@
-//---------------------------------------------------------------------------
-//           KAMRAN-MD - AUTO ADZAN & SHOLAT REMINDER
-//---------------------------------------------------------------------------
-//  🕌 AUTOMATIC ADZAN AUDIO AND PRAYER TIME NOTIFICATIONS
-//---------------------------------------------------------------------------
-
 const { cmd } = require('../command');
 const axios = require('axios');
+const fs = require('fs');
+const FormData = require('form-data');
+const path = require('path');
 
-// Konfigurasi Audio Adzan
-const AUDIO_ADZAN = {
-    fajr: 'https://islamdownload.net/r/123801/fajr_128_44.mp3',
-    default: 'https://islamdownload.net/r/123801/mecca_56_22.mp3',
-    doa: 'https://islamdownload.net/r/123801/doa_sesudah_adzan.mp3'
-};
+// --- Helper Functions ---
 
-// Penyimpanan status agar tidak spam
-if (!global.autoshalat) global.autoshalat = {};
+async function createJob(sourcePath, targetPath) {
+    const form = new FormData();
+    form.append('source_image', fs.createReadStream(sourcePath), {
+        filename: 'source.jpg',
+        contentType: 'image/jpeg'
+    });
+    form.append('target_image', fs.createReadStream(targetPath), {
+        filename: 'target.jpg',
+        contentType: 'image/jpeg'
+    });
 
-/**
- * Fungsi untuk mengambil jadwal sholat berdasarkan lokasi
- */
-async function getJadwalSholat(city = "Jakarta") {
-    try {
-        const today = new Date();
-        const dd = String(today.getDate()).padStart(2, '0');
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const yyyy = today.getFullYear();
-        const tanggal = `${dd}-${mm}-${yyyy}`;
-        
-        const api = `https://api.aladhan.com/timingsByAddress/${tanggal}?address=${city}&method=8`;
-        const res = await axios.get(api);
-        const t = res.data.data.timings;
-        
-        return {
-            Subuh: t.Fajr,
-            Dzuhur: t.Dhuhr,
-            Ashar: t.Asr,
-            Maghrib: t.Maghrib,
-            Isya: t.Isha
-        };
-    } catch (e) {
-        console.error("Gagal mengambil jadwal sholat:", e);
-        return null;
-    }
+    const headers = {
+        ...form.getHeaders(),
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36',
+        'origin': 'https://lovefaceswap.com',
+        'referer': 'https://lovefaceswap.com/'
+    };
+
+    const res = await axios.post('https://api.lovefaceswap.com/api/face-swap/create-poll', form, { headers });
+    return res.data.data.task_id;
 }
 
-// --- LOGIC AUTO CHECKER (Setiap 1 Menit) ---
-
-async function startAutoAdzan(conn) {
-    setInterval(async () => {
-        const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
-        const timeNow = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-        
-        // Ambil jadwal sholat (Default Jakarta, bisa disesuaikan)
-        const jadwal = await getJadwalSholat("Jakarta");
-        if (!jadwal) return;
-
-        for (let [sholat, waktu] of Object.entries(jadwal)) {
-            if (timeNow === waktu) {
-                // Cari semua grup tempat bot bergabung (atau tentukan ID chat spesifik)
-                const groups = Object.keys(await conn.groupFetchAllParticipating());
-                
-                for (let chatId of groups) {
-                    const idKey = `${chatId}-${sholat}-${timeNow}`;
-                    if (global.autoshalat[idKey]) continue; // Sudah dikirim
-
-                    global.autoshalat[idKey] = true;
-                    const isSubuh = sholat.toLowerCase() === 'subuh';
-                    
-                    // 1. Kirim Pesan Adzan
-                    await conn.sendMessage(chatId, {
-                        audio: { url: isSubuh ? AUDIO_ADZAN.fajr : AUDIO_ADZAN.default },
-                        mimetype: 'audio/mp4',
-                        ptt: true,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: `🕌 WAKTU SHOLAT ${sholat.toUpperCase()}`,
-                                body: `🕑 Pukul ${waktu} WIB untuk wilayah Jakarta dan sekitarnya.`,
-                                mediaType: 1,
-                                thumbnailUrl: 'https://files.catbox.moe/9p9m4p.jpg',
-                                renderLargerThumbnail: true,
-                                sourceUrl: 'https://github.com/Kamran-Amjad/KAMRAN-MD'
-                            }
-                        }
-                    });
-
-                    // 2. Kirim Doa Setelah Adzan (Delay 4 Menit - Estimasi durasi adzan)
-                    setTimeout(async () => {
-                        await conn.sendMessage(chatId, {
-                            audio: { url: AUDIO_ADZAN.doa },
-                            mimetype: 'audio/mp4',
-                            ptt: true
-                        });
-
-                        await conn.sendMessage(chatId, {
-                            text: `✨ *Doa Sesudah Adzan*\n\nاللَّهُمَّ رَبَّ هٰذِهِ الدَّعْوَةِ التَّامَّةِ، وَالصَّلَاةِ الْقَائِمَةِ، آتِ مُحَمَّدًا الْوَسِيلةَ وَالْفَضِيلَةَ، وَابْعَثْهُ مَقَامًا مَحْمُودًا الَّذِي وَعَدْتَهُ\n\n*Artinya:* "Ya Allah, Tuhan pemilik panggilan yang sempurna ini dan shalat yang didirikan, berilah Muhammad wasilah dan keutamaan, dan bangkitkanlah dia ke tempat yang terpuji yang telah Engkau janjikan."\n\n_Mari sejenak tinggalkan aktivitas dan tunaikan ibadah sholat ${sholat.toLowerCase()}._`
-                        });
-                        
-                        // Hapus cache status setelah selesai
-                        delete global.autoshalat[idKey];
-                    }, 240000); 
-                }
-            }
+async function checkJob(jobId) {
+    const res = await axios.get(`https://api.lovefaceswap.com/api/common/get?job_id=${jobId}`, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0',
+            'origin': 'https://lovefaceswap.com',
+            'referer': 'https://lovefaceswap.com/'
         }
-    }, 60000); // Check setiap 60 detik
+    });
+    return res.data.data;
 }
 
-// --- COMMAND: JADWAL SHOLAT ---
+// --- Command Logic ---
 
 cmd({
-    pattern: "jadwalsholat",
-    alias: ["sholat", "adzan"],
-    desc: "Menampilkan jadwal sholat untuk wilayah tertentu.",
-    category: "islamic",
-    use: ".jadwalsholat Jakarta",
-    filename: __filename,
-}, async (conn, mek, m, { text, reply }) => {
-    const kota = text || "Jakarta";
-    const jadwal = await getJadwalSholat(kota);
-    
-    if (!jadwal) return reply("❌ Gagal mengambil data. Pastikan nama kota benar.");
+    pattern: "faceswap",
+    alias: ["swap"],
+    desc: "Swap faces between two images (Reply to target image with source image).",
+    category: "tools",
+    filename: __filename
+}, async (conn, mek, m, { from, reply, quoted }) => {
+    try {
+        // Logic: User must send an image and reply to another image
+        if (!m.quoted || !m.quoted.imageMessage || !m.imageMessage) {
+            return reply("*⚠️ Instruction:* Ek image bhejein aur dusri image ko reply karein command ke saath (.faceswap)");
+        }
 
-    let caption = `╭──〔 *🕌 JADWAL SHOLAT* 〕\n`;
-    caption += `├─ 📍 *Wilayah:* ${kota}\n`;
-    for (let [n, t] of Object.entries(jadwal)) {
-        caption += `├─ 🕒 *${n}:* ${t}\n`;
+        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+
+        // Download Images
+        const sourcePath = `./temp_source_${Date.now()}.jpg`;
+        const targetPath = `./temp_target_${Date.now()}.jpg`;
+
+        const sourceBuffer = await conn.downloadMediaMessage(m);
+        const targetBuffer = await conn.downloadMediaMessage(m.quoted);
+
+        fs.writeFileSync(sourcePath, sourceBuffer);
+        fs.writeFileSync(targetPath, targetBuffer);
+
+        reply("_🚀 Uploading images to AI server..._");
+
+        // Step 1: Create Job
+        const jobId = await createJob(sourcePath, targetPath);
+
+        // Step 2: Polling
+        let result;
+        let attempts = 0;
+        const maxAttempts = 20; // 1 minute safety
+
+        do {
+            await new Promise(r => setTimeout(r, 4000)); // Wait 4 seconds
+            result = await checkJob(jobId);
+            attempts++;
+            if (attempts > maxAttempts) throw new Error("Processing Timeout");
+        } while (!result.image_url || result.image_url.length === 0);
+
+        // Step 3: Send Final Image
+        await conn.sendMessage(from, { 
+            image: { url: result.image_url[0] }, 
+            caption: `*✅ Face Swap Completed!*\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ` 
+        }, { quoted: mek });
+
+        // Cleanup temp files
+        fs.unlinkSync(sourcePath);
+        fs.unlinkSync(targetPath);
+        await conn.sendMessage(from, { react: { text: "🎭", key: m.key } });
+
+    } catch (e) {
+        console.error(e);
+        reply("❌ Error: " + (e.response?.data?.message || e.message));
     }
-    caption += `╰───────────────────🚀\n\n_Bot akan otomatis mengirim Adzan di grup saat waktunya tiba._`;
-
-    return reply(caption);
 });
-
-// Jalankan otomatis saat bot aktif
-// Catatan: Pastikan 'conn' tersedia di konteks global atau panggil saat bot siap.
-// module.exports = { startAutoAdzan }; 
+        
