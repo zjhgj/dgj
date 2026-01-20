@@ -7,7 +7,7 @@ const youtubeRegexID = /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([a-z
 // ===== PLAY / YT DOWNLOAD PLUGIN =====
 cmd({
     pattern: "play7",
-    alias: ["yta2", ".song", "playaudio", "play6", "ytv2", "ytmp4", "mp4"],
+    alias: ["yta2", "song", "playaudio", "play6", "ytv2", "ytmp4", "mp4"],
     react: "🎶",
     desc: "Play or download YouTube songs and videos.",
     category: "downloads",
