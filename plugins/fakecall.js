@@ -66,7 +66,7 @@ cmd({
         // Send generated ad image with KAMRAN-MD style caption
         await conn.sendMessage(m.chat, {
             image: adBuffer,
-            caption: `⬤───〔 *🎨 WHITE SHADOW AD GENERATOR* 〕───⬤\n\n` +
+            caption: `⬤───〔 *🎨 KAMRAN MD AD GENERATOR* 〕───⬤\n\n` +
                      `🖼 Original Size: ${size}\n` +
                      `✅ Image processed successfully!\n\n` +
                      `> © KAMRAN-MD 🔥`
