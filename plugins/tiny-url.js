@@ -4,7 +4,7 @@ const yts = require('yt-search');
 const fetch = require('node-fetch');
 
 cmd({
-    pattern: "play",
+    pattern: "play2",
     alias: ["ytplay", "music2", "video3"],
     react: "🛰️",
     desc: "Download Video or Audio from YouTube via Search or Link",
