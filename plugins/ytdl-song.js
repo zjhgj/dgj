@@ -1,116 +1,122 @@
-const fetch = require("node-fetch");
-const yts = require("yt-search");
-const { cmd } = require("../command");
+const { cmd } = require('../command');
+const fetch = require('node-fetch');
+const yts = require('yt-search');
+const axios = require('axios');
 
-const youtubeRegexID = /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([a-zA-Z0-9_-]{11})/;
+async function handleReply(conn, messageID, from, videos, apiResult, mek) {
+    conn.ev.on("messages.upsert", async (msgData) => {
+        try {
+            const receivedMsg = msgData.messages[0];
+            if (!receivedMsg?.message) return;
 
-// ===== PLAY / YT DOWNLOAD PLUGIN =====
+            const text = receivedMsg.message.conversation || receivedMsg.message.extendedTextMessage?.text;
+            const senderID = receivedMsg.key.remoteJid;
+            const isReply = receivedMsg.message.extendedTextMessage?.contextInfo?.stanzaId === messageID;
+            if (!isReply) return;
+
+            await conn.sendMessage(senderID, { react: { text: '⏳', key: receivedMsg.key } });
+
+            switch (text.trim()) {
+                case "1":
+                    await conn.sendMessage(senderID, { audio: { url: apiResult.url }, mimetype: "audio/mpeg", ptt: false }, { quoted: receivedMsg });
+                    break;
+                case "2":
+                    await conn.sendMessage(senderID, { document: { url: apiResult.url, fileName: `${videos.title}.mp3`, mimetype: "audio/mpeg" }, caption: videos.title }, { quoted: receivedMsg });
+                    break;
+                case "3":
+                    await conn.sendMessage(senderID, { audio: { url: apiResult.url }, mimetype: "audio/mpeg", ptt: true }, { quoted: receivedMsg });
+                    break;
+                default:
+                    await conn.sendMessage(senderID, { text: "❌ Invalid choice! Reply with 1, 2, or 3." }, { quoted: receivedMsg });
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    });
+}
+
+// ================== SONG4 (Koyeb API) ==================
 cmd({
-    pattern: "play7",
-    alias: ["yta2", "song", "playaudio", "play6", "ytv2", "ytmp4", "mp4"],
-    react: "🎶",
-    desc: "Play or download YouTube songs and videos.",
-    category: "downloads",
-    use: ".play <song name / YouTube link>",
+    pattern: "song",
+    react: "🎵",
+    desc: "Download YouTube MP3 via Koyeb API",
+    category: "download",
+    use: ".song4 <query>",
     filename: __filename
-},
-async (conn, mek, m, { from, q, command, reply }) => {
+}, async (conn, mek, m, { from, reply, q }) => {
     try {
-        if (!q) return reply("❀ Please enter the name of the music or a YouTube link.");
+        if (!q) return reply("❌ Provide a song name or YouTube link!");
 
-        // Detect YouTube ID from URL
-        let videoIdToFind = q.match(youtubeRegexID) || null;
-        let ytResult = await yts(videoIdToFind === null ? q : `https://youtu.be/${videoIdToFind[1]}`);
+        const search = await yts(q);
+        if (!search.videos.length) return reply("❌ No results found!");
 
-        // Pick correct video
-        if (videoIdToFind) {
-            const videoId = videoIdToFind[1];
-            ytResult = ytResult.all.find(item => item.videoId === videoId) || ytResult.videos.find(item => item.videoId === videoId);
-        }
-        ytResult = ytResult.all?.[0] || ytResult.videos?.[0] || ytResult;
+        const video = search.videos[0];
+        const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/song?search=${encodeURIComponent(video.url)}`;
+        const { data: apiRes } = await axios.get(apiUrl);
+        if (!apiRes?.status || !apiRes.data?.url) return reply("❌ Unable to download song!");
 
-        if (!ytResult || ytResult.length === 0) return reply("✧ No results found for your search.");
+        const caption = `
+📑 *Title:* ${video.title}
+⏱ *Duration:* ${video.timestamp}
+📆 *Uploaded:* ${video.ago}
+📊 *Views:* ${video.views}
+🔗 *Link:* ${video.url}
 
-        let { title, thumbnail, timestamp, views, ago, url, author } = ytResult;
-        const channel = author?.name || "Unknown";
+🔢 Reply:
+1️⃣ Audio
+2️⃣ Document
+3️⃣ Voice Note
 
-        const formattedViews = formatViews(views);
-        const infoMessage = `
-「✦」Downloading *${title || "Unknown"}*
+> KAMRAN-MD ❤️`;
 
-> ✧ Channel   » *${channel}*
-> ✰ Views     » *${formattedViews || "Unknown"}*
-> ⴵ Duration  » *${timestamp || "Unknown"}*
-> ✐ Published » *${ago || "Unknown"}*
-> 🜸 Link      » ${url}
-        `.trim();
+        const sentMsg = await conn.sendMessage(from, { image: { url: video.thumbnail }, caption }, { quoted: mek });
+        handleReply(conn, sentMsg.key.id, from, video, apiRes.data, mek);
 
-        // Send info preview with externalAdReply
-        await conn.sendMessage(from, {
-            text: infoMessage,
-            contextInfo: {
-                externalAdReply: {
-                    title: "KAMRAN-MD Player",
-                    body: "Powered by Andbad Organisation",
-                    mediaType: 1,
-                    sourceUrl: url,
-                    thumbnailUrl: thumbnail,
-                    renderLargerThumbnail: true
-                }
-            }
-        }, { quoted: mek });
-
-        // Handle Audio
-        if (["play", "yta", "ytmp3", "playaudio"].includes(command)) {
-            try {
-                const api = await (await fetch(`https://api.vreden.my.id/api/v1/download/youtube/audio?url=${url}&quality=128`)).json();
-                const result = api?.result?.download?.url;
-
-                if (!result) throw new Error("⚠ Failed to fetch audio link.");
-
-                await conn.sendMessage(from, {
-                    audio: { url: result },
-                    fileName: `${api.result.title}.mp3`,
-                    mimetype: "audio/mpeg"
-                }, { quoted: mek });
-            } catch (e) {
-                return reply("⚠︎ Could not send the audio. Try again later.");
-            }
-        }
-
-        // Handle Video
-        else if (["play6", "ytv2", "ytmp4", "mp4"].includes(command)) {
-            try {
-                const response = await fetch(`https://gtech-api-xtp1.onrender.com/api/video/yt?apikey=APIKEY&url=${url}&type=video&quality=480p&apikey=GataDios`);
-                const json = await response.json();
-
-                if (!json?.data?.url) throw new Error("⚠ Failed to fetch video link.");
-
-                await conn.sendMessage(from, {
-                    video: { url: json.data.url },
-                    caption: title
-                }, { quoted: mek });
-            } catch (e) {
-                return reply("⚠︎ Could not send the video. Try again later.");
-            }
-        }
-
-    } catch (error) {
-        console.error(error);
-        return reply(`⚠︎ An error occurred: ${error.message}`);
+    } catch (e) {
+        console.error("Song4 Error:", e);
+        reply("❌ Error occurred while processing request.");
     }
 });
 
-// ===== Function to format view counts =====
-function formatViews(views) {
-    if (!views) return "Unknown";
+// ================== PLAY (Nekolabs API) ==================
+cmd({
+    pattern: "play4",
+    react: "🎵",
+    desc: "Download YouTube song via Nekolabs API",
+    category: "download",
+    use: ".play <query>",
+    filename: __filename
+}, async (conn, mek, m, { from, reply, q }) => {
+    try {
+        if (!q) return reply("❌ Provide a song name or YouTube link!");
 
-    if (views >= 1_000_000_000) return `${(views / 1_000_000_000).toFixed(1)}B (${views.toLocaleString()})`;
-    if (views >= 1_000_000) return `${(views / 1_000_000).toFixed(1)}M (${views.toLocaleString()})`;
-    if (views >= 1_000) return `${(views / 1_000).toFixed(1)}K (${views.toLocaleString()})`;
+        const apiUrl = `https://api.nekolabs.my.id/downloader/youtube/play/v1?q=${encodeURIComponent(q)}`;
+        const res = await fetch(apiUrl);
+        const data = await res.json();
+        if (!data?.success || !data?.result?.downloadUrl) return reply("❌ Song not found or API error!");
 
-    return views.toString();
-          }
+        const meta = data.result.metadata;
+        const dlUrl = data.result.downloadUrl;
 
+        const caption = `
+📑 *Title:* ${meta.title}
+⏱ *Duration:* ${meta.duration}
+📡 *Channel:* ${meta.channel}
+🔗 *Link:* ${meta.url}
 
-      
+🔢 Reply:
+1️⃣ Audio
+2️⃣ Document
+3️⃣ Voice Note
+
+> KAMRAN-MD ❤️`;
+
+        const sentMsg = await conn.sendMessage(from, { image: { url: meta.cover }, caption }, { quoted: mek });
+        handleReply(conn, sentMsg.key.id, from, meta, { url: dlUrl }, mek);
+
+    } catch (e) {
+        console.error("Play Error:", e);
+        reply("❌ Error occurred while processing request.");
+    }
+});
+                                                                                                    
