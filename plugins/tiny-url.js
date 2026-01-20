@@ -1,138 +1,133 @@
-const config = require('../config');
 const { cmd } = require('../command');
-const yts = require('yt-search');
-const fetch = require('node-fetch');
+const axios = require('axios');
+const cheerio = require('cheerio');
+
+/**
+ * Scraper function for SaveTik
+ */
+async function tiktokScraper(url) {
+    try {
+        const r = await axios.post(
+            'https://savetik.co/api/ajaxSearch',
+            new URLSearchParams({ q: url, lang: 'id' }).toString(),
+            {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10)',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    origin: 'https://savetik.co',
+                    referer: 'https://savetik.co/id1'
+                }
+            }
+        );
+        const $ = cheerio.load(r.data.data);
+        return {
+            title: $('h3').first().text().trim() || 'TikTok Media',
+            thumbnail: $('.image-tik img').attr('src') || $('.thumbnail img').attr('src') || null,
+            mp4: $('.dl-action a:contains("MP4")').not(':contains("HD")').attr('href') || null,
+            mp4_hd: $('.dl-action a:contains("HD")').attr('href') || null,
+            mp3: $('.dl-action a:contains("MP3")').attr('href') || null,
+            foto: $('.photo-list a[href*="snapcdn"]').map((_, e) => $(e).attr('href')).get()
+        };
+    } catch (e) {
+        return { status: 'error', msg: e.message };
+    }
+}
+
+// --- MAIN COMMAND ---
 
 cmd({
-    pattern: "play2",
-    alias: ["ytplay", "music2", "video3"],
-    react: "🛰️",
-    desc: "Download Video or Audio from YouTube via Search or Link",
-    category: "download",
-    use: ".play <query or url>",
+    pattern: "alltiktok",
+    alias: ["ttal", "ttdl"],
+    react: "📥",
+    desc: "Download TikTok videos, audio, or photos with selection.",
+    category: "downloader",
     filename: __filename
-}, async (conn, mek, m, { from, q, reply, sender }) => {
+},           
+async (conn, mek, m, { from, q, reply, prefix }) => {
     try {
-        if (!q) return await reply("⚙️ *SYSTEM:* Input required. Please provide a song name or YouTube URL.");
+        if (!q) return reply(`*Usage:* ${prefix}tiktok <link>\n*Example:* ${prefix}tiktok https://vt.tiktok.com/ZSfEbDw89/`);
 
-        // --- PHASE 1: SMART DATA LOOKUP (LINK OR SEARCH) ---
-        let video;
-        const isUrl = q.match(/(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/);
+        const targetChat = conn.decodeJid(from);
+        await conn.sendMessage(targetChat, { react: { text: "🔍", key: m.key } });
 
-        if (isUrl) {
-            // Fetch info directly if it's a URL
-            const search = await yts({ videoId: q.split(/[=/]/).pop() });
-            video = search;
-        } else {
-            // Perform search if it's text
-            const search = await yts(q);
-            video = search.videos[0];
+        const data = await tiktokScraper(q.trim());
+
+        if (data.status === 'error' || (!data.mp4 && data.foto.length === 0)) {
+            return reply("❌ Failed to fetch TikTok media. Link invalid or private.");
         }
 
-        if (!video || !video.url) return await reply("❌ **CORE ERROR:** Video not found. Please check the link or query.");
+        const caption = `
+🎬 *TIKTOK DOWNLOADER* 🎬
 
-        const videoUrl = video.url;
-        const title = video.title;
-        const timestamp = video.timestamp || "N/A";
-        const thumbnail = video.thumbnail;
+📌 *Title:* ${data.title}
 
-        // --- PHASE 2: SELECTION MENU ---
-        let selectionMsg = `╔═══════════════╗
-   ✰  *KAMRAN-𝐌𝐃 𝐂𝐎𝐑𝐄* ✰
-╟──────────────╢
-│ ✞︎ **ᴛɪᴛʟᴇ:** ${title.toUpperCase().substring(0, 25)}
-│ ✞︎ **ᴅᴜʀᴀᴛɪᴏɴ:** ${timestamp}
-╟──────────────╢
-│  **sᴇʟᴇᴄᴛ ᴛʀᴀɴsᴍɪssɪᴏɴ:**
-│
-│  1 ➮ ᴠɪᴅᴇᴏ (ᴍᴘ4) 🎬
-│  2 ➮ ᴀᴜᴅɪᴏ (ᴍᴘ3) 🎵
-╚═══════════════╝
-> *Reply with 1 or 2*`;
+*Inmein se koi ek select karen:*
+1️⃣ *Video (MP4)*
+2️⃣ *Audio (MP3)*
+3️⃣ *Photos (SlideShow)*
 
-        const { key } = await conn.sendMessage(from, { 
-            image: { url: thumbnail }, 
-            caption: selectionMsg 
+> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ ᴍᴅ`;
+
+        // Send Thumbnail and Menu
+        const sentMsg = await conn.sendMessage(targetChat, { 
+            image: { url: data.thumbnail || 'https://i.ibb.co/3S7S7S7/tiktok.jpg' }, 
+            caption: caption 
         }, { quoted: mek });
 
-        // --- PHASE 3: RESPONSE LISTENER ---
-        const listener = async (msg) => {
-            const senderId = msg.key.remoteJid;
-            if (senderId !== from) return;
+        const messageID = sentMsg.key.id;
 
-            const isReply = msg.message?.extendedTextMessage?.contextInfo?.stanzaId === key.id;
-            const body = msg.message?.conversation || msg.message?.extendedTextMessage?.text;
+        // Listen for Reply
+        conn.ev.on("messages.upsert", async (msgData) => {
+            const receivedMsg = msgData.messages[0];
+            if (!receivedMsg?.message) return;
 
-            if (isReply && ['1', '2'].includes(body)) {
-                conn.ev.off('messages.upsert', listener);
-                await conn.sendMessage(from, { react: { text: "⏳", key: msg.key } });
+            const text = receivedMsg.message.conversation || receivedMsg.message.extendedTextMessage?.text;
+            const isReply = receivedMsg.message.extendedTextMessage?.contextInfo?.stanzaId === messageID;
 
-                if (body === '1') {
-                    // --- VIDEO DOWNLOAD (MP4) ---
-                    const videoApi = `https://apis.davidcyriltech.my.id/download/ytmp4?url=${encodeURIComponent(videoUrl)}`;
-                    const response = await fetch(videoApi);
-                    const data = await response.json();
+            if (isReply) {
+                await conn.sendMessage(targetChat, { react: { text: "⏳", key: receivedMsg.key } });
 
-                    if (!data.success || !data.result?.download_url) {
-                        return await reply("❌ **FATAL ERROR:** Video download failed.");
-                    }
+                switch (text.trim()) {
+                    case "1": // Video
+                        if (data.mp4 || data.mp4_hd) {
+                            await conn.sendMessage(targetChat, {
+                                video: { url: data.mp4_hd || data.mp4 },
+                                caption: `✅ *${data.title}*\n\n> © KAMRAN-MD`,
+                                mimetype: "video/mp4"
+                            }, { quoted: receivedMsg });
+                        } else reply("❌ Video not available.");
+                        break;
 
-                    await conn.sendMessage(from, {
-                        video: { url: data.result.download_url },
-                        mimetype: 'video/mp4',
-                        caption: `🎬 *${title}*\n\n> © KAMRAN-MD ⚡`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "KAMRAN-MD VIDEO PLAYER",
-                                body: title,
-                                thumbnailUrl: thumbnail,
-                                sourceUrl: videoUrl,
-                                mediaType: 2,
-                                renderLargerThumbnail: true
+                    case "2": // Audio
+                        if (data.mp3) {
+                            await conn.sendMessage(targetChat, {
+                                audio: { url: data.mp3 },
+                                mimetype: "audio/mpeg",
+                                fileName: `${data.title}.mp3`
+                            }, { quoted: receivedMsg });
+                        } else reply("❌ Audio not available.");
+                        break;
+
+                    case "3": // Photos
+                        if (data.foto && data.foto.length > 0) {
+                            reply(`📸 Sending ${data.foto.length} photos...`);
+                            for (let img of data.foto) {
+                                await conn.sendMessage(targetChat, { image: { url: img } }, { quoted: receivedMsg });
                             }
-                        }
-                    }, { quoted: mek });
+                        } else reply("❌ This is a video, not a photo slideshow.");
+                        break;
 
-                } else if (body === '2') {
-                    // --- AUDIO DOWNLOAD (MP3) ---
-                    const audioApi = `https://api.davidcyriltech.my.id/download/ytmp3?url=${encodeURIComponent(videoUrl)}`;
-                    const response = await fetch(audioApi);
-                    const data = await response.json();
-
-                    if (!data.success || !data.result?.download_url) {
-                        return await reply("❌ **FATAL ERROR:** Audio download failed.");
-                    }
-
-                    await conn.sendMessage(from, {
-                        audio: { url: data.result.download_url },
-                        mimetype: 'audio/mpeg',
-                        ptt: false,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: "KAMRAN-MD AUDIO PLAYER",
-                                body: title,
-                                thumbnailUrl: thumbnail,
-                                sourceUrl: videoUrl,
-                                mediaType: 1,
-                                renderLargerThumbnail: true
-                            }
-                        }
-                    }, { quoted: mek });
+                    default:
+                        reply("❌ Invalid choice! Please reply with 1, 2, or 3.");
                 }
 
-                await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-            }
-        };
-
-        conn.ev.on('messages.upsert', async (chatUpdate) => {
-            for (const msg of chatUpdate.messages) {
-                await listener(msg);
+                await conn.sendMessage(targetChat, { react: { text: "✅", key: receivedMsg.key } });
             }
         });
 
-    } catch (error) {
-        console.error(error);
-        await reply(`❌ **SYSTEM ERROR:** ${error.message}`);
+    } catch (e) {
+        console.error("TikTok Error:", e);
+        reply("❌ An unexpected error occurred.");
     }
 });
-                                                       
