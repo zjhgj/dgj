@@ -1,188 +1,334 @@
+const { fetchJson } = require("../lib/functions");
+const { downloadTiktok } = require("@mrnima/tiktok-downloader");
+const { facebook } = require("@mrnima/facebook-downloader");
+const cheerio = require("cheerio");
+const { igdl } = require("ruhend-scraper");
 const axios = require("axios");
-const { cmd } = require('../command');
+const { cmd, commands } = require('../command');
+
+
 
 cmd({
-    pattern: "igdl",
-    alias: ["instagram", "insta", "ig"],
-    react: "⬇️",
-    desc: "Download Instagram videos/reels",
-    category: "downloader",
-    use: ".igdl <Instagram URL>",
-    filename: __filename
-}, async (conn, mek, m, { from, reply, args, q }) => {
-    try {
-        const url = q || m.quoted?.text;
-        if (!url || !url.includes("instagram.com")) {
-            return reply("❌ Please provide/reply to an Instagram link");
-        }
-
-        // Show processing reaction
-        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
-
-        // Fetch from API
-        const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/igdl?url=${encodeURIComponent(url)}`;
-        const response = await axios.get(apiUrl);
-
-        if (!response.data?.status || !response.data.data?.length) {
-            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return reply("Failed to fetch media. Invalid link or private content.");
-        }
-
-        // Send all media items
-        for (const item of response.data.data) {
-            await conn.sendMessage(from, {
-                [item.type === 'video' ? 'video' : 'image']: { url: item.url },
-                caption: `📶 *Instagram Downloader*\n\n` +
-        `- ❤‍🩹 *Quality*: HD\n\n` +
-        `> *© Powered by DRKAMRAN*`
-            }, { quoted: mek });
-        }
-
-        // Success reaction
-        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
-
-    } catch (error) {
-        console.error('IGDL Error:', error);
-        await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-        reply("❌ Download failed. Try again later.");
-    }
-});
-
-cmd({
-  pattern: "igdl4",
-  alias: ["instagram4", "insta4", "ig4", "igvideo4"],
-  react: '📶',
-  desc: "Download videos from Instagram (Alternative API)",
+  pattern: "ig",
+  alias: ["insta", "instagram"],
+  desc: "Download Instagram videos or reels.",
+  react: "🎥",
   category: "download",
-  use: ".igdl2 <Instagram URL>",
   filename: __filename
-}, async (conn, mek, m, { from, reply, args }) => {
+}, async (conn, m, store, { from, q, reply }) => {
   try {
-    const igUrl = args[0];
-    if (!igUrl || !igUrl.includes("instagram.com")) {
-      return reply('Please provide a valid Instagram URL. Example: `.igdl2 https://instagram.com/...`');
+    if (!q || !q.startsWith("http")) {
+      return reply("❌ Please provide a valid Instagram link.\n\n*Example:* .ig https://www.instagram.com/reel/xxxxxxxx/");
     }
-
-    await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
-
-    const apiUrl = `https://bk9.fun/download/instagram?url=${encodeURIComponent(igUrl)}`;
-    const response = await axios.get(apiUrl);
-
-    if (!response.data?.status || !response.data?.BK9?.[0]?.url) {
-      await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-      return reply('❌ Unable to fetch the video. Try .igdl2 for primary download.');
-    }
-
-    const videoUrl = response.data.BK9[0].url;
-    await conn.sendMessage(from, { react: { text: '📶', key: m.key } });
-
-    const videoResponse = await axios.get(videoUrl, { responseType: 'arraybuffer' });
-    if (!videoResponse.data) {
-      await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-      return reply('❌ Failed to download the video. Please try again later.');
-    }
-
-    const videoBuffer = Buffer.from(videoResponse.data, 'binary');
 
     await conn.sendMessage(from, {
-      video: videoBuffer,
-      caption: `📶 *Instagram Downloader*\n\n` +
-        `- ❤‍🩹 *Quality*: HD\n\n` +
-        `> *© Powered by DRKAMRAN*`,
-    }, { quoted: mek });
+      react: { text: "⏳", key: m.key }
+    });
 
-    await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
-  } catch (error) {
-    console.error('Error downloading video:', error);
-    await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-    reply('❌ API 2 failed. Try .igdl for primary download.');
-  }
-});
-
-cmd({
-  pattern: "igdl2",
-  alias: ["instagram2", "ig2", "instadl2"],
-  react: '📥',
-  desc: "Download videos from Instagram (API v5)",
-  category: "download",
-  use: ".igdl5 <Instagram video URL>",
-  filename: __filename
-}, async (conn, mek, m, { from, reply, args }) => {
-  try {
-    const igUrl = args[0];
-    if (!igUrl || !igUrl.includes("instagram.com")) {
-      return reply('❌ Please provide a valid Instagram video URL.\n\nExample:\n.igdl5 https://instagram.com/reel/...');
-    }
-
-    await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
-
-    const apiUrl = `https://jawad-tech.vercel.app/downloader?url=${encodeURIComponent(igUrl)}`;
+    const apiUrl = `https://api.nekolabs.my.id/downloader/instagram?url=${encodeURIComponent(q)}`;
     const response = await axios.get(apiUrl);
-
     const data = response.data;
 
-    if (!data.status || !data.result || !Array.isArray(data.result)) {
-      return reply('❌ Unable to fetch the video. Please check the URL and try again.');
+    if (!data.success || !data.result || !data.result.downloadUrl) {
+      return reply("⚠️ Couldn't fetch the Instagram video. Please check the link and try again.");
     }
 
-    const videoUrl = data.result[0];
-    if (!videoUrl) return reply("❌ No video found in the response.");
+    const result = data.result;
+    const videoUrl = result.downloadUrl[0];
+    const meta = result.metadata || {};
 
-    const metadata = data.metadata || {};
-    const author = metadata.author || "Unknown";
-    const caption = metadata.caption ? metadata.caption.slice(0, 300) + "..." : "No caption provided.";
-    const likes = metadata.like || 0;
-    const comments = metadata.comment || 0;
-
-    await reply('Downloading Instagram video...Please wait.📥');
+    const caption = `📥 *Instagram Video Downloaded Successfully!*\n\n👤 *User:* @${meta.username || "Unknown"}\n❤️ *Likes:* ${meta.like || "N/A"}\n💬 *Comments:* ${meta.comment || "N/A"}\n📝 *Caption:* ${meta.caption || "No caption"}\n\n> 🔰 Powered by *KAMRAN-MD*`;
 
     await conn.sendMessage(from, {
       video: { url: videoUrl },
-      caption: `📥 *Instagram Reel Downloader*\n👤 *Author:* ${author}\n💬 *Caption:* ${caption}\n❤️ *Likes:* ${likes} | 💭 *Comments:* ${comments}\n\n> Powered By DRKAMRAN 💜`
-    }, { quoted: mek });
+      mimetype: "video/mp4",
+      caption
+    }, { quoted: m });
 
-    await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
   } catch (error) {
-    console.error('IGDL5 Error:', error);
-    reply('❌ Failed to download the Instagram video. Please try again later.');
-    await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+    console.error("IG Download Error:", error);
+    reply("❌ Error downloading Instagram video. Please try again later.");
   }
 });
+// twitter-dl
+
 cmd({
-    pattern: "ig3",
-    alias: ["insta3", "instagram3"],
-    desc: "Download Instagram video",
-    category: "downloader",
-    react: "⤵️",
-    filename: __filename
-},
-async (conn, mek, m, { from, args, q, reply }) => {
-    try {
-        if (!q) return reply("Please provide an Instagram video link.");
-        if (!q.includes("instagram.com")) return reply("Invalid Instagram link.");
-        
-        reply("Downloading video, please wait...");
-        
-        const apiUrl = `https://rest-lily.vercel.app/api/downloader/igdl?url=${q}`;
-        const { data } = await axios.get(apiUrl);
-        
-        if (!data.status || !data.data || !data.data[0]) return reply("Failed to fetch Instagram video.");
-        
-        const { url } = data.data[0];
-        
-        const caption = 
-`- *Instagram Downloader ⚡*\n\n` +
-`- *Powered By KAMRAN-MD ❤️*`;
-        
-        await conn.sendMessage(from, {
-            video: { url: url },
-            caption: caption,
-            contextInfo: { mentionedJid: [m.sender] }
-        }, { quoted: mek });
-        
-    } catch (e) {
-        console.error("Error in Instagram downloader command:", e);
-        reply(`An error occurred: ${e.message}`);
+  pattern: "twitter",
+  alias: ["tweet", "twdl"],
+  desc: "Download Twitter videos",
+  category: "download",
+  filename: __filename
+}, async (conn, m, store, {
+  from,
+  quoted,
+  q,
+  reply
+}) => {
+  try {
+    if (!q || !q.startsWith("https://")) {
+      return conn.sendMessage(from, { text: "❌ Please provide a valid Twitter URL." }, { quoted: m });
     }
+
+    await conn.sendMessage(from, {
+      react: { text: '⏳', key: m.key }
+    });
+
+    const response = await axios.get(`https://www.dark-yasiya-api.site/download/twitter?url=${q}`);
+    const data = response.data;
+
+    if (!data || !data.status || !data.result) {
+      return reply("⚠️ Failed to retrieve Twitter video. Please check the link and try again.");
+    }
+
+    const { desc, thumb, video_sd, video_hd } = data.result;
+
+    const caption = `╭━━━〔 *TWITTER DOWNLOADER* 〕━━━⊷\n`
+      + `┃▸ *Description:* ${desc || "No description"}\n`
+      + `╰━━━⪼\n\n`
+      + `📹 *Download Options:*\n`
+      + `1️⃣  *SD Quality*\n`
+      + `2️⃣  *HD Quality*\n`
+      + `🎵 *Audio Options:*\n`
+      + `3️⃣  *Audio*\n`
+      + `4️⃣  *Document*\n`
+      + `5️⃣  *Voice*\n\n`
+      + `📌 *Reply with the number to download your choice.*`;
+
+    const sentMsg = await conn.sendMessage(from, {
+      image: { url: thumb },
+      caption: caption
+    }, { quoted: m });
+
+    const messageID = sentMsg.key.id;
+
+    conn.ev.on("messages.upsert", async (msgData) => {
+      const receivedMsg = msgData.messages[0];
+      if (!receivedMsg.message) return;
+
+      const receivedText = receivedMsg.message.conversation || receivedMsg.message.extendedTextMessage?.text;
+      const senderID = receivedMsg.key.remoteJid;
+      const isReplyToBot = receivedMsg.message.extendedTextMessage?.contextInfo?.stanzaId === messageID;
+
+      if (isReplyToBot) {
+        await conn.sendMessage(senderID, {
+          react: { text: '⬇️', key: receivedMsg.key }
+        });
+
+        switch (receivedText) {
+          case "1":
+            await conn.sendMessage(senderID, {
+              video: { url: video_sd },
+              caption: "📥 *Downloaded in SD Quality*"
+            }, { quoted: receivedMsg });
+            break;
+
+          case "2":
+            await conn.sendMessage(senderID, {
+              video: { url: video_hd },
+              caption: "📥 *Downloaded in HD Quality*"
+            }, { quoted: receivedMsg });
+            break;
+
+          case "3":
+            await conn.sendMessage(senderID, {
+              audio: { url: video_sd },
+              mimetype: "audio/mpeg"
+            }, { quoted: receivedMsg });
+            break;
+
+          case "4":
+            await conn.sendMessage(senderID, {
+              document: { url: video_sd },
+              mimetype: "audio/mpeg",
+              fileName: "Twitter_Audio.mp3",
+              caption: "📥 *Audio Downloaded as Document*"
+            }, { quoted: receivedMsg });
+            break;
+
+          case "5":
+            await conn.sendMessage(senderID, {
+              audio: { url: video_sd },
+              mimetype: "audio/mp4",
+              ptt: true
+            }, { quoted: receivedMsg });
+            break;
+
+          default:
+            reply("❌ Invalid option! Please reply with 1, 2, 3, 4, or 5.");
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error("Error:", error);
+    reply("❌ An error occurred while processing your request. Please try again.");
+  }
 });
-                      
+
+// MediaFire-dl
+
+cmd({
+  pattern: "mediafirer",
+  alias: ["mfire"],
+  desc: "To download MediaFire files using Chamod's API.",
+  react: "🎥",
+  category: "download",
+  filename: __filename
+}, async (conn, m, store, { from, quoted, q, reply }) => {
+  try {
+    if (!q) return reply("❌ Please provide a valid MediaFire link.");
+
+    // show processing react
+    await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+
+    // call your Cloudflare Worker (make sure to encode the URL)
+    const apiUrl = `https://mediafire-api.chamodshadow125.workers.dev/?url=${encodeURIComponent(q)}`;
+    const response = await axios.get(apiUrl);
+    const data = response.data;
+
+    // validate structure based on your JSON
+    if (!data || data.status !== true || !data.result || !data.result.download_url) {
+      return reply("⚠️ Failed to fetch MediaFire download link. Ensure the link is valid and public.");
+    }
+
+    // pull fields exactly as your API returns them
+    const download_url = data.result.download_url;
+    const filename = data.result.filename || "mediafire_download";
+    const filesize = data.result.filesize || "Unknown";
+    const uploaded = data.result.uploaded || "Unknown";
+
+    // try to detect mime type if mime-types package is available, otherwise fallback
+    let mime_type = "application/octet-stream";
+    try {
+      // if your bot has mime-types installed, uncomment these two lines:
+      // const { lookup } = require('mime-types');
+      // mime_type = lookup(filename) || mime_type;
+    } catch (e) {
+      // ignore and use fallback
+    }
+
+    // react to indicate ready
+    await conn.sendMessage(from, { react: { text: "⬆️", key: m.key } });
+
+    const caption = `╭━━━〔 *MEDIAFIRE DOWNLOADER* 〕━━━⊷\n`
+      + `┃▸ *File Name:* ${filename}\n`
+      + `┃▸ *File Size:* ${filesize}\n`
+      + `┃▸ *Uploaded:* ${uploaded}\n`
+      + `╰━━━⪼\n\n`
+      + `📥 *Downloading your file...*`;
+
+    // send the file to the user (document with remote URL)
+    await conn.sendMessage(from, {
+      document: { url: download_url },
+      mimetype: mime_type,
+      fileName: filename,
+      caption: caption
+    }, { quoted: m });
+
+  } catch (error) {
+    console.error("Mediafire command error:", error);
+    reply("❌ An error occurred while processing your request. Please try again.");
+  }
+});
+
+// apk-dl
+
+cmd({
+  pattern: "app",
+  desc: "Download APK from Aptoide.",
+  category: "download",
+  filename: __filename
+}, async (conn, m, store, {
+  from,
+  quoted,
+  q,
+  reply
+}) => {
+  try {
+    if (!q) {
+      return reply("❌ Please provide an app name to search.");
+    }
+
+    await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+
+    const apiUrl = `http://ws75.aptoide.com/api/7/apps/search/query=${q}/limit=1`;
+    const response = await axios.get(apiUrl);
+    const data = response.data;
+
+    if (!data || !data.datalist || !data.datalist.list.length) {
+      return reply("⚠️ No results found for the given app name.");
+    }
+
+    const app = data.datalist.list[0];
+    const appSize = (app.size / 1048576).toFixed(2); // Convert bytes to MB
+
+    const caption = `╭━━━〔 *APK Downloader* 〕━━━┈⊷
+┃ 📦 *Name:* ${app.name}
+┃ 🏋 *Size:* ${appSize} MB
+┃ 📦 *Package:* ${app.package}
+┃ 📅 *Updated On:* ${app.updated}
+┃ 👨‍💻 *Developer:* ${app.developer.name}
+╰━━━━━━━━━━━━━━━┈⊷
+🔗 *Powered By 『KAMRAN-MD』*`;
+
+    await conn.sendMessage(from, { react: { text: "⬆️", key: m.key } });
+
+    await conn.sendMessage(from, {
+      document: { url: app.file.path_alt },
+      fileName: `${app.name}.apk`,
+      mimetype: "application/vnd.android.package-archive",
+      caption: caption
+    }, { quoted: m });
+
+    await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+
+  } catch (error) {
+    console.error("Error:", error);
+    reply("❌ An error occurred while fetching the APK. Please try again.");
+  }
+});
+
+// G-Drive-DL
+
+cmd({
+  pattern: "gdrive",
+  desc: "Download Google Drive files.",
+  react: "🌐",
+  category: "download",
+  filename: __filename
+}, async (conn, m, store, { from, quoted, q, reply }) => {
+  try {
+    if (!q) {
+      return reply("❌ Please provide a valid Google Drive link.");
+    }
+
+    await conn.sendMessage(from, { react: { text: "⬇️", key: m.key } });
+
+    // Use Izumi API
+    const apiUrl = `https://izumiiiiiiii.dpdns.org/downloader/gdrive?url=${encodeURIComponent(q)}`;
+    const response = await axios.get(apiUrl);
+    const data = response.data;
+
+    if (!data || !data.status || !data.result || !data.result.downloadUrl) {
+      return reply("⚠️ Failed to fetch Google Drive file. Please check the link and try again.");
+    }
+
+    const { downloadUrl, fileName, mimetype, fileSize } = data.result;
+
+    await conn.sendMessage(from, { react: { text: "⬆️", key: m.key } });
+
+    await conn.sendMessage(from, {
+      document: { url: downloadUrl },
+      mimetype: mimetype || "application/octet-stream",
+      fileName: fileName || "gdrive_file",
+      caption: `📥 *Google Drive File Downloaded Successfully!*\n\n📂 *File Name:* ${fileName}\n📦 *Size:* ${fileSize} MB\n\n*© Powered By KAMRAN-MD*`
+    }, { quoted: m });
+
+    await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+
+  } catch (error) {
+    console.error("Error:", error);
+    reply("❌ An error occurred while fetching the Google Drive file. Please try again.");
+  }
+});
+        
