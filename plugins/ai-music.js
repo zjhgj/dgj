@@ -35,8 +35,8 @@ async function tiktokScraper(url) {
 }
 
 cmd({
-    pattern: "tiktok",
-    alias: ["tt", "ttdl", "savetik"],
+    pattern: "tiktok2",
+    alias: ["tt2", "ttdl2", "savetik"],
     react: "📥",
     desc: "Download TikTok videos or photos (LID Fixed).",
     category: "downloader",
