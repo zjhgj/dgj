@@ -37,8 +37,8 @@ async function tiktokScraper(url) {
 // --- MAIN COMMAND ---
 
 cmd({
-    pattern: "alltiktok",
-    alias: ["ttal", "ttdl"],
+    pattern: "tiktok",
+    alias: ["tt", "ttdl"],
     react: "📥",
     desc: "Download TikTok videos, audio, or photos with selection.",
     category: "downloader",
