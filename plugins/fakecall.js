@@ -1,105 +1,79 @@
-const { cmd } = require('../command')
+const { cmd } = require('../command');
+const axios = require('axios');
+const FormData = require('form-data');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
-// Fix for node-fetch (works on any Node version)
-const fetch = (...args) =>
-  import('node-fetch').then(({ default: fetch }) => fetch(...args));
+// Helper to format bytes
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
 
 cmd({
-  pattern: "song3",
-  alias: ["play5", "ytmp3"],
-  react: "🎶",
-  desc: "Download YouTube song (Audio) via Nekolabs API",
-  category: "download",
-  use: ".song <query>",
-  filename: __filename
-}, async (conn, mek, m, { from, reply, q }) => {
-  try {
+    pattern: 'adi',
+    alias: ['adediti'],
+    react: '🎶',
+    desc: 'Upload an image to create a stylish Ad overlay (JPEG/PNG)',
+    category: 'editing',
+    use: '.ad <reply to image>',
+    filename: __filename
+}, async (conn, mek, m, { reply }) => {
+    try {
+        // Extract file
+        const file = mek.quoted ? mek.quoted : mek;
+        const mimetype = (file.mimetype || '').toString();
+        if (!mimetype.startsWith('image/')) return reply('❌ Please upload a valid image (JPEG/PNG)');
 
-    // ==============================
-    // Validate Query
-    // ==============================
-    if (!q) return reply("⚠️ Please provide a song name or YouTube link.");
+        const buffer = await file.download();
+        const size = formatBytes(buffer.length);
 
-    // ==============================
-    // API CALL
-    // ==============================
-    const apiUrl = `https://api.nekolabs.my.id/downloader/youtube/play/v1?q=${encodeURIComponent(q)}`;
-    const res = await fetch(apiUrl);
+        // Determine extension
+        let ext = '';
+        if (mimetype.includes('jpeg')) ext = '.jpg';
+        else if (mimetype.includes('png')) ext = '.png';
+        else return reply('❌ Unsupported format. Use JPEG or PNG.');
 
-    if (!res.ok) return reply("❌ API is not responding. Try again later.");
+        // Temporary save
+        const tempPath = path.join(os.tmpdir(), 'ad_' + Date.now() + ext);
+        fs.writeFileSync(tempPath, buffer);
 
-    const data = await res.json();
+        // Upload to Uguu
+        const form = new FormData();
+        form.append('files[]', fs.createReadStream(tempPath));
+        const uploadRes = await axios.post('https://uguu.se/upload.php', form, {
+            headers: form.getHeaders()
+        });
+        fs.unlinkSync(tempPath);
 
-    if (!data?.success || !data?.result)
-      return reply("❌ Song not found or API error.");
+        if (!uploadRes.data || !uploadRes.data.files || !uploadRes.data.files[0].url) {
+            throw new Error('Failed to upload image to Uguu.');
+        }
+        const fileUrl = uploadRes.data.files[0].url;
 
-    const meta = data.result.metadata || {};
-    const dlUrl = data.result.downloadUrl;
+        // Call PopCat Ad API
+        const adUrl = `https://api.popcat.xyz/v2/ad?image=${encodeURIComponent(fileUrl)}`;
+        const adRes = await axios.get(adUrl, { responseType: 'arraybuffer' });
 
-    if (!dlUrl)
-      return reply("❌ Audio download URL not found.");
+        if (!adRes || !adRes.data) return reply('❌ Failed to generate Ad image.');
 
-    // ==============================
-    // Thumbnail (Auto Fallback)
-    // ==============================
-    const cover = meta.cover || meta.thumbnail || null;
+        const adBuffer = Buffer.from(adRes.data, 'binary');
 
-    let thumbBuffer = null;
-    if (cover) {
-      try {
-        const t = await fetch(cover);
-        thumbBuffer = Buffer.from(await t.arrayBuffer());
-      } catch (err) {
-        console.log("Thumbnail failed:", err);
-      }
+        // Send generated ad image with KAMRAN-MD style caption
+        await conn.sendMessage(m.chat, {
+            image: adBuffer,
+            caption: `⬤───〔 *🎨 WHITE SHADOW AD GENERATOR* 〕───⬤\n\n` +
+                     `🖼 Original Size: ${size}\n` +
+                     `✅ Image processed successfully!\n\n` +
+                     `> © KAMRAN-MD 🔥`
+        }, { quoted: mek });
+
+    } catch (err) {
+        console.error('Ad Error:', err);
+        reply('⚠️ *Error:* ' + (err.message || 'Unknown error'));
     }
-
-    // ==============================
-    // Safe Filename
-    // ==============================
-    const safeTitle = (meta.title || "song")
-      .replace(/[\\/:*?"<>|]/g, "")
-      .slice(0, 80);
-
-    // ==============================
-    // Caption
-    // ==============================
-    const caption = `
-╔═══════════════
-🎶 *Now Playing*
-╠═══════════════
-🎵 *Title:* ${meta.title || "Unknown"}
-👤 *Channel:* ${meta.channel || "Unknown"}
-⏱ *Duration:* ${meta.duration || "N/A"}
-🔗 YouTube: ${meta.url || "N/A"}
-╠═══════════════
-⚡ Powered by *KAMRAN MD*
-╚═══════════════
-`;
-
-    // ==============================
-    // Send Thumbnail
-    // ==============================
-    if (thumbBuffer) {
-      await conn.sendMessage(from, {
-        image: thumbBuffer,
-        caption
-      }, { quoted: mek });
-    } else {
-      await conn.sendMessage(from, { text: caption }, { quoted: mek });
-    }
-
-    // ==============================
-    // Send Audio File
-    // ==============================
-    await conn.sendMessage(from, {
-      audio: { url: dlUrl },
-      mimetype: "audio/mpeg",
-      fileName: `${safeTitle}.mp3`
-    }, { quoted: mek });
-
-  } catch (err) {
-    console.error("song cmd error:", err);
-    reply("⚠️ An unexpected error occurred. Try again later.");
-  }
 });
