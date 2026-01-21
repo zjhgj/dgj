@@ -2,8 +2,8 @@ const { cmd } = require('../command');
 const axios = require('axios');
 
 cmd({
-    pattern: "fb",
-    alias: ["facebook", "fbdl"],
+    pattern: "fb2",
+    alias: ["facebook2", "fbdl2"],
     react: "🔵",
     desc: "Download Facebook Videos/Reels.",
     category: "download",
