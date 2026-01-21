@@ -1,12 +1,11 @@
 const { cmd } = require('../command');
-const fetch = require('node-fetch');
-const yts = require('yt-search');
 const axios = require('axios');
+const yts = require('yt-search');
 
 /**
- * Handle Reply for Video and Audio Selection
+ * Handle Reply logic for MP3 and Video selection
  */
-async function handleVideoAudioReply(conn, messageID, from, videoInfo, apiResult, mek) {
+async function handleMediaReply(conn, messageID, from, video, downloadUrl, mek) {
     conn.ev.on("messages.upsert", async (msgData) => {
         try {
             const receivedMsg = msgData.messages[0];
@@ -20,24 +19,25 @@ async function handleVideoAudioReply(conn, messageID, from, videoInfo, apiResult
             await conn.sendMessage(senderID, { react: { text: '⏳', key: receivedMsg.key } });
 
             switch (text.trim()) {
-                case "1": // Video File
+                case "1": // MP3 Audio
                     await conn.sendMessage(senderID, { 
-                        video: { url: apiResult.video_url }, 
-                        caption: `✅ *${videoInfo.title}*\n\n> Powered by KAMRAN-MD`,
-                        mimetype: "video/mp4" 
-                    }, { quoted: receivedMsg });
-                    break;
-                case "2": // Audio File
-                    await conn.sendMessage(senderID, { 
-                        audio: { url: apiResult.audio_url }, 
+                        audio: { url: downloadUrl }, 
                         mimetype: "audio/mpeg", 
                         ptt: false 
                     }, { quoted: receivedMsg });
                     break;
-                case "3": // Document Video
+                case "2": // MP3 Document
                     await conn.sendMessage(senderID, { 
-                        document: { url: apiResult.video_url, fileName: `${videoInfo.title}.mp4`, mimetype: "video/mp4" }, 
-                        caption: videoInfo.title 
+                        document: { url: downloadUrl }, 
+                        fileName: `${video.title}.mp3`, 
+                        mimetype: "audio/mpeg" 
+                    }, { quoted: receivedMsg });
+                    break;
+                case "3": // MP3 Voice Note
+                    await conn.sendMessage(senderID, { 
+                        audio: { url: downloadUrl }, 
+                        mimetype: "audio/mpeg", 
+                        ptt: true 
                     }, { quoted: receivedMsg });
                     break;
                 default:
@@ -50,49 +50,47 @@ async function handleVideoAudioReply(conn, messageID, from, videoInfo, apiResult
     });
 }
 
-// ================== YTDL (Video & Audio) ==================
+// ================== YTMP3 DOWNLOADER (Koyeb API) ==================
 cmd({
-    pattern: "song2",
-    alias: ["song", "play3", "play2"],
-    react: "🎥",
-    desc: "Download YouTube Video or Audio",
+    pattern: "song",
+    alias: ["audio", "ytmp3"],
+    react: "🎵",
+    desc: "Download YouTube MP3 via Koyeb API (URL & Search support)",
     category: "download",
-    use: ".ytdl <name/link>",
+    use: ".song <name or link>",
     filename: __filename
 }, async (conn, mek, m, { from, reply, q }) => {
     try {
-        if (!q) return reply("❌ Please provide a link or search term!");
+        if (!q) return reply("❌ Provide a song name or YouTube link!");
 
-        // Step 1: Search for Video
+        await conn.sendMessage(from, { react: { text: '🔍', key: mek.key } });
+
+        // Step 1: Search using yt-search (Handles both URL and Text)
         const search = await yts(q);
         if (!search.videos.length) return reply("❌ No results found!");
         const video = search.videos[0];
 
-        await conn.sendMessage(from, { react: { text: '🔍', key: mek.key } });
-
-        // Step 2: Fetch Links (Using Jawad-Tech API as per your earlier snippets)
-        const apiUrl = `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(video.url)}`;
+        // Step 2: Call Koyeb MP3 API
+        const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/song?search=${encodeURIComponent(video.url)}`;
         const { data: apiRes } = await axios.get(apiUrl);
 
-        if (!apiRes.status) return reply("❌ Unable to fetch download links!");
+        if (!apiRes?.status || !apiRes.data?.url) {
+            return reply("❌ Unable to download song from API!");
+        }
 
-        const downloadData = {
-            video_url: apiRes.result.mp4,
-            audio_url: apiRes.result.mp3 || apiRes.result.mp4 // Fallback to mp4 if mp3 missing
-        };
+        const dlUrl = apiRes.data.url;
 
         const caption = `
-🎥 *YT DOWNLOADER* 🎥
-
 📑 *Title:* ${video.title}
 ⏱ *Duration:* ${video.timestamp}
-📡 *Views:* ${video.views.toLocaleString()}
+📆 *Uploaded:* ${video.ago}
+📊 *Views:* ${video.views.toLocaleString()}
 🔗 *Link:* ${video.url}
 
-*Inmein se select karein:*
-1️⃣ *Video (MP4)*
-2️⃣ *Audio (MP3)*
-3️⃣ *Video (Document)*
+🔢 *Reply with:*
+1️⃣ Audio (MP3)
+2️⃣ Document (File)
+3️⃣ Voice Note (PTT)
 
 > KAMRAN-MD ❤️`;
 
@@ -101,12 +99,11 @@ cmd({
             caption: caption 
         }, { quoted: mek });
 
-        // Step 3: Handle Selection
-        handleVideoAudioReply(conn, sentMsg.key.id, from, video, downloadData, mek);
+        // Step 3: Handle selection via Reply
+        handleMediaReply(conn, sentMsg.key.id, from, video, dlUrl, mek);
 
     } catch (e) {
-        console.error(e);
+        console.error("Song Error:", e);
         reply("❌ Error occurred while processing request.");
     }
 });
-                                           
