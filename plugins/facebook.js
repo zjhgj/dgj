@@ -13,39 +13,41 @@ cmd({
 async (conn, mek, m, { from, q, reply }) => {
     try {
         if (!q) return reply("⚠️ *KAMRAN-MD:* Please provide a valid Facebook video link.");
-        if (!q.includes("facebook.com") && !q.includes("fb.watch")) {
+        
+        // Basic Link Validation
+        if (!q.includes("facebook.com") && !q.includes("fb.watch") && !q.includes("fb.com")) {
             return reply("❌ *KAMRAN-MD:* Invalid link. Please provide a real Facebook URL.");
         }
 
         await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
 
-        // API Call to your specific endpoint
+        // API Call
         const apiUrl = `https://drkamran.vercel.app/api/download/facebook?url=${encodeURIComponent(q)}`;
         const response = await axios.get(apiUrl);
         const data = response.data;
 
+        // Check for result existence
         if (!data || !data.status || !data.result) {
             await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
-            return reply("🚫 *API ERROR:* Failed to fetch media from Facebook. Make sure the video is public.");
+            return reply("🚫 *API ERROR:* Failed to fetch media. The video might be private, deleted, or the API is down.");
         }
 
-        const result = data.result;
-        
-        // Priority: HD quality, then SD
-        const videoUrl = result.hd || result.sd;
+        const res = data.result;
+        // API response sometimes gives 'hd'/'sd' or 'url'
+        const videoUrl = res.hd || res.sd || res.url || (Array.isArray(res) ? res[0].url : null);
         
         if (!videoUrl) {
-            return reply("❌ *KAMRAN-MD:* Could not find a downloadable video URL.");
+            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
+            return reply("❌ *KAMRAN-MD:* Could not find a valid video stream in the API response.");
         }
 
         const caption = `✨ *𝐅𝐀𝐂𝐄𝐁𝐎𝐎𝐊 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃𝐄𝐑* ✨\n\n` +
-                        `📝 *ᴛɪᴛʟᴇ:* ${result.title || 'FB Video'}\n` +
+                        `📝 *ᴛɪᴛʟᴇ:* ${res.title || 'Facebook Video'}\n` +
                         `🛰️ *ꜱᴛᴀᴛᴜꜱ:* Success\n` +
-                        `🎥 *ǫᴜᴀʟɪᴛʏ:* ${result.hd ? 'HD' : 'SD'}\n` +
                         `👤 *ᴅᴏᴡɴʟᴏᴀᴅᴇᴅ ʙʏ:* KAMRAN-MD\n\n` +
                         `> ✅ Transmitted Successfully`;
 
-        // Sending the video
+        // Sending Video
         await conn.sendMessage(from, { 
             video: { url: videoUrl }, 
             caption: caption 
@@ -56,6 +58,6 @@ async (conn, mek, m, { from, q, reply }) => {
     } catch (e) {
         console.error("FB Download Error:", e);
         await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
-        reply("❌ *KAMRAN-MD SYSTEM ERROR:* " + e.message);
+        reply("❌ *KAMRAN-MD SYSTEM ERROR:* " + (e.response?.data?.message || e.message));
     }
 });
