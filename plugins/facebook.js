@@ -1,63 +1,136 @@
 const { cmd } = require('../command');
+const fetch = require('node-fetch');
 const axios = require('axios');
 
+// --- Configuration & Helpers ---
+const UA = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36';
+const YT_REGEX = /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/))([a-zA-Z0-9_-]{11})/;
+
+async function getMetadata(url) {
+    try {
+        const r = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`, { headers: { 'user-agent': UA } });
+        return await r.json();
+    } catch { return null; }
+}
+
+async function getToken(url, type) {
+    const page = type === 'mp3' ? 'button' : 'vidbutton';
+    const r = await fetch(`https://v2.ytmp3.wtf/${page}/?url=${encodeURIComponent(url)}`, { headers: { 'user-agent': UA } });
+    const html = await r.text();
+    const cookie = r.headers.get('set-cookie') || '';
+    return {
+        phpsessid: cookie.match(/PHPSESSID=([^;]+)/)?.[1],
+        tokenId: html.match(/'token_id':\s*'([^']+)'/)?.[1],
+        validTo: html.match(/'token_validto':\s*'([^']+)'/)?.[1]
+    };
+}
+
+async function startConvert(url, token, type) {
+    const endpoint = type === 'mp3' ? 'convert' : 'vidconvert';
+    const body = new URLSearchParams({ url, convert: 'gogogo', token_id: token.tokenId, token_validto: token.validTo });
+    const r = await fetch(`https://v2.ytmp3.wtf/${endpoint}/`, {
+        method: 'POST',
+        headers: { 'user-agent': UA, 'cookie': `PHPSESSID=${token.phpsessid}`, 'content-type': 'application/x-www-form-urlencoded' },
+        body
+    });
+    const j = await r.json();
+    return j.jobid;
+}
+
+async function pollDownloadLink(jobid, token, type) {
+    const endpoint = type === 'mp3' ? 'convert' : 'vidconvert';
+    for (let i = 0; i < 20; i++) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        const r = await fetch(`https://v2.ytmp3.wtf/${endpoint}/?jobid=${jobid}&time=${Date.now()}`, {
+            headers: { 'user-agent': UA, 'cookie': `PHPSESSID=${token.phpsessid}`, 'x-requested-with': 'XMLHttpRequest' }
+        });
+        const j = await r.json();
+        if (j.ready && j.dlurl) return j.dlurl;
+    }
+    return null;
+}
+
+// --- MAIN COMMAND ---
+
 cmd({
-    pattern: "fb2",
-    alias: ["facebook2", "fbdl2"],
-    react: "🔵",
-    desc: "Download Facebook Videos/Reels.",
+    pattern: "ytdl",
+    alias: ["ytmp33", "ytmp4t", "play6"],
+    react: "📥",
+    desc: "Download YouTube Video or Audio via v2.ytmp3.wtf",
     category: "download",
-    use: ".fb <link>",
     filename: __filename
 },           
-async (conn, mek, m, { from, q, reply }) => {
+async (conn, mek, m, { from, q, reply, prefix }) => {
     try {
-        if (!q) return reply("⚠️ *KAMRAN-MD:* Please provide a valid Facebook video link.");
-        
-        // Basic Link Validation
-        if (!q.includes("facebook.com") && !q.includes("fb.watch") && !q.includes("fb.com")) {
-            return reply("❌ *KAMRAN-MD:* Invalid link. Please provide a real Facebook URL.");
-        }
+        const match = q ? q.match(YT_REGEX) : null;
+        if (!match) return reply(`*Usage:* ${prefix}ytdl <youtube link>`);
 
-        await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
+        const videoUrl = `https://youtu.be/${match[1]}`;
+        await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
 
-        // API Call
-        const apiUrl = `https://drkamran.vercel.app/api/download/facebook?url=${encodeURIComponent(q)}`;
-        const response = await axios.get(apiUrl);
-        const data = response.data;
+        const meta = await getMetadata(videoUrl);
+        const title = meta?.title || "YouTube Media";
 
-        // Check for result existence
-        if (!data || !data.status || !data.result) {
-            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
-            return reply("🚫 *API ERROR:* Failed to fetch media. The video might be private, deleted, or the API is down.");
-        }
+        const caption = `
+🚀 *YT DOWNLOADER (WTF)* 🚀
 
-        const res = data.result;
-        // API response sometimes gives 'hd'/'sd' or 'url'
-        const videoUrl = res.hd || res.sd || res.url || (Array.isArray(res) ? res[0].url : null);
-        
-        if (!videoUrl) {
-            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
-            return reply("❌ *KAMRAN-MD:* Could not find a valid video stream in the API response.");
-        }
+📌 *Title:* ${title}
+👤 *Channel:* ${meta?.author_name || "Unknown"}
 
-        const caption = `✨ *𝐅𝐀𝐂𝐄𝐁𝐎𝐎𝐊 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃𝐄𝐑* ✨\n\n` +
-                        `📝 *ᴛɪᴛʟᴇ:* ${res.title || 'Facebook Video'}\n` +
-                        `🛰️ *ꜱᴛᴀᴛᴜꜱ:* Success\n` +
-                        `👤 *ᴅᴏᴡɴʟᴏᴀᴅᴇᴅ ʙʏ:* KAMRAN-MD\n\n` +
-                        `> ✅ Transmitted Successfully`;
+🔢 *Reply with:*
+1️⃣ *Audio (MP3)*
+2️⃣ *Video (MP4)*
 
-        // Sending Video
-        await conn.sendMessage(from, { 
-            video: { url: videoUrl }, 
+> WHITESHADOW-MD ❤️`;
+
+        const sentMsg = await conn.sendMessage(from, { 
+            image: { url: `https://i.ytimg.com/vi/${match[1]}/hqdefault.jpg` }, 
             caption: caption 
-        }, { quoted: m });
+        }, { quoted: mek });
 
-        await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
+        const messageID = sentMsg.key.id;
+
+        // Handle Reply
+        conn.ev.on("messages.upsert", async (msgData) => {
+            const receivedMsg = msgData.messages[0];
+            if (!receivedMsg?.message) return;
+
+            const text = receivedMsg.message.conversation || receivedMsg.message.extendedTextMessage?.text;
+            const isReply = receivedMsg.message.extendedTextMessage?.contextInfo?.stanzaId === messageID;
+
+            if (isReply && (text === "1" || text === "2")) {
+                await conn.sendMessage(from, { react: { text: "⏳", key: receivedMsg.key } });
+                const type = text === "1" ? "mp3" : "mp4";
+
+                try {
+                    const token = await getToken(videoUrl, type);
+                    const jobid = await startConvert(videoUrl, token, type);
+                    const dlUrl = await pollDownloadLink(jobid, token, type);
+
+                    if (!dlUrl) return reply("❌ Conversion failed or timeout!");
+
+                    if (type === "mp3") {
+                        await conn.sendMessage(from, { 
+                            audio: { url: dlUrl }, 
+                            mimetype: "audio/mpeg", 
+                            fileName: `${title}.mp3` 
+                        }, { quoted: receivedMsg });
+                    } else {
+                        await conn.sendMessage(from, { 
+                            video: { url: dlUrl }, 
+                            caption: `✅ *${title}*\n\n> © WHITESHADOW-MD`, 
+                            mimetype: "video/mp4" 
+                        }, { quoted: receivedMsg });
+                    }
+                } catch (err) {
+                    reply("❌ Error: API is busy, try again later.");
+                }
+                await conn.sendMessage(from, { react: { text: "✅", key: receivedMsg.key } });
+            }
+        });
 
     } catch (e) {
-        console.error("FB Download Error:", e);
-        await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
-        reply("❌ *KAMRAN-MD SYSTEM ERROR:* " + (e.response?.data?.message || e.message));
+        console.error(e);
+        reply("❌ An unexpected error occurred.");
     }
 });
