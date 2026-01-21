@@ -3,7 +3,7 @@ const axios = require('axios');
 const yts = require('yt-search');
 
 /**
- * Handle Reply logic for MP3 and Video selection
+ * Handle Reply logic for MP3 selection
  */
 async function handleMediaReply(conn, messageID, from, video, downloadUrl, mek) {
     conn.ev.on("messages.upsert", async (msgData) => {
@@ -33,15 +33,15 @@ async function handleMediaReply(conn, messageID, from, video, downloadUrl, mek) 
                         mimetype: "audio/mpeg" 
                     }, { quoted: receivedMsg });
                     break;
-                case "3": // MP3 Voice Note
+                case "3": // ✅ FIXED VOICE NOTE (PTT)
                     await conn.sendMessage(senderID, { 
                         audio: { url: downloadUrl }, 
-                        mimetype: "audio/mpeg", 
+                        mimetype: 'audio/ogg; codecs=opus', // Ye line playback theek karegi
                         ptt: true 
                     }, { quoted: receivedMsg });
                     break;
                 default:
-                    await conn.sendMessage(senderID, { text: "❌ Invalid choice! Reply with 1, 2, or 3." }, { quoted: receivedMsg });
+                    await conn.sendMessage(senderID, { text: "❌ Invalid choice!" }, { quoted: receivedMsg });
             }
             await conn.sendMessage(senderID, { react: { text: '✅', key: receivedMsg.key } });
         } catch (err) {
@@ -50,12 +50,12 @@ async function handleMediaReply(conn, messageID, from, video, downloadUrl, mek) 
     });
 }
 
-// ================== YTMP3 DOWNLOADER (Koyeb API) ==================
+// ================== YTMP3 DOWNLOADER ==================
 cmd({
     pattern: "song",
     alias: ["audio", "ytmp3"],
     react: "🎵",
-    desc: "Download YouTube MP3 via Koyeb API (URL & Search support)",
+    desc: "Download YouTube MP3 via Koyeb API",
     category: "download",
     use: ".song <name or link>",
     filename: __filename
@@ -65,17 +65,15 @@ cmd({
 
         await conn.sendMessage(from, { react: { text: '🔍', key: mek.key } });
 
-        // Step 1: Search using yt-search (Handles both URL and Text)
         const search = await yts(q);
         if (!search.videos.length) return reply("❌ No results found!");
         const video = search.videos[0];
 
-        // Step 2: Call Koyeb MP3 API
         const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/song?search=${encodeURIComponent(video.url)}`;
         const { data: apiRes } = await axios.get(apiUrl);
 
         if (!apiRes?.status || !apiRes.data?.url) {
-            return reply("❌ Unable to download song from API!");
+            return reply("❌ API Error!");
         }
 
         const dlUrl = apiRes.data.url;
@@ -83,8 +81,6 @@ cmd({
         const caption = `
 📑 *Title:* ${video.title}
 ⏱ *Duration:* ${video.timestamp}
-📆 *Uploaded:* ${video.ago}
-📊 *Views:* ${video.views.toLocaleString()}
 🔗 *Link:* ${video.url}
 
 🔢 *Reply with:*
@@ -99,11 +95,11 @@ cmd({
             caption: caption 
         }, { quoted: mek });
 
-        // Step 3: Handle selection via Reply
         handleMediaReply(conn, sentMsg.key.id, from, video, dlUrl, mek);
 
     } catch (e) {
-        console.error("Song Error:", e);
-        reply("❌ Error occurred while processing request.");
+        console.error(e);
+        reply("❌ Error occurred!");
     }
 });
+            
