@@ -22,32 +22,33 @@ async (conn, mek, m, { from, q, reply }) => {
         const response = await axios.get(apiUrl);
         const data = response.data;
 
-        if (!data || !data.status) {
+        if (!data || !data.status || !data.result) {
             await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
-            return reply("🚫 *API ERROR:* Failed to fetch media from Instagram. Maybe the post is private or link is broken.");
+            return reply("🚫 *API ERROR:* Failed to fetch media. Make sure the post is public.");
         }
 
-        // Checking if it's a single file or multiple (handling array or single result)
-        const result = data.result;
-        const mediaUrl = Array.isArray(result) ? result[0].url : result.url;
-        const caption = `✨ *𝐈𝐍𝐒𝐓𝐀𝐆𝐑𝐀𝐌 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃𝐄𝐑* ✨\n\n` +
-                        `🛰️ *ꜱᴛᴀᴛᴜꜱ:* Success\n` +
-                        `👤 *ᴅᴏᴡɴʟᴏᴀᴅᴇᴅ ʙʏ:* KAMRAN-MD\n\n` +
-                        `> ✅ Transmitted Successfully`;
+        const results = Array.isArray(data.result) ? data.result : [data.result];
 
-        // Detecting if it's a video or image
-        const isVideo = mediaUrl.includes(".mp4") || (Array.isArray(result) && result[0].type === 'video');
+        for (let item of results) {
+            const mediaUrl = item.url;
+            const isVideo = item.type === 'video' || mediaUrl.includes(".mp4");
 
-        if (isVideo) {
-            await conn.sendMessage(from, { 
-                video: { url: mediaUrl }, 
-                caption: caption 
-            }, { quoted: m });
-        } else {
-            await conn.sendMessage(from, { 
-                image: { url: mediaUrl }, 
-                caption: caption 
-            }, { quoted: m });
+            const caption = `✨ *𝐈𝐍𝐒𝐓𝐀𝐆𝐑𝐀𝐌 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃𝐄𝐑* ✨\n\n` +
+                            `🛰️ *ꜱᴛᴀᴛᴜꜱ:* Success\n` +
+                            `👤 *ᴅᴏᴡɴʟᴏᴀᴅᴇᴅ ʙʏ:* KAMRAN-MD\n\n` +
+                            `> ✅ Transmitted Successfully`;
+
+            if (isVideo) {
+                await conn.sendMessage(from, { 
+                    video: { url: mediaUrl }, 
+                    caption: caption 
+                }, { quoted: m });
+            } else {
+                await conn.sendMessage(from, { 
+                    image: { url: mediaUrl }, 
+                    caption: caption 
+                }, { quoted: m });
+            }
         }
 
         await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
