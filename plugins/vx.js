@@ -4,7 +4,7 @@ const fs = require('fs');
 const FormData = require('form-data');
 const path = require('path');
 
-// --- Helper Functions (Nano Banana Logic) ---
+// --- Helper Functions ---
 
 function genserial() {
     let s = '';
@@ -12,11 +12,15 @@ function genserial() {
     return s;
 }
 
-async function uploadFile(filename) {
+async function uploadFileToAPI(filename) {
     const form = new FormData();
     form.append('file_name', filename);
     const res = await axios.post('https://api.imgupscaler.ai/api/common/upload/upload-image', form, {
-        headers: { ...form.getHeaders(), origin: 'https://imgupscaler.ai', referer: 'https://imgupscaler.ai/' }
+        headers: { 
+            ...form.getHeaders(), 
+            'origin': 'https://imgupscaler.ai', 
+            'referer': 'https://imgupscaler.ai/' 
+        }
     });
     return res.data.result;
 }
@@ -25,7 +29,10 @@ async function uploadtoOSS(putUrl, filePath) {
     const file = fs.readFileSync(filePath);
     const type = path.extname(filePath) === '.png' ? 'image/png' : 'image/jpeg';
     const res = await axios.put(putUrl, file, {
-        headers: { 'Content-Type': type, 'Content-Length': file.length },
+        headers: { 
+            'Content-Type': type, 
+            'Content-Length': file.length 
+        },
         maxBodyLength: Infinity
     });
     return res.status === 200;
@@ -44,8 +51,8 @@ async function createJob(imageUrl, prompt) {
             ...form.getHeaders(),
             'product-code': 'magiceraser',
             'product-serial': genserial(),
-            origin: 'https://imgupscaler.ai',
-            referer: 'https://imgupscaler.ai/'
+            'origin': 'https://imgupscaler.ai',
+            'referer': 'https://imgupscaler.ai/'
         }
     });
     return res.data.result.job_id;
@@ -53,53 +60,75 @@ async function createJob(imageUrl, prompt) {
 
 async function cekJob(jobId) {
     const res = await axios.get(`https://api.magiceraser.org/api/magiceraser/v1/ai-remove/get-job/${jobId}`, {
-        headers: { origin: 'https://imgupscaler.ai', referer: 'https://imgupscaler.ai/' }
+        headers: { 
+            'origin': 'https://imgupscaler.ai', 
+            'referer': 'https://imgupscaler.ai/' 
+        }
     });
     return res.data;
 }
 
-// --- Bot Command ---
+// --- Main Command ---
 
 cmd({
-    pattern: "editaie",
+    pattern: "editai",
     alias: ["nanobanana", "modify"],
-    desc: "AI Image Editor using Nano Banana / Magic Eraser.",
+    desc: "AI Image Editor.",
     category: "ai",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply, quoted }) => {
     try {
-        if (!m.imageMessage && !(quoted && quoted.imageMessage)) {
-            return reply("⚠️ *Instruction:* Ek image bhejein ya reply karein aur prompt likhein.\n*Example:* .editai make him smile");
+        // Media detection fix
+        const isImage = m.type === 'imageMessage' || (m.type === 'viewOnceMessage' && m.msg.type === 'imageMessage');
+        const isQuotedImage = quoted && (quoted.type === 'imageMessage' || (quoted.type === 'viewOnceMessage' && quoted.msg.type === 'imageMessage'));
+
+        if (!isImage && !isQuotedImage) {
+            return reply("⚠️ *Instruction:* Ek image bhejein (ya reply karein) aur prompt likhein.\n\n*Example:* .editai make him smile");
         }
-        if (!q) return reply("⚠️ Prompt likhna zaroori hai. Aap kya change karwana chahte hain?");
+        
+        if (!q) return reply("⚠️ Aap kya badalna chahte hain? Prompt likhein (e.g. .editai add sunglasses)");
 
         await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
 
         // Download Image
-        const media = m.imageMessage ? m : quoted;
         const filePath = `./temp_ai_${Date.now()}.jpg`;
-        const buffer = await media.download();
+        const buffer = isImage ? await m.download() : await quoted.download();
         fs.writeFileSync(filePath, buffer);
 
-        // Nano Banana Process
+        reply("_🚀 AI processing shuru ho gayi hai..._");
+
+        // Step 1: Upload to server
         const filename = path.basename(filePath);
-        const uploadData = await uploadFile(filename);
+        const uploadData = await uploadFileToAPI(filename);
         await uploadtoOSS(uploadData.url, filePath);
 
+        // Step 2: Create AI Job
         const cdnUrl = 'https://cdn.imgupscaler.ai/' + uploadData.object_name;
         const jobId = await createJob(cdnUrl, q);
 
+        // Step 3: Polling (Wait for result)
         let result;
         let attempts = 0;
         do {
-            await new Promise(r => setTimeout(r, 3000));
+            await new Promise(r => setTimeout(r, 4000));
             result = await cekJob(jobId);
             attempts++;
-            if (attempts > 20) throw new Error("AI Processing took too long.");
-        } while (result.code === 300006);
+            if (attempts > 20) throw new Error("AI Server busy hai, baad mein koshish karein.");
+        } while (result.code === 300006 || !result.result?.output_url);
 
-        // Send Result
+        // Step 4: Send Final Image
         await conn.sendMessage(from, {
             image: { url: result.result.output_url[0] },
-            caption: `*🎨
-          
+            caption: `*🎨 AI EDIT COMPLETED*\n\n*📝 Prompt:* ${q}\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`
+        }, { quoted: mek });
+
+        // Cleanup
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+
+    } catch (e) {
+        console.error(e);
+        reply("❌ *Error:* " + (e.message || "An error occurred during AI processing"));
+    }
+});
+
