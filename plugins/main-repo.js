@@ -40,37 +40,41 @@ async (conn, mek, m, { from, reply }) => {
 `.trim();
 
         // Send an image with the formatted info as a caption
-        await conn.sendMessage(from, {
-            image: { url: `https://files.catbox.moe/tt88qy.jpg` }, // Replace with your image URL
-            caption: formattedInfo,
-            contextInfo: { 
-                mentionedJid: [m.sender],
-                forwardingScore: 999,
-                isForwarded: true,
-                forwardedNewsletterMessageInfo: {
-                    newsletterJid: '120363418144382782@newsletter',
-                    newsletterName: 'DR KAMRAN',
-                    serverMessageId: 143
+        await conn.sendMessage(
+            from,
+            {
+                image: { url: config.MENU_IMAGE_URL || 'https://files.catbox.moe/ly6553.jpg' },
+                caption: dec,
+                contextInfo: {
+                    mentionedJid: [m.sender],
+                    forwardingScore: 999,
+                    isForwarded: true,
+                    forwardedNewsletterMessageInfo: {
+                        newsletterJid: '120363418144382782@newsletter',
+                        newsletterName: config.BOT_NAME,
+                        serverMessageId: 143
+                    }
                 }
-            }
-        }, { quoted: mek });
+            },
+            { quoted: mek }
+        );
 
-        // Send audio voice message after sending repo info
-        const audioPath = path.join(__dirname, '../assets/menux.m4a');
-        
+        const audioPath = path.join(__dirname, '../assets/menu.m4a');
         if (fs.existsSync(audioPath)) {
+            const buffer = fs.readFileSync(audioPath);
+            const ptt = await converter.toPTT(buffer, 'm4a');
+
             await conn.sendMessage(from, {
-                audio: { url: audioPath },
-                mimetype: 'audio/mp4',
-                ptt: false
+                audio: ptt,
+                mimetype: 'audio/ogg; codecs=opus',
+                ptt: true,
             }, { quoted: mek });
         } else {
-            console.error("Audio file not found at path:", audioPath);
+            console.error('menu.m4a not found');
         }
 
-    } catch (error) {
-        console.error("Error in repo command:", error);
-        reply("❌ Sorry, something went wrong while fetching the repository information. Please try again later.");
+    } catch (e) {
+        console.log(e);
+        reply(`❌ Error: ${e}`);
     }
 });
-                       
