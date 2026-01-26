@@ -1,145 +1,116 @@
-const { cmd } = require("../command");
 const axios = require("axios");
+const yts = require("yt-search");
+const { cmd } = require("../command");
+const converter = require("../data/converter");
 
-const delay = (ms) => new Promise(res => setTimeout(res, ms));
+const commands = ["play4", "song6", "mp33"];
 
-async function aimusic(prompt, { tags = "pop, romantic" } = {}) {
-  if (!prompt) throw new Error("Prompt is required");
-
-  // Step 1: Generate lyrics
-  const { data: lyricApiRes } = await axios.get(
-    "https://8pe3nv3qha.execute-api.us-east-1.amazonaws.com/default/llm_chat",
-    {
-      params: {
-        query: JSON.stringify([
-          {
-            role: "system",
-            content:
-              "You are a professional lyricist AI trained to write poetic and rhythmic song lyrics. Respond with lyrics only, using [verse], [chorus], [bridge], and [instrumental] or [inst] tags. Do not add explanations or titles."
-          },
-          { role: "user", content: prompt }
-        ]),
-        link: "writecream.com"
-      },
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        Referer: "https://writecream.com/"
-      }
-    }
-  );
-
-  const lyrics = lyricApiRes?.response_content;
-  if (!lyrics) throw new Error("Failed to generate lyrics");
-
-  // Step 2: Send to music generator
-  const session_hash = Math.random().toString(36).slice(2);
-
-  await axios.post(
-    "https://ace-step-ace-step.hf.space/gradio_api/queue/join",
-    {
-      data: [
-        240,
-        tags,
-        lyrics,
-        60,
-        15,
-        "euler",
-        "apg",
-        10,
-        "",
-        0.5,
-        0,
-        3,
-        true,
-        false,
-        true,
-        "",
-        0,
-        0,
-        false,
-        0.5,
-        null,
-        "none"
-      ],
-      fn_index: 11,
-      session_hash
-    }
-  );
-
-  // Step 3: Poll result
-  let musicUrl;
-  let tries = 0;
-
-  while (!musicUrl && tries < 120) {
-    const { data } = await axios.get(
-      `https://ace-step-ace-step.hf.space/gradio_api/queue/data?session_hash=${session_hash}`
-    );
-
-    for (const block of data.split("\n\n")) {
-      if (block.startsWith("data:")) {
-        const parsed = JSON.parse(block.slice(5));
-        if (parsed.msg === "process_completed") {
-          musicUrl = parsed.output?.data?.[0]?.url;
-          break;
-        }
-      }
-    }
-
-    tries++;
-    await delay(1000);
-  }
-
-  if (!musicUrl) throw new Error("AI music generation timed out");
-
-  return musicUrl;
-}
-
-cmd(
-  {
-    pattern: "aimusic",
-    alias: ["generatemusic", "tomusic"],
-    react: "🎵",
-    desc: "Generate AI music from a text prompt",
-    category: "ai",
-    filename: __filename,
-    premium: true
-  },
-
-  async (malvin, mek, m, { from, args, reply }) => {
-    const text = args.join(" ").trim();
-
-    if (!text) {
-      return reply(
-        `🎵 *AI Music Generator*\n\n` +
-        `Usage:\n` +
-        `• .aimusic <prompt>\n` +
-        `• .aimusic <prompt> | <tags>\n\n` +
-        `Example:\n.aimusic love song about summer | pop, happy`
-      );
-    }
-
-    const [prompt, tagText] = text.split("|").map(v => v.trim());
-    const tags = tagText || "pop, romantic";
-
+commands.forEach(command => {
+  cmd({
+    pattern: command,
+    desc: "Download audio using song name only (Links blocked)",
+    category: "downloader",
+    react: "🎶",
+    filename: __filename
+  }, async (conn, mek, m, { from, q, reply }) => {
     try {
-      await reply("⏳ Creating AI music, please wait...");
+      if (!q) return reply("❌ Please provide a song name.");
 
-      const musicUrl = await aimusic(prompt, { tags });
+      const isLink = /^(https?:\/\/)/i.test(q);
+      if (isLink) return reply("❌ Only song name is allowed. Links are blocked.");
 
-      await malvin.sendMessage(from, {
-        audio: { url: musicUrl },
-        mimetype: "audio/mpeg",
-        fileName: `aimusic_${Date.now()}.mp3`,
-        caption:
-          `🎶 *AI Music Generated*\n\n` +
-          `📝 Prompt: ${prompt}\n` +
-          `🏷 Tags: ${tags}\n\n` +
-          `Powered by *KAMRAN MD V8*`
+      const search = await yts(q);
+      if (!search.videos.length) return reply("❌ No results found.");
+
+      const video = search.videos[0];
+      const ytUrl = video.url;
+
+      const apiUrl = `https://sarkar-apis.bandaheali.site/download/ytmp3?url=${encodeURIComponent(ytUrl)}`;
+      const res = await axios.get(apiUrl);
+
+      if (!res.data || !res.data.success) {
+        return reply("❌ Failed to fetch audio.");
+      }
+
+      const data = res.data.result;
+      const downloadUrl = data.download_url;
+
+      const preDownload = axios.get(downloadUrl, {
+        responseType: "arraybuffer"
       });
 
-    } catch (err) {
-      console.error("AI Music Error:", err);
-      reply(`❌ Failed to generate AI music:\n${err.message}`);
+      const stylishMsg = `*${data.title}*
+
+👤 *Channel:* ${video.author.name}
+⏳ *Duration:* ${Math.floor(data.duration / 60)}:${data.duration % 60}
+💽 *Size:* ${data.size}
+◈╼╼╼╼╼╼╼╼╼╼╼╼╼╼╼◈
+  *sᴇʟᴇᴄᴛ ᴅᴏᴡɴʟᴏᴀᴅ*
+  
+  (𝟷) ▷ *ᴀᴜᴅɪᴏ* 🎶
+  (𝟸) ▷ *ᴅᴏᴄᴜᴍᴇɴᴛ* 📁
+  (𝟹) ▷ *ᴠᴏɪᴄᴇ ɴᴏᴛᴇ* 🎙️
+◈╼╼╼╼╼╼╼╼╼╼╼╼╼╼╼◈
+
+> *⚡ᴘᴏᴡᴇʀᴇᴅ ʙʏ 𝙺𝙰𝙼𝚁𝙰𝙽-𝙼𝙳⚡*`;
+
+      const sentMsg = await conn.sendMessage(from, {
+        image: { url: data.thumbnail },
+        caption: stylishMsg
+      }, { quoted: mek });
+
+      const messageListener = async (msgUpdate) => {
+        const msg = msgUpdate.messages[0];
+        if (!msg.message?.extendedTextMessage) return;
+
+        const userText = msg.message.extendedTextMessage.text.trim();
+        const isReply =
+          msg.message.extendedTextMessage.contextInfo.stanzaId === sentMsg.key.id;
+
+        if (!isReply) return;
+
+        await conn.sendMessage(from, {
+          react: { text: "⏳", key: msg.key }
+        });
+
+        const response = await preDownload;
+        const buffer = Buffer.from(response.data);
+
+        if (userText === "1") {
+          await conn.sendMessage(from, {
+            audio: buffer,
+            mimetype: "audio/mpeg",
+            fileName: `${data.title}.mp3`
+          }, { quoted: msg });
+        } 
+        else if (userText === "2") {
+          await conn.sendMessage(from, {
+            document: buffer,
+            mimetype: "audio/mpeg",
+            fileName: `${data.title}.mp3`
+          }, { quoted: msg });
+        } 
+        else if (userText === "3") {
+          const ptt = await converter.toPTT(buffer, "mp3");
+          await conn.sendMessage(from, {
+            audio: ptt,
+            mimetype: "audio/ogg; codecs=opus",
+            ptt: true
+          }, { quoted: msg });
+        }
+
+        conn.ev.off("messages.upsert", messageListener);
+      };
+
+      conn.ev.on("messages.upsert", messageListener);
+
+      setTimeout(() => {
+        conn.ev.off("messages.upsert", messageListener);
+      }, 120000);
+
+    } catch (e) {
+      console.log(e);
+      reply("❌ An error occurred.");
     }
-  }
-);
+  });
+});
