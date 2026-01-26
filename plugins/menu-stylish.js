@@ -4,6 +4,7 @@ const { runtime } = require('../lib/functions');
 const axios = require('axios');
 const path = require('path');
 const fs = require('fs');
+const converter = require('../data/converter'); // Voice convert karne ke liye
 
 cmd({
     pattern: "menu",
@@ -36,7 +37,7 @@ cmd({
  ➥⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆✧━┈⊷
 > ${config.DESCRIPTION}`;
 
-        // Send Menu Image with New Context (Newsletter)
+        // 1. Send Image with Newsletter Context
         const sentMsg = await conn.sendMessage(
             from,
             {
@@ -56,23 +57,24 @@ cmd({
             { quoted: mek }
         );
 
-        // Send Menu Audio (PTT Support from Local Assets)
+        // 2. VOICE ADDED HERE: Send Voice/PTT
         const audioPath = path.join(__dirname, '../assets/menu.m4a');
         if (fs.existsSync(audioPath)) {
-            // Note: If you have a 'converter' lib, you can use converter.toPTT(buffer) 
-            // Otherwise, sending as audio/ogg usually works for PTT.
+            const buffer = fs.readFileSync(audioPath);
+            const ptt = await converter.toPTT(buffer, 'm4a');
+
             await conn.sendMessage(from, {
-                audio: { url: audioPath },
+                audio: ptt,
                 mimetype: 'audio/ogg; codecs=opus',
                 ptt: true,
             }, { quoted: mek });
         } else {
-            console.error('menu.m4a not found in assets folder');
+            console.error('menu.m4a file assets folder mein nahi mili');
         }
 
         const messageID = sentMsg.key.id;
 
-        // Menu data (All categories maintained)
+        // Menu data mapping
         const menuData = {
             '1': {
                 title: "📥 *Download Menu* 📥",
@@ -411,4 +413,4 @@ cmd({
         reply(`❌ Error: ${e}`);
     }
 });
-
+        
