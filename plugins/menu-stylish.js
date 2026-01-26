@@ -2,6 +2,8 @@ const config = require('../config');
 const { cmd, commands } = require('../command');
 const { runtime } = require('../lib/functions');
 const axios = require('axios');
+const path = require('path');
+const fs = require('fs');
 
 cmd({
     pattern: "menu",
@@ -34,80 +36,43 @@ cmd({
  ➥⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆⋆✧━┈⊷
 > ${config.DESCRIPTION}`;
 
-        const contextInfo = {
-            mentionedJid: [m.sender],
-            forwardingScore: 999,
-            isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-                newsletterJid: '120363418144382782@newsletter',
-                newsletterName: config.OWNER_NAME,
-                serverMessageId: 143
-            }
-        };
+        // Send Menu Image with New Context (Newsletter)
+        const sentMsg = await conn.sendMessage(
+            from,
+            {
+                image: { url: config.MENU_IMAGE_URL || 'https://files.catbox.moe/ly6553.jpg' },
+                caption: menuCaption,
+                contextInfo: {
+                    mentionedJid: [m.sender],
+                    forwardingScore: 999,
+                    isForwarded: true,
+                    forwardedNewsletterMessageInfo: {
+                        newsletterJid: '120363418144382782@newsletter',
+                        newsletterName: config.BOT_NAME,
+                        serverMessageId: 143
+                    }
+                }
+            },
+            { quoted: mek }
+        );
 
-        // Function to send menu image with timeout
-        const sendMenuImage = async () => {
-            try {
-                return await conn.sendMessage(
-                    from,
-                    {
-                        image: { url: config.MENU_IMAGE_URL || 'https://files.catbox.moe/d2n3fc.jpg' },
-                        caption: menuCaption,
-                        contextInfo: contextInfo
-                    },
-                    { quoted: mek }
-                );
-            } catch (e) {
-                console.log('Image send failed, falling back to text');
-                return await conn.sendMessage(
-                    from,
-                    { text: menuCaption, contextInfo: contextInfo },
-                    { quoted: mek }
-                );
-            }
-        };
-        // Function to send menu audio with timeout
-        const sendMenuAudio = async () => {
-            try {
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Small delay after image
-                await conn.sendMessage(from, {
-                    audio: { url: 'https://files.catbox.moe/etattc.mp3' },
-                    mimetype: 'audio/mp4',
-                    ptt: false,
-                }, { quoted: mek });
-            } catch (e) {
-                console.log('Audio send failed, continuing without it');
-            }
-        };
-        
-        // Send image first, then audio sequentially
-        let sentMsg;
-        try {
-            // Send image with 10s timeout
-            sentMsg = await Promise.race([
-                sendMenuImage(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Image send timeout')), 10000))
-            ]);
-            
-            // Then send audio with 1s delay and 8s timeout
-            await Promise.race([
-                sendMenuAudio(),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('Audio send timeout')), 8000))
-            ]);
-        } catch (e) {
-            console.log('Menu send error:', e);
-            if (!sentMsg) {
-                sentMsg = await conn.sendMessage(
-                    from,
-                    { text: menuCaption, contextInfo: contextInfo },
-                    { quoted: mek }
-                );
-            }
+        // Send Menu Audio (PTT Support from Local Assets)
+        const audioPath = path.join(__dirname, '../assets/menu.m4a');
+        if (fs.existsSync(audioPath)) {
+            // Note: If you have a 'converter' lib, you can use converter.toPTT(buffer) 
+            // Otherwise, sending as audio/ogg usually works for PTT.
+            await conn.sendMessage(from, {
+                audio: { url: audioPath },
+                mimetype: 'audio/ogg; codecs=opus',
+                ptt: true,
+            }, { quoted: mek });
+        } else {
+            console.error('menu.m4a not found in assets folder');
         }
-        
+
         const messageID = sentMsg.key.id;
 
-        // Menu data (complete version)
+        // Menu data (All categories maintained)
         const menuData = {
             '1': {
                 title: "📥 *Download Menu* 📥",
@@ -221,7 +186,7 @@ cmd({
 ┃★│ • restart
 ┃★│ • shutdown
 ┃★│ • updatecmd
-┃★╰───────────���──
+┃★╰──────────────
 ┃★╭──────────────
 ┃★│ ℹ️ *Info Tools*
 ┃★│ • gjid
@@ -400,7 +365,6 @@ cmd({
             }
         };
 
-        // Message handler with improved error handling
         const handler = async (msgData) => {
             try {
                 const receivedMsg = msgData.messages[0];
@@ -415,76 +379,36 @@ cmd({
 
                     if (menuData[receivedText]) {
                         const selectedMenu = menuData[receivedText];
-                        
-                        try {
-                            if (selectedMenu.image) {
-                                await conn.sendMessage(
-                                    senderID,
-                                    {
-                                        image: { url: config.MENU_IMAGE_URL || 'https://files.catbox.moe/ly6553.jpg' },
-                                        caption: selectedMenu.content,
-                                        contextInfo: contextInfo
-                                    },
-                                    { quoted: receivedMsg }
-                                );
-                            } else {
-                                await conn.sendMessage(
-                                    senderID,
-                                    { text: selectedMenu.content, contextInfo: contextInfo },
-                                    { quoted: receivedMsg }
-                                );
-                            }
-
-                            await conn.sendMessage(senderID, {
-                                react: { text: '✅', key: receivedMsg.key }
-                            });
-
-                        } catch (e) {
-                            console.log('Menu reply error:', e);
-                            await conn.sendMessage(
-                                senderID,
-                                { text: selectedMenu.content, contextInfo: contextInfo },
-                                { quoted: receivedMsg }
-                            );
-                        }
-
-                    } else {
                         await conn.sendMessage(
                             senderID,
                             {
-                                text: `❌ *Invalid Option!* ❌\n\nPlease reply with a number between 1-10 to select a menu.\n\n*Example:* Reply with "1" for Download Menu\n\n> ${config.DESCRIPTION}`,
-                                contextInfo: contextInfo
+                                image: { url: config.MENU_IMAGE_URL || 'https://files.catbox.moe/ly6553.jpg' },
+                                caption: selectedMenu.content,
+                                contextInfo: {
+                                    mentionedJid: [m.sender],
+                                    forwardingScore: 999,
+                                    isForwarded: true,
+                                    forwardedNewsletterMessageInfo: {
+                                        newsletterJid: '120363418144382782@newsletter',
+                                        newsletterName: config.BOT_NAME,
+                                        serverMessageId: 143
+                                    }
+                                }
                             },
                             { quoted: receivedMsg }
                         );
+                        await conn.sendMessage(senderID, { react: { text: '✅', key: receivedMsg.key } });
                     }
                 }
-            } catch (e) {
-                console.log('Handler error:', e);
-            }
+            } catch (e) { console.log('Handler error:', e); }
         };
 
-        // Add listener
         conn.ev.on("messages.upsert", handler);
-
-        // Remove listener after 5 minutes
-        setTimeout(() => {
-            conn.ev.off("messages.upsert", handler);
-        }, 300000);
+        setTimeout(() => { conn.ev.off("messages.upsert", handler); }, 300000);
 
     } catch (e) {
-        console.error('Menu Error:', e);
-        try {
-            await conn.sendMessage(
-                from,
-                { text: `❌ Menu system is currently busy. Please try again later.\n\n> ${config.DESCRIPTION}` },
-                { quoted: mek }
-            );
-        } catch (finalError) {
-            console.log('Final error handling failed:', finalError);
-        }
+        console.log(e);
+        reply(`❌ Error: ${e}`);
     }
 });
 
-
-                    
