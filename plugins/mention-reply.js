@@ -36,7 +36,6 @@ cmd({
 
     const randomClip = voiceClips[Math.floor(Math.random() * voiceClips.length)];
 
-    // Fetch and Convert
     const response = await axios.get(randomClip, { responseType: 'arraybuffer' });
     const buffer = Buffer.from(response.data);
     const ptt = await converter.toPTT(buffer, 'mp4');
@@ -48,12 +47,12 @@ cmd({
       contextInfo: {
         forwardingScore: 999,
         isForwarded: true,
-        externalAdReply: {
-            title: "KAMRAN-MD VOICE REPLY",
-            body: "Bot is active and listening",
-            mediaType: 1,
-            renderLargerThumbnail: false
+        forwardedNewsletterMessageInfo: {
+            newsletterJid: '120363418144382782@newsletter',
+            newsletterName: config.BOT_NAME,
+            serverMessageId: 143
         }
+        // externalAdReply hata diya gaya hai
       }
     }, { quoted: m });
 
@@ -65,7 +64,7 @@ cmd({
 cmd({
     pattern: "me",
     alias: ["mention", "broken", "x", "xd"],
-    desc: "Send a random voice clip from the new list",
+    desc: "Send a random voice clip",
     category: "fun",
     react: "⚡",
     filename: __filename
@@ -82,16 +81,18 @@ cmd({
             mimetype: 'audio/ogg; codecs=opus',
             ptt: true,
             contextInfo: {
-                externalAdReply: {
-                    title: "KAMRAN-MD RANDOM VOICE",
-                    mediaType: 1,
-                    showAdAttribution: true
+                forwardingScore: 999,
+                isForwarded: true,
+                forwardedNewsletterMessageInfo: {
+                    newsletterJid: '120363418144382782@newsletter',
+                    newsletterName: config.BOT_NAME,
+                    serverMessageId: 143
                 }
+                // externalAdReply hata diya gaya hai
             }
         }, { quoted: m });
     } catch (e) {
         console.error("Voice command error:", e);
-        // Fallback to direct URL if conversion fails
         const fallback = voiceClips[0];
         await conn.sendMessage(m.chat, { 
             audio: { url: fallback }, 
@@ -100,4 +101,4 @@ cmd({
         }, { quoted: m });
     }
 });
-    
+        
