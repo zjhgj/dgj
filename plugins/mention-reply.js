@@ -1,5 +1,6 @@
 const config = require('../config');
 const { cmd } = require('../command');
+const converter = require('../data/converter'); // Converter import kiya PTT ke liye
 
 cmd({
   on: "body"
@@ -11,13 +12,11 @@ cmd({
     const botId = conn.user?.id || '';
     const botLid = conn.user?.lid || '';
     
-    // Extract numeric parts to compare
     const botNumber = botId.split(":")[0].split("@")[0];
     const botLidNumeric = botLid ? botLid.split(":")[0].split("@")[0] : null;
 
     const mentioned = m.mentionedJid || [];
     
-    // Check if any mentioned JID matches the Bot's ID or LID
     const isBotMentioned = mentioned.some(jid => {
         const jidPrefix = jid.split("@")[0].split(":")[0];
         return jid === botId || 
@@ -27,28 +26,25 @@ cmd({
     });
 
     if (!isBotMentioned) return;
-    // --- END FIX ---
 
     const voiceClips = [
       "https://files.catbox.moe/0zjqy2.mp4",
-      "https://files.catbox.moe/0zjqy2.mp4",
-      "https://files.catbox.moe/0zjqy2.mp4",
-      "https://files.catbox.moe/0zjqy2.mp4",
       "https://cdn.ironman.my.id/i/gr1jjc.mp4",
-      "https://files.catbox.moe/986yyf.mp4",
-      "https://files.catbox.moe/986yyf.mp4",
-      "https://files.catbox.moe/986yyf.mp4",
-      "https://files.catbox.moe/986yyf.mp4",
       "https://files.catbox.moe/986yyf.mp4"
     ];
 
     const randomClip = voiceClips[Math.floor(Math.random() * voiceClips.length)];
 
+    // Fetch and Convert to PTT
+    const response = await fetch(randomClip);
+    const buffer = await response.buffer();
+    const ptt = await converter.toPTT(buffer, 'mp4');
+
     await conn.sendMessage(m.chat, {
-      audio: { url: randomClip },
-      mimetype: 'audio/mp4',
+      audio: ptt,
+      mimetype: 'audio/ogg; codecs=opus',
       ptt: true,
-      waveform: [0, 99, 0, 99, 0, 99, 0], // Added better waveform effect
+      waveform: [0, 99, 0, 99, 0, 99, 0],
       contextInfo: {
         forwardingScore: 999,
         isForwarded: true,
@@ -77,22 +73,19 @@ cmd({
     try {
         const voiceClips = [
             "https://files.catbox.moe/0zjqy2.mp4",
-            "https://files.catbox.moe/0zjqy2.mp4",
-            "https://files.catbox.moe/0zjqy2.mp4",
-            "https://files.catbox.moe/0zjqy2.mp4",
-            "https://files.catbox.moe/0zjqy2.mp4",
-            "https://files.catbox.moe/0zjqy2.mp4",
-            "https://files.catbox.moe/0zjqy2.mp4",
-            "https://files.catbox.moe/0zjqy2.mp4",
-            "https://files.catbox.moe/0zjqy2.mp4",
             "https://files.catbox.moe/0zjqy2.mp4"
         ];
 
         const randomClip = voiceClips[Math.floor(Math.random() * voiceClips.length)];
 
+        // Fetch and Convert to PTT
+        const response = await fetch(randomClip);
+        const buffer = await response.buffer();
+        const ptt = await converter.toPTT(buffer, 'mp4');
+
         await conn.sendMessage(m.chat, {
-            audio: { url: randomClip },
-            mimetype: 'audio/mp4',
+            audio: ptt,
+            mimetype: 'audio/ogg; codecs=opus',
             ptt: true,
             contextInfo: {
                 externalAdReply: {
@@ -107,3 +100,4 @@ cmd({
         await conn.sendMessage(m.chat, { text: "❌ Failed to send random clip." }, { quoted: m });
     }
 });
+    
