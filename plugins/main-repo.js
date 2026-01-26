@@ -41,7 +41,7 @@ async (conn, mek, m, { from, reply }) => {
         }, { quoted: mek });
 
         // 2. Send Audio (Converter use karke PTT bhejna)
-        const audioPath = path.join(__dirname, '../assets/menu1.m4a');
+        const audioPath = path.join(__dirname, '../assets/menu.m4a');
         
         if (fs.existsSync(audioPath)) {
             const buffer = fs.readFileSync(audioPath);
