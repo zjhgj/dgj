@@ -14,8 +14,10 @@ const voiceClips = [
   "https://files.catbox.moe/cpc3pb.mp4",
   "https://files.catbox.moe/k9lqmh.mp4",
   "https://files.catbox.moe/ydfatb.mp4",
+  "https://files.catbox.moe/n4b2ix.mp4",
   "https://files.catbox.moe/0zjqy2.mp4",
-  "https://cdn.ironman.my.id/i/gr1jjc.mp4",
+  "https://files.catbox.moe/vjrubz.mp4",
+  "https://files.catbox.moe/ngfnj7.mp4",
   "https://files.catbox.moe/986yyf.mp4"
 ];
 
