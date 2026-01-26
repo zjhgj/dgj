@@ -3,6 +3,22 @@ const { cmd } = require('../command');
 const axios = require('axios');
 const converter = require('../data/converter');
 
+// --- SHARED VOICE CLIPS LIST ---
+const voiceClips = [
+  "https://files.catbox.moe/6g7o83.mp4",
+  "https://files.catbox.moe/d9tsx9.mp4",
+  "https://files.catbox.moe/v0pq14.mp4",
+  "https://files.catbox.moe/57uelj.mp4",
+  "https://files.catbox.moe/1l9v06.mp4",
+  "https://files.catbox.moe/goo2ub.mp4",
+  "https://files.catbox.moe/cpc3pb.mp4",
+  "https://files.catbox.moe/k9lqmh.mp4",
+  "https://files.catbox.moe/ydfatb.mp4",
+  "https://files.catbox.moe/0zjqy2.mp4",
+  "https://cdn.ironman.my.id/i/gr1jjc.mp4",
+  "https://files.catbox.moe/986yyf.mp4"
+];
+
 cmd({
   on: "body"
 }, async (conn, m, { isGroup }) => {
@@ -18,17 +34,11 @@ cmd({
 
     if (!isBotMentioned) return;
 
-    const voiceClips = [
-      "https://files.catbox.moe/0zjqy2.mp4",
-      "https://cdn.ironman.my.id/i/gr1jjc.mp4",
-      "https://files.catbox.moe/986yyf.mp4"
-    ];
-
     const randomClip = voiceClips[Math.floor(Math.random() * voiceClips.length)];
 
-    // Fetching audio buffer using axios
+    // Fetch and Convert
     const response = await axios.get(randomClip, { responseType: 'arraybuffer' });
-    const buffer = Buffer.from(response.data, 'utf-8');
+    const buffer = Buffer.from(response.data);
     const ptt = await converter.toPTT(buffer, 'mp4');
 
     await conn.sendMessage(m.chat, {
@@ -40,7 +50,7 @@ cmd({
         isForwarded: true,
         externalAdReply: {
             title: "KAMRAN-MD VOICE REPLY",
-            body: "Bot is active",
+            body: "Bot is active and listening",
             mediaType: 1,
             renderLargerThumbnail: false
         }
@@ -55,22 +65,16 @@ cmd({
 cmd({
     pattern: "me",
     alias: ["mention", "broken", "x", "xd"],
-    desc: "Send a random voice clip",
+    desc: "Send a random voice clip from the new list",
     category: "fun",
     react: "⚡",
     filename: __filename
 }, async (conn, m) => {
     try {
-        const voiceClips = [
-            "https://files.catbox.moe/0zjqy2.mp4",
-            "https://files.catbox.moe/0zjqy2.mp4"
-        ];
-
         const randomClip = voiceClips[Math.floor(Math.random() * voiceClips.length)];
 
-        // Fetching audio buffer using axios
         const response = await axios.get(randomClip, { responseType: 'arraybuffer' });
-        const buffer = Buffer.from(response.data, 'utf-8');
+        const buffer = Buffer.from(response.data);
         const ptt = await converter.toPTT(buffer, 'mp4');
 
         await conn.sendMessage(m.chat, {
@@ -79,7 +83,7 @@ cmd({
             ptt: true,
             contextInfo: {
                 externalAdReply: {
-                    title: "KAMRAN-MD VOICE",
+                    title: "KAMRAN-MD RANDOM VOICE",
                     mediaType: 1,
                     showAdAttribution: true
                 }
@@ -87,10 +91,8 @@ cmd({
         }, { quoted: m });
     } catch (e) {
         console.error("Voice command error:", e);
-        // Direct link fallback if converter fails
-        const fallbackClips = ["https://files.catbox.moe/0zjqy2.mp4"];
-        const fallback = fallbackClips[Math.floor(Math.random() * fallbackClips.length)];
-        
+        // Fallback to direct URL if conversion fails
+        const fallback = voiceClips[0];
         await conn.sendMessage(m.chat, { 
             audio: { url: fallback }, 
             mimetype: 'audio/mp4', 
@@ -98,4 +100,4 @@ cmd({
         }, { quoted: m });
     }
 });
-  
+    
