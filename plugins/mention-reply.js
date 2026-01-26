@@ -40,20 +40,11 @@ cmd({
     const buffer = Buffer.from(response.data);
     const ptt = await converter.toPTT(buffer, 'mp4');
 
+    // Sirf audio message bhej rahe hain, bina kisi extra info ke
     await conn.sendMessage(m.chat, {
       audio: ptt,
       mimetype: 'audio/ogg; codecs=opus',
-      ptt: true,
-      contextInfo: {
-        forwardingScore: 999,
-        isForwarded: true,
-        forwardedNewsletterMessageInfo: {
-            newsletterJid: '120363418144382782@newsletter',
-            newsletterName: config.BOT_NAME,
-            serverMessageId: 143
-        }
-        // externalAdReply hata diya gaya hai
-      }
+      ptt: true
     }, { quoted: m });
 
   } catch (e) {
@@ -64,7 +55,7 @@ cmd({
 cmd({
     pattern: "me",
     alias: ["mention", "broken", "x", "xd"],
-    desc: "Send a random voice clip",
+    desc: "Send a random voice clip without ad or channel info",
     category: "fun",
     react: "⚡",
     filename: __filename
@@ -76,21 +67,13 @@ cmd({
         const buffer = Buffer.from(response.data);
         const ptt = await converter.toPTT(buffer, 'mp4');
 
+        // Clean PTT Reply
         await conn.sendMessage(m.chat, {
             audio: ptt,
             mimetype: 'audio/ogg; codecs=opus',
-            ptt: true,
-            contextInfo: {
-                forwardingScore: 999,
-                isForwarded: true,
-                forwardedNewsletterMessageInfo: {
-                    newsletterJid: '120363418144382782@newsletter',
-                    newsletterName: config.BOT_NAME,
-                    serverMessageId: 143
-                }
-                // externalAdReply hata diya gaya hai
-            }
+            ptt: true
         }, { quoted: m });
+
     } catch (e) {
         console.error("Voice command error:", e);
         const fallback = voiceClips[0];
@@ -101,4 +84,4 @@ cmd({
         }, { quoted: m });
     }
 });
-        
+                                          
