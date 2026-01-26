@@ -22,14 +22,13 @@ async (conn, mek, m, { from, reply }) => {
         // Extract username and repo name from the URL
         const [, username, repoName] = githubRepoURL.match(/github\.com\/([^/]+)\/([^/]+)/);
 
-        // Fetch repository details using GitHub API with axios
+        // Fetch repository details using GitHub API
         const response = await axios.get(`https://api.github.com/repos/${username}/${repoName}`);
-        
         const repoData = response.data;
 
-        // Format the repository information in new stylish format
+        // Format the repository information
         const formattedInfo = `
-*┏────〘 *DR* 〙───⊷*
+*┏────〘 *REPO-INFO* 〙───⊷*
 *┃* *📌 Repository Name:* ${repoData.name}
 *┃* *👑 Owner:* ᴋᴀᴍʀᴀɴ ᴍᴅ
 *┃* *⭐ Stars:* ${repoData.stargazers_count}
@@ -40,11 +39,12 @@ async (conn, mek, m, { from, reply }) => {
 `.trim();
 
         // Send an image with the formatted info as a caption
+        // 'dec' ko hata kar 'formattedInfo' kar diya hai
         await conn.sendMessage(
             from,
             {
                 image: { url: config.MENU_IMAGE_URL || 'https://files.catbox.moe/ly6553.jpg' },
-                caption: dec,
+                caption: formattedInfo, 
                 contextInfo: {
                     mentionedJid: [m.sender],
                     forwardingScore: 999,
@@ -59,22 +59,19 @@ async (conn, mek, m, { from, reply }) => {
             { quoted: mek }
         );
 
+        // Audio send karne ka logic
         const audioPath = path.join(__dirname, '../assets/menu.m4a');
         if (fs.existsSync(audioPath)) {
-            const buffer = fs.readFileSync(audioPath);
-            const ptt = await converter.toPTT(buffer, 'm4a');
-
             await conn.sendMessage(from, {
-                audio: ptt,
+                audio: { url: audioPath },
                 mimetype: 'audio/ogg; codecs=opus',
                 ptt: true,
             }, { quoted: mek });
-        } else {
-            console.error('menu.m4a not found');
         }
 
     } catch (e) {
         console.log(e);
-        reply(`❌ Error: ${e}`);
+        reply(`❌ Error: ${e.message}`);
     }
 });
+    
