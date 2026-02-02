@@ -98,6 +98,7 @@ const toggleFeatures = [
     { pattern: "welcome", configKey: "WELCOME", react: "👋" },
     { pattern: "goodbye", configKey: "GOODBYE", react: "🏃" },
     { pattern: "anti-call", configKey: "ANTI_CALL", react: "📞" },
+    { pattern: "autovoice", configKey: "AUTO_VOICE", react: "🎙️" },
     { pattern: "autotyping", configKey: "AUTO_TYPING", react: "⌨️" },
     { pattern: "alwaysonline", configKey: "ALWAYS_ONLINE", react: "🌐" },
     { pattern: "autostatusreact", configKey: "AUTO_STATUS_REACT", react: "❤️" },
