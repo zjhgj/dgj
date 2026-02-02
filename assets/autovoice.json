@@ -1,13 +1,13 @@
 {
-  "waisa": "wesi(tbg).mp3",
-  "oyala": "oyala wage(tbg).mp3",
-  "tbg": "Ponnaya(tbg).mp3",
-  "mn": "Mn(tbg).mp3",
-  "bus": "Bs(tbg).m4a",
-  "welcome": "Welcome(tbg).mp3",
-  "good night": "Gn(tbg).m4a",
-  "good morning": "GM(tbg).m4a",
-  "hmm": "Hmm(tbg).mp3",
+  "waisa": "wesi.m4a",
+  "oyala": "oye.m4a",
+  "kata": "katakaraya.m4a",
+  "mein": "mn.m4a",
+  "bus": "bus.m4a",
+  "welcome": "welcome.m4a",
+  "good night": "gn.m4a",
+  "good morning": "gm.m4a",
+  "hmm": "hmm.m4a",
   "bot": "menux.m4a",
-  "i love you": "I love u(tbg).mp3"
+  "i love you": "i love u.m4a"
 }
