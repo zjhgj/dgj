@@ -1,3 +1,4 @@
+const converter = require('../data/converter');
 const axios = require('axios');
 const config = require('../config')
 const {cmd , commands} = require('../command')
@@ -18,7 +19,7 @@ if(!q) return reply("Need some text.")
   slow: false,
   host: 'https://translate.google.com',
 })
-await conn.sendMessage(from, { audio: { url: url }, mimetype: 'audio/mpeg', ptt: false }, { quoted: mek })
+await conn.sendMessage(from, { audio: { url: url }, mimetype: 'audio/mpeg', ptt: true }, { quoted: mek })
     }catch(a){
 reply(`${a}`)
 }
