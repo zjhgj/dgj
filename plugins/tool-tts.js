@@ -1,26 +1,42 @@
 const converter = require('../data/converter');
 const axios = require('axios');
-const config = require('../config')
-const {cmd , commands} = require('../command')
-const googleTTS = require('google-tts-api')
+const { cmd } = require('../command');
+const googleTTS = require('google-tts-api');
 
 cmd({
     pattern: "tts",
-    desc: "download songs",
-    category: "download",
-    react: "💀",
+    desc: "Text to Voice",
+    category: "audio",
+    react: "🎤",
     filename: __filename
 },
-async(conn, mek, m,{from, quoted, body, isCmd, command, args, q, isGroup, sender, senderNumber, botNumber2, botNumber, pushname, isMe, isOwner, groupMetadata, groupName, participants, groupAdmins, isBotAdmins, isAdmins, reply}) => {
-try{
-if(!q) return reply("Need some text.")
-    const url = googleTTS.getAudioUrl(q, {
-  lang: 'hi-IN',
-  slow: false,
-  host: 'https://translate.google.com',
-})
-await conn.sendMessage(from, { audio: { url: url }, mimetype: 'audio/mpeg', ptt: true }, { quoted: mek })
-    }catch(a){
-reply(`${a}`)
-}
-})
+async (conn, mek, m, { from, q, reply }) => {
+    try {
+        if (!q) return reply("Need some text.");
+
+        // Step 1: Get TTS URL
+        const url = googleTTS.getAudioUrl(q, {
+            lang: 'hi',
+            slow: false,
+            host: 'https://translate.google.com',
+        });
+
+        // Step 2: Download audio as buffer
+        const { data } = await axios.get(url, {
+            responseType: 'arraybuffer'
+        });
+
+        // Step 3: Convert to WhatsApp PTT (opus)
+        const ptt = await converter.toPTT(Buffer.from(data), 'mp3');
+
+        // Step 4: Send as voice note
+        await conn.sendMessage(from, {
+            audio: ptt,
+            mimetype: 'audio/ogg; codecs=opus',
+            ptt: true
+        }, { quoted: mek });
+
+    } catch (e) {
+        reply(String(e));
+    }
+});
