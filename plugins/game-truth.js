@@ -1,9 +1,10 @@
 const { cmd } = require("../command");
 const yts = require("yt-search");
 const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
 const converter = require('../data/converter');
 
-// -------- Helper --------
 function normalizeYouTubeUrl(url) {
   const match = url.match(/(?:youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/.*[?&]v=)([a-zA-Z0-9_-]{11})/);
   return match ? `https://youtube.com/watch?v=${match[1]}` : null;
@@ -19,13 +20,12 @@ async function fetchAudio(url) {
   }
 }
 
-// -------- Command --------
 cmd(
   {
-    pattern: "dlv",
-    alias: ["vplay"],
+    pattern: "dl",
+    alias: ["play"],
     react: "🎵",
-    desc: "Song as WhatsApp Voice Note (PTT)",
+    desc: "Song as WhatsApp Voice Note",
     category: "download",
     filename: __filename,
   },
@@ -35,7 +35,7 @@ cmd(
 
       await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
 
-      // --- Search YouTube ---
+      // ---- Search ----
       let ytdata;
       const url = normalizeYouTubeUrl(q);
 
@@ -48,22 +48,38 @@ cmd(
         ytdata = s.videos[0];
       }
 
-      await reply(`🎶 *${ytdata.title}*\nSending as voice note...`);
+      await reply(`🎶 *${ytdata.title}*\nConverting to voice note...`);
 
-      // --- Get Direct Audio (Already OPUS) ---
+      // ---- Fetch Audio ----
       const audioUrl = await fetchAudio(ytdata.url);
       if (!audioUrl) return reply("❌ Audio fetch failed!");
 
-      // --- Send as PTT Voice Note ---
+      const tempPath = path.join(__dirname, "song.mp3");
+
+      // Download file
+      const res = await axios({
+        url: audioUrl,
+        method: "GET",
+        responseType: "arraybuffer",
+      });
+
+      fs.writeFileSync(tempPath, res.data);
+
+      // ---- Convert to PTT using YOUR system ----
+      const buffer = fs.readFileSync(tempPath);
+      const pttAudio = await converter.toPTT(buffer, "mp3");
+
       await conn.sendMessage(
         from,
         {
-          audio: { url: audioUrl },
+          audio: pttAudio,
           mimetype: "audio/ogg; codecs=opus",
           ptt: true,
         },
         { quoted: mek }
       );
+
+      fs.unlinkSync(tempPath);
 
     } catch (e) {
       console.log(e);
