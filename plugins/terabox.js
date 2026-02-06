@@ -1,5 +1,6 @@
 const { cmd } = require('../command');
 const axios = require('axios');
+const converter = require("../data/converter");
 const yts = require('yt-search');
 
 async function handlePlayReply(conn, messageID, from, video, downloadUrl, mek) {
@@ -47,8 +48,8 @@ async function handlePlayReply(conn, messageID, from, video, downloadUrl, mek) {
 }
 
 cmd({
-    pattern: "play3",
-    alias: ["song3", "music2"],
+    pattern: "play2",
+    alias: ["song2", "music2"],
     react: "🎶",
     desc: "YouTube Music Downloader",
     category: "download",
@@ -73,7 +74,7 @@ cmd({
         if (!dlUrl) return reply("❌ API could not generate a link. Try again later.");
 
         const menuText = `
-🎵 *WHITESHADOW-MD PLAYER*
+🎵 *KAMRAN-MD PLAYER*
 
 📌 *Title:* ${video.title}
 ⏱ *Duration:* ${video.timestamp}
