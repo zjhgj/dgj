@@ -2,98 +2,123 @@ const { cmd } = require('../command');
 const axios = require('axios');
 const yts = require('yt-search');
 
-async function handleMediaReply(conn, messageID, from, video, downloadUrl, mek) {
-    conn.ev.on("messages.upsert", async (msgData) => {
-        try {
-            const receivedMsg = msgData.messages[0];
-            if (!receivedMsg?.message) return;
+const CONFIG = {
+    audio: { ext: ["mp3", "m4a", "wav", "opus", "flac"], q: ["best", "320k", "128k"] },
+    video: { ext: ["mp4"], q: ["144p", "240p", "360p", "480p", "720p", "1080p"] }
+};
 
-            const text = receivedMsg.message.conversation || receivedMsg.message.extendedTextMessage?.text;
-            const senderID = receivedMsg.key.remoteJid;
-            const isReply = receivedMsg.message.extendedTextMessage?.contextInfo?.stanzaId === messageID;
-            
-            if (!isReply) return;
+const headers = {
+    accept: "application/json",
+    "content-type": "application/json",
+    "user-agent": "Mozilla/5.0 (Android)",
+    referer: "https://ytmp3.gg/"
+};
 
-            await conn.sendMessage(senderID, { react: { text: '⏳', key: receivedMsg.key } });
+// ---------- POLLING ----------
+const poll = async (url) => {
+    const { data } = await axios.get(url, { headers });
+    if (data.status === "completed") return data;
+    if (data.status === "failed") throw "Convert failed";
+    await new Promise(r => setTimeout(r, 1500));
+    return poll(url);
+};
 
-            switch (text.trim()) {
-                case "1": // MP3 Audio
-                    await conn.sendMessage(senderID, { 
-                        audio: { url: downloadUrl }, 
-                        mimetype: "audio/mpeg", 
-                        ptt: false 
-                    }, { quoted: receivedMsg });
-                    break;
+// ---------- YT CONVERT ----------
+async function ytdl(url, format, quality) {
+    const type = Object.keys(CONFIG).find(k => CONFIG[k].ext.includes(format));
 
-                case "2": // Document
-                    await conn.sendMessage(senderID, { 
-                        document: { url: downloadUrl }, 
-                        fileName: `${video.title}.mp3`, 
-                        mimetype: "audio/mpeg" 
-                    }, { quoted: receivedMsg });
-                    break;
-
-                case "3": // ✅ VOICE NOTE FIX
-                    // Kuch cases mein direct URL playback nahi karta, isliye buffer use karna behtar hai
-                    await conn.sendMessage(senderID, { 
-                        audio: { url: downloadUrl }, 
-                        mimetype: 'audio/mp4', // PTT ke liye 'audio/mp4' zyaada stable hai agar file MP3/AAC ho
-                        ptt: true 
-                    }, { quoted: receivedMsg });
-                    break;
-
-                default:
-                    await conn.sendMessage(senderID, { text: "❌ Invalid choice!" }, { quoted: receivedMsg });
-            }
-            await conn.sendMessage(senderID, { react: { text: '✅', key: receivedMsg.key } });
-        } catch (err) {
-            console.error(err);
-        }
+    const { data: meta } = await axios.get("https://www.youtube.com/oembed", {
+        params: { url, format: "json" }
     });
+
+    const payload = {
+        url,
+        os: "android",
+        output: { type, format, ...(type === "video" && { quality }) },
+        ...(type === "audio" && { audio: { bitrate: quality } })
+    };
+
+    const req = u => axios.post(`https://${u}.ytconvert.org/api/download`, payload, { headers });
+    const { data } = await req("hub").catch(() => req("api"));
+
+    const result = await poll(data.statusUrl);
+
+    return {
+        title: meta.title,
+        author: meta.author_name,
+        thumbnail: meta.thumbnail_url,
+        downloadUrl: result.downloadUrl
+    };
 }
 
+// ================= MP3 COMMAND =================
 cmd({
     pattern: "song",
-    alias: ["audio", "ytmp3"],
-    react: "🎵",
-    desc: "YouTube MP3 Downloader",
+    desc: "Download YouTube audio",
     category: "download",
     filename: __filename
-}, async (conn, mek, m, { from, reply, q }) => {
+},
+async (conn, mek, m, { q, reply }) => {
     try {
-        if (!q) return reply("❌ Provide a name or link!");
+        if (!q) return reply("*Example:* .mp3 faded");
 
-        // URL fix: yt-search kabhi kabhi direct link par fail hota hai, isliye query ko saaf kiya gaya hai
+        reply("⏳ Processing...");
+
         const search = await yts(q);
-        if (!search.videos.length) return reply("❌ No results found!");
         const video = search.videos[0];
+        if (!video) return reply("No result");
 
-        const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/song?search=${encodeURIComponent(video.url)}`;
-        const { data: apiRes } = await axios.get(apiUrl);
+        const data = await ytdl(video.url, "mp3", "128k");
 
-        if (!apiRes?.status || !apiRes.data?.url) return reply("❌ API error!");
+        const buffer = await axios.get(data.downloadUrl, {
+            responseType: "arraybuffer"
+        }).then(res => Buffer.from(res.data));
 
-        const caption = `
-📑 *Title:* ${video.title}
-⏱ *Duration:* ${video.timestamp}
-🔗 *Link:* ${video.url}
-
-🔢 *Reply with:*
-1️⃣ Audio (MP3)
-2️⃣ Document (File)
-3️⃣ Voice Note (PTT)
-
-> KAMRAN-MD ❤️`;
-
-        const sentMsg = await conn.sendMessage(from, { 
-            image: { url: video.thumbnail }, 
-            caption: caption 
+        await conn.sendMessage(m.chat, {
+            image: { url: data.thumbnail },
+            caption: `🎵 *${data.title}*\n👤 ${data.author}\n\n> Sending Audio`
         }, { quoted: mek });
 
-        handleMediaReply(conn, sentMsg.key.id, from, video, apiRes.data.url, mek);
+        await conn.sendMessage(m.chat, {
+            audio: buffer,
+            mimetype: "audio/mpeg"
+        }, { quoted: mek });
 
     } catch (e) {
-        reply("❌ Error!");
+        reply("Error: " + e);
     }
 });
-                                           
+
+// ================= MP4 COMMAND =================
+cmd({
+    pattern: "ytmp4",
+    desc: "Download YouTube video",
+    category: "download",
+    filename: __filename
+},
+async (conn, mek, m, { q, reply }) => {
+    try {
+        if (!q) return reply("*Example:* .mp4 faded");
+
+        reply("⏳ Processing...");
+
+        const search = await yts(q);
+        const video = search.videos[0];
+        if (!video) return reply("No result");
+
+        const data = await ytdl(video.url, "mp4", "720p");
+
+        const buffer = await axios.get(data.downloadUrl, {
+            responseType: "arraybuffer"
+        }).then(res => Buffer.from(res.data));
+
+        await conn.sendMessage(m.chat, {
+            video: buffer,
+            mimetype: "video/mp4",
+            caption: `🎬 *${data.title}*\n👤 ${data.author}`
+        }, { quoted: mek });
+
+    } catch (e) {
+        reply("Error: " + e);
+    }
+});
