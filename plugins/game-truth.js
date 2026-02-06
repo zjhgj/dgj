@@ -1,147 +1,101 @@
-const { cmd } = require('../command');
-const crypto = require('crypto');
-const axios = require('axios');
+const { cmd } = require("../command");
+const yts = require("yt-search");
+const axios = require("axios");
 const converter = require('../data/converter');
-const fs = require('fs');
-const path = require('path');
-const { exec } = require('child_process');
-const yts = require('yt-search');
-const fetch = require('node-fetch');
+const fs = require("fs");
+const path = require("path");
+const { exec } = require("child_process");
 
-// --- SAVETUBE CLASS ---
-class SaveTube {
-    constructor() {
-        this.ky = "C5D58EF67A7584E4A29F6C35BBC4EB12";
-        this.fmt = ["144", "240", "360", "480", "720", "1080", "mp3"];
-        this.m = /^((?:https?:)?\/\/)?((?:www|m|music)\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?(?:embed\/)?(?:v\/)?(?:shorts\/)?([a-zA-Z0-9_-]{11})/;
-        this.is = axios.create({
-            headers: {
-                "content-type": "application/json",
-                "origin": "https://yt.savetube.me",
-                "user-agent": "Mozilla/5.0 (Android 15; Mobile; SM-F958; rv:130.0) Gecko/130.0 Firefox/130.0"
-            }
-        });
-    }
-
-    async decrypt(enc) {
-        const sr = Buffer.from(enc, "base64");
-        const ky = Buffer.from(this.ky, "hex");
-        const iv = sr.slice(0, 16);
-        const dt = sr.slice(16);
-        const dc = crypto.createDecipheriv("aes-128-cbc", ky, iv);
-        const res = Buffer.concat([dc.update(dt), dc.final()]);
-        return JSON.parse(res.toString());
-    }
-
-    async getCdn() {
-        const res = await this.is.get("https://media.savetube.vip/api/random-cdn");
-        return res.data ? { status: true, data: res.data.cdn } : { status: false };
-    }
-
-    async download(url, format = "mp3") {
-        const id = url.match(this.m)?.[3];
-        if (!id) return { status: false, msg: "ID not found" };
-        const cdn = await this.getCdn();
-        if (!cdn.status) return cdn;
-        const info = await this.is.post(`https://${cdn.data}/v2/info`, { url: `https://www.youtube.com/watch?v=${id}` });
-        const dec = await this.decrypt(info.data.data);
-        const dl = await this.is.post(`https://${cdn.data}/download`, {
-            id,
-            downloadType: format === "mp3" ? "audio" : "video",
-            quality: format === "mp3" ? "128" : format,
-            key: dec.key
-        });
-        return {
-            status: true,
-            title: dec.title,
-            thumb: dec.thumbnail || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
-            duration: dec.duration,
-            dl: dl.data.data.downloadUrl
-        };
-    }
+// -------- Helper --------
+function normalizeYouTubeUrl(url) {
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/.*[?&]v=)([a-zA-Z0-9_-]{11})/);
+  return match ? `https://youtube.com/watch?v=${match[1]}` : null;
 }
 
-const ytdl = new SaveTube();
+async function fetchAudio(url) {
+  try {
+    const api = `https://api-aswin-sparky.koyeb.app/api/downloader/song?search=${encodeURIComponent(url)}`;
+    const { data } = await axios.get(api);
+    return data?.data?.url || null;
+  } catch {
+    return null;
+  }
+}
 
-cmd({
-    pattern: "playch",
-    alias: ["ptt"],
-    desc: "Search and send audio as PTT to a specific JID/Channel.",
-    category: "owner",
-    filename: __filename
-},           
-async (conn, mek, m, { q, reply, isOwner, prefix }) => {
-    if (!isOwner) return reply("❌ Only Owner can use this command.");
-    if (!q || !q.includes("|")) return reply(`*Format:* ${prefix}playch JID | Song Name\n*Example:* ${prefix}playch 120363xxx@g.us | daku`);
-
-    const [jidInput, query] = q.split("|").map(v => v.trim());
-    const targetJid = conn.decodeJid(jidInput); // --- LID FIX ---
-
+// -------- Command --------
+cmd(
+  {
+    pattern: "svoice",
+    alias: ["pytvoice"],
+    react: "🎵",
+    desc: "Download song as Voice Note",
+    category: "download",
+    filename: __filename,
+  },
+  async (conn, mek, m, { from, q, reply, prefix }) => {
     try {
-        await reply("🎧 *Searching & Converting...*");
+      if (!q) return reply(`Usage: ${prefix}dl <song name/link>`);
 
-        const search = await yts(query);
-        const video = search.videos.find(v => v.seconds && !v.live);
-        if (!video) return reply("❌ Video not found!");
+      await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
 
-        // Download Thumbnail
-        let thumbnailBuffer;
-        try {
-            const thumbRes = await fetch(video.thumbnail);
-            thumbnailBuffer = Buffer.from(await thumbRes.arrayBuffer());
-        } catch {
-            thumbnailBuffer = Buffer.alloc(0);
-        }
+      // --- Search YouTube ---
+      let ytdata;
+      const url = normalizeYouTubeUrl(q);
 
-        // Download Audio
-        const dlInfo = await ytdl.download(video.url, "mp3");
-        if (!dlInfo.status) throw new Error(dlInfo.msg || "Download failed");
+      if (url) {
+        const r = await yts({ videoId: url.split("v=")[1] });
+        ytdata = r;
+      } else {
+        const s = await yts(q);
+        if (!s.videos.length) return reply("❌ No results found!");
+        ytdata = s.videos[0];
+      }
 
-        const mp3Res = await fetch(dlInfo.dl);
-        const mp3Buffer = Buffer.from(await mp3Res.arrayBuffer());
+      await reply(`🎶 *${ytdata.title}*\n⏳ Converting to voice note...`);
 
-        // File Paths
-        const inputPath = path.join(__dirname, `temp_${Date.now()}.mp3`);
-        const outputPath = path.join(__dirname, `temp_${Date.now()}.ogg`);
+      // --- Get MP3 Link ---
+      const audioUrl = await fetchAudio(ytdata.url);
+      if (!audioUrl) return reply("❌ Audio fetch failed!");
 
-        fs.writeFileSync(inputPath, mp3Buffer);
+      const mp3 = path.join(__dirname, "song.mp3");
+      const ogg = path.join(__dirname, "song.ogg");
 
-        // Convert to OGG/OPUS via FFmpeg
-        await new Promise((resolve, reject) => {
-            exec(`ffmpeg -y -i "${inputPath}" -ac 1 -ar 48000 -b:a 48k -c:a libopus "${outputPath}"`, (err) => {
-                if (err) reject(err);
-                else resolve();
-            });
-        });
+      // --- Download MP3 ---
+      const res = await axios({
+        url: audioUrl,
+        method: "GET",
+        responseType: "stream",
+      });
 
-        const oggBuffer = fs.readFileSync(outputPath);
+      const writer = fs.createWriteStream(mp3);
+      res.data.pipe(writer);
 
-        // Send Voice Note (PTT)
-        await conn.sendMessage(targetJid, {
-            audio: oggBuffer,
-            mimetype: "audio/ogg; codecs=opus",
-            ptt: true,
-            contextInfo: {
-                externalAdReply: {
-                    title: video.title,
-                    body: `Duration: ${video.timestamp}`,
-                    mediaType: 2,
-                    thumbnail: thumbnailBuffer,
-                    mediaUrl: video.url,
-                    sourceUrl: video.url,
-                    renderLargerThumbnail: true
-                }
-            }
-        });
+      writer.on("finish", () => {
+        // --- Convert to OGG OPUS (PTT) ---
+        exec(
+          `ffmpeg -i ${mp3} -c:a libopus -b:a 128k ${ogg}`,
+          async (err) => {
+            if (err) return reply("❌ FFmpeg convert error!");
 
-        reply(`✅ *PTT Sent successfully to:* ${targetJid}`);
+            await conn.sendMessage(
+              from,
+              {
+                audio: fs.readFileSync(ogg),
+                mimetype: "audio/ogg; codecs=opus",
+                ptt: true,
+              },
+              { quoted: mek }
+            );
 
-        // Cleanup
-        if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+            fs.unlinkSync(mp3);
+            fs.unlinkSync(ogg);
+          }
+        );
+      });
 
     } catch (e) {
-        console.error("PlayCh Error:", e);
-        reply(`❌ *Error:* ${e.message}`);
+      console.log(e);
+      reply("⚠️ Error occurred!");
     }
-});
+  }
+);
