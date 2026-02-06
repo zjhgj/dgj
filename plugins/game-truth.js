@@ -2,9 +2,6 @@ const { cmd } = require("../command");
 const yts = require("yt-search");
 const axios = require("axios");
 const converter = require('../data/converter');
-const fs = require("fs");
-const path = require("path");
-const { exec } = require("child_process");
 
 // -------- Helper --------
 function normalizeYouTubeUrl(url) {
@@ -25,10 +22,10 @@ async function fetchAudio(url) {
 // -------- Command --------
 cmd(
   {
-    pattern: "svoice",
-    alias: ["pytvoice"],
+    pattern: "dl",
+    alias: ["play"],
     react: "🎵",
-    desc: "Download song as Voice Note",
+    desc: "Song as WhatsApp Voice Note (PTT)",
     category: "download",
     filename: __filename,
   },
@@ -51,47 +48,22 @@ cmd(
         ytdata = s.videos[0];
       }
 
-      await reply(`🎶 *${ytdata.title}*\n⏳ Converting to voice note...`);
+      await reply(`🎶 *${ytdata.title}*\nSending as voice note...`);
 
-      // --- Get MP3 Link ---
+      // --- Get Direct Audio (Already OPUS) ---
       const audioUrl = await fetchAudio(ytdata.url);
       if (!audioUrl) return reply("❌ Audio fetch failed!");
 
-      const mp3 = path.join(__dirname, "song.mp3");
-      const ogg = path.join(__dirname, "song.ogg");
-
-      // --- Download MP3 ---
-      const res = await axios({
-        url: audioUrl,
-        method: "GET",
-        responseType: "stream",
-      });
-
-      const writer = fs.createWriteStream(mp3);
-      res.data.pipe(writer);
-
-      writer.on("finish", () => {
-        // --- Convert to OGG OPUS (PTT) ---
-        exec(
-          `ffmpeg -i ${mp3} -c:a libopus -b:a 128k ${ogg}`,
-          async (err) => {
-            if (err) return reply("❌ FFmpeg convert error!");
-
-            await conn.sendMessage(
-              from,
-              {
-                audio: fs.readFileSync(ogg),
-                mimetype: "audio/ogg; codecs=opus",
-                ptt: true,
-              },
-              { quoted: mek }
-            );
-
-            fs.unlinkSync(mp3);
-            fs.unlinkSync(ogg);
-          }
-        );
-      });
+      // --- Send as PTT Voice Note ---
+      await conn.sendMessage(
+        from,
+        {
+          audio: { url: audioUrl },
+          mimetype: "audio/ogg; codecs=opus",
+          ptt: true,
+        },
+        { quoted: mek }
+      );
 
     } catch (e) {
       console.log(e);
