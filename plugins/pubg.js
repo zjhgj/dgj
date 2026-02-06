@@ -45,8 +45,6 @@ async (conn, mek, m, { from, body }) => {
             "youtube.com",
             "youtu.be",
             "fb.watch"
-            "x.com",
-            "twitter.com"
         ];
         if (!supported.some(d => url.includes(d))) return;
 
