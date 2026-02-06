@@ -43,7 +43,7 @@ async (conn, mek, m, { from, body }) => {
             "instagram.com",
             "youtube.com",
             "x.com",
-            "fb.watch"
+            "open.spotify.com"
         ];
         if (!supported.some(d => url.includes(d))) return;
 
