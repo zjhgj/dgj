@@ -16,8 +16,13 @@ cmd({
     on: "body" 
 }, 
 async (conn, mek, m, { from, body, isGroup, reply }) => {
-    // 1. Agar Auto-DL OFF hai ya message BOT ne khud bheja hai, toh ruk jao
-    if (!autoDL || m.key.fromMe) return; 
+    const targetChat = conn.decodeJid(from);
+
+    // 1. Sabse important: Agar message BOT ne khud bheja hai to ignore karo (Loop Fix)
+    if (m.key.fromMe) return; 
+
+    // 2. Agar Auto-DL OFF hai to ignore karo
+    if (!autoDL) return;
 
     const urlRegex = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi;
     const links = body.match(urlRegex);
@@ -25,9 +30,8 @@ async (conn, mek, m, { from, body, isGroup, reply }) => {
     if (!links) return;
 
     const url = links[0];
-    const targetChat = conn.decodeJid(from);
 
-    // Supported Domains
+    // Supported Domains check
     const supported = ["tiktok.com", "facebook.com", "instagram.com", "youtube.com", "youtu.be", "fb.watch"];
     if (!supported.some(domain => url.includes(domain))) return;
 
@@ -40,12 +44,12 @@ async (conn, mek, m, { from, body, isGroup, reply }) => {
         for (let r of data.results) {
             let videoUrl = r.hd_url || r.download_url;
             
-            // Loop rokne ke liye caption mein link ko text bana diya (clickable nahi)
-            let cleanUrl = url.replace("https://", ""); 
+            // Loop rokne ke liye caption mein link ko "text" bana diya (taake clickable na ho)
+            let displayUrl = url.replace("https://", "").replace("http://", "");
             
             let caption = `✨ *AUTO DOWNLOADER* ✨\n\n`;
             caption += `📌 *Title:* ${r.title || "Media"}\n`;
-            caption += `🌐 *Source:* ${cleanUrl}\n\n`; // Link clickable nahi hoga
+            caption += `🌐 *Source:* ${displayUrl}\n\n`; 
             caption += `*LID Fix Active - KAMRAN-MD*`;
 
             if (videoUrl) {
@@ -84,4 +88,4 @@ async (conn, mek, m, { from, q, reply }) => {
         return reply("🔴 *Auto-Downloader OFF ho gaya.*");
     }
 });
-                
+        
