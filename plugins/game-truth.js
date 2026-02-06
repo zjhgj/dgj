@@ -3,7 +3,7 @@ const yts = require("yt-search");
 const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
-const converter = require('../data/converter');
+const converter = require("../data/converter"); // jahan aapka toPTT hai
 
 function normalizeYouTubeUrl(url) {
   const match = url.match(/(?:youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/.*[?&]v=)([a-zA-Z0-9_-]{11})/);
@@ -22,7 +22,7 @@ async function fetchAudio(url) {
 
 cmd(
   {
-    pattern: "dlv",
+    pattern: "vdl",
     alias: ["vplay"],
     react: "🎵",
     desc: "Song as WhatsApp Voice Note",
@@ -66,24 +66,17 @@ cmd(
       fs.writeFileSync(tempPath, res.data);
 
       // ---- Convert to PTT using YOUR system ----
-      const buffer = fs.readFileSync(tempPath);
-      const pttAudio = await converter.toPTT(buffer, "mp3");
+      const buffer = fs.readFileSync(audioPath);
+        const fileExtension = data[matchText].split('.').pop();
+        const pttAudio = await converter.toPTT(buffer, fileExtension);
 
-      await conn.sendMessage(
-        from,
-        {
-          audio: pttAudio,
-          mimetype: "audio/ogg; codecs=opus",
-          ptt: true,
-        },
-        { quoted: mek }
-      );
+        await conn.sendMessage(from, {
+            audio: pttAudio,
+            mimetype: 'audio/ogg; codecs=opus',
+            ptt: true
+        }, { quoted: mek });
 
-      fs.unlinkSync(tempPath);
-
-    } catch (e) {
-      console.log(e);
-      reply("⚠️ Error occurred!");
+    } catch (error) {
+        console.error("AutoVoice Listener Error:", error);
     }
-  }
-);
+});
