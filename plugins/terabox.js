@@ -83,7 +83,7 @@ cmd({
 2️⃣ *Document (File)*
 3️⃣ *Voice Note (PTT)* ✅
 
-> © WHITESHADOW-MD ❤️`;
+> © KAMRAN-MD ❤️`;
 
         const sentMsg = await conn.sendMessage(from, { 
             image: { url: video.thumbnail }, 
