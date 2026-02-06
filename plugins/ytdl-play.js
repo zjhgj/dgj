@@ -25,7 +25,7 @@ async function fetchVideoData(url) {
  */
 async function fetchAudioData(url) {
   try {
-    const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/song?search=${encodeURIComponent(url)}`;
+    const apiUrl = `https://www.movanest.xyz/v2/ytmp3?url=${encodeURIComponent(url)}`;
     const { data } = await axios.get(apiUrl);
     return data.status && data.data ? data.data.url : null;
   } catch (e) { return null; }
