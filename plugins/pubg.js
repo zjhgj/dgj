@@ -1,12 +1,9 @@
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// Auto-DL Status (Default: On)
+// Auto-DL Status
 let autoDL = true; 
 
-/**
- * AIO Downloader Core Function
- */
 async function aioDownload(url) {
     const res = await axios.get(
         `https://kyzoymd-downloader.vercel.app/api/download?url=${encodeURIComponent(url)}`
@@ -16,19 +13,21 @@ async function aioDownload(url) {
 
 // --- AUTO DOWNLOAD LOGIC ---
 cmd({
-    on: "body" // Har message par check karega
+    on: "body" 
 }, 
 async (conn, mek, m, { from, body, isGroup, reply }) => {
+    // 1. Agar Auto-DL OFF hai ya message BOT ne khud bheja hai, toh ruk jao
+    if (!autoDL || m.key.fromMe) return; 
+
     const urlRegex = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi;
     const links = body.match(urlRegex);
 
-    // Agar Auto-DL off hai ya link nahi mila, toh return kar dein
-    if (!autoDL || !links) return;
+    if (!links) return;
 
     const url = links[0];
     const targetChat = conn.decodeJid(from);
 
-    // List of supported domains to avoid downloading random links
+    // Supported Domains
     const supported = ["tiktok.com", "facebook.com", "instagram.com", "youtube.com", "youtu.be", "fb.watch"];
     if (!supported.some(domain => url.includes(domain))) return;
 
@@ -40,7 +39,14 @@ async (conn, mek, m, { from, body, isGroup, reply }) => {
 
         for (let r of data.results) {
             let videoUrl = r.hd_url || r.download_url;
-            let caption = `✨ *AUTO DOWNLOADER* ✨\n\n📌 *Title:* ${r.title || "Media"}\n🌐 *Source:* ${url}\n\n*LID Fix Active - KAMRAN-MD*`;
+            
+            // Loop rokne ke liye caption mein link ko text bana diya (clickable nahi)
+            let cleanUrl = url.replace("https://", ""); 
+            
+            let caption = `✨ *AUTO DOWNLOADER* ✨\n\n`;
+            caption += `📌 *Title:* ${r.title || "Media"}\n`;
+            caption += `🌐 *Source:* ${cleanUrl}\n\n`; // Link clickable nahi hoga
+            caption += `*LID Fix Active - KAMRAN-MD*`;
 
             if (videoUrl) {
                 await conn.sendMessage(targetChat, {
@@ -50,6 +56,9 @@ async (conn, mek, m, { from, body, isGroup, reply }) => {
                 }, { quoted: mek });
             }
         }
+        
+        await conn.sendMessage(targetChat, { react: { text: "✅", key: m.key } });
+
     } catch (e) {
         console.error("Auto-DL Error:", e);
     }
@@ -66,14 +75,13 @@ cmd({
 async (conn, mek, m, { from, q, reply }) => {
     if (!q) return reply("*Usage:* .autodl on/off");
     
-    if (q.toLowerCase() === "on") {
+    let input = q.toLowerCase();
+    if (input === "on") {
         autoDL = true;
-        return reply("✅ *Auto-Downloader has been turned ON.*");
-    } else if (q.toLowerCase() === "off") {
+        return reply("✅ *Auto-Downloader ON ho gaya.*");
+    } else if (input === "off") {
         autoDL = false;
-        return reply("🔴 *Auto-Downloader has been turned OFF.*");
-    } else {
-        return reply("Invalid option. Use 'on' or 'off'.");
+        return reply("🔴 *Auto-Downloader OFF ho gaya.*");
     }
 });
-    
+                
