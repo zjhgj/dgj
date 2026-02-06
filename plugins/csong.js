@@ -1,90 +1,69 @@
-const axios = require("axios");
-const yts = require("yt-search");
-const { cmd } = require("../command");
-const converter = require("../data/converter");
+const { cmd } = require('../command');
+const axios = require('axios');
+
+/**
+ * AIO Downloader Function
+ */
+async function aioDownload(url) {
+    try {
+        const res = await axios.get(
+            `https://kyzoymd-downloader.vercel.app/api/download?url=${encodeURIComponent(url)}`
+        );
+        return res.data;
+    } catch (e) {
+        console.error("API Error:", e);
+        return { success: false };
+    }
+}
 
 cmd({
-    pattern: "csong",
-    alias: ["channelsong", "cplay"],
-    react: "🎶",
-    desc: "Send YouTube song as PTT voice note to WhatsApp channel",
-    category: "music",
-    use: ".csong <song name>",
+    pattern: "aio",
+    alias: ["download", "alldl"],
+    react: "📥",
+    desc: "All-in-One Downloader (FB, IG, TikTok, etc.)",
+    category: "download",
+    use: ".aio <link>",
     filename: __filename
-},
-async (conn, mek, m, { q, reply, react, config }) => {
+}, async (conn, mek, m, { from, reply, q, usedPrefix, command }) => {
     try {
-        if (!q) return reply("❌ Example:\n.csong Tum Hi Ho");
+        if (!q) return reply(`❌ Please provide a link!\nExample: .aio https://tiktok.com/...`);
 
-        const CHANNEL_JID = config?.CHANNEL_JID || "120363XXXXXXX@newsletter";
+        await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
 
-        await react("🎧");
+        const data = await aioDownload(q);
+        if (!data.success) return reply("❌ Download failed! Link invalid ya API down ho sakti hai.");
 
-        // 🔍 Search YouTube
-        const search = await yts(q);
-        if (!search?.videos?.length)
-            return reply("❌ No results found on YouTube.");
+        const results = data.results || [];
+        if (!results.length) return reply("❌ Media nahi mila!");
 
-        const video = search.videos[0];
+        for (let r of results) {
+            let videoUrl = r.hd_url || r.download_url;
+            let audioUrl = r.music;
+            let thumb = r.thumbnail;
 
-        // ⏱ Duration limit
-        const maxDuration = Number(config?.MAX_AUDIO_DURATION) || 600;
-        if (video.seconds > maxDuration)
-            return reply(`❌ Song too long (max ${maxDuration / 60} min).`);
+            let caption = `📥 *AIO DOWNLOADER*\n\n`;
+            caption += `🌐 *Platform:* ${data.platform || "Universal"}\n`;
+            caption += `📌 *Title:* ${r.title || "-"}\n`;
+            caption += `⏱ *Duration:* ${r.duration || "-"} sec\n\n`;
+            caption += `> © KAMRAN-MD ❤️`;
 
-        await react("⬇️");
+            // 1. Send Video if available
+            if (videoUrl) {
+                await conn.sendMessage(from, {
+                    video: { url: videoUrl },
+                    mimetype: "video/mp4",
+                    caption: caption
+                }, { quoted: mek });
+            }
 
-        // 🎵 Fetch MP3
-        const apiUrl = `https://zaynixapi12.vercel.app/api/ytmp3-fixed?url=${encodeURIComponent(
-            video.url
-        )}&apiKey=${config?.ZAYNIX_API || "zaynixapi"}`;
+            // 2. Send Audio/Music if available
+            if (audioUrl) {
+                // Music ko Audio file ke taur par
+                await conn.sendMessage(from, {
+                    audio: { url: audioUrl },
+                    mimetype: "audio/mpeg",
+                    fileName: "music.mp3"
+                }, { quoted: mek });
 
-        const { data } = await axios.get(apiUrl, { timeout: 60000 });
-
-        const downloadUrl =
-            data?.result?.download ||
-            data?.result?.mp3 ||
-            data?.url;
-
-        if (!downloadUrl) return reply("❌ Failed to fetch audio.");
-
-        // 🖼️ Info message
-        const caption = `
-🎶 *Now Playing*
-━━━━━━━━━━━━━━━
-🎧 *Title:* ${video.title}
-👤 *Channel:* ${video.author?.name || "YouTube"}
-⏱️ *Duration:* ${video.timestamp}
-👁️ *Views:* ${video.views ? video.views.toLocaleString() : "N/A"}
-━━━━━━━━━━━━━━━
-        `.trim();
-
-        await conn.sendMessage(CHANNEL_JID, {
-            image: { url: video.thumbnail },
-            caption
-        });
-
-        // 🎤 Convert to PTT using converter
-        const audioBuffer = await axios.get(downloadUrl, {
-            responseType: "arraybuffer"
-        });
-
-        const pttAudio = await converter.toPTT(
-            Buffer.from(audioBuffer.data),
-            "audio/mpeg"
-        );
-
-        await conn.sendMessage(CHANNEL_JID, {
-            audio: pttAudio,
-            mimetype: "audio/ogg; codecs=opus",
-            ptt: true
-        });
-
-        await react("✅");
-
-    } catch (e) {
-        console.error(e);
-        await react("❌");
-        reply("❌ Failed to send channel song.");
-    }
-});
+                // Music ko Voice Note (PTT) ke taur par (Optional
+                                       
