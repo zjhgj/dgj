@@ -75,8 +75,8 @@ async (conn, mek, m, { from, q, reply }) => {
 
 // --- COMMAND: AUTO-DOWNLOAD ON/OFF ---
 cmd({
-    pattern: "autodl",
-    alias: ["autodownload"],
+    pattern: "autodl2",
+    alias: ["autodownload2"],
     desc: "Turn Auto-Download ON or OFF.",
     category: "config",
     filename: __filename
