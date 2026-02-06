@@ -47,8 +47,8 @@ async function handlePlayReply(conn, messageID, from, video, downloadUrl, mek) {
 }
 
 cmd({
-    pattern: "play",
-    alias: ["song", "music"],
+    pattern: "play3",
+    alias: ["song3", "music2"],
     react: "🎶",
     desc: "YouTube Music Downloader",
     category: "download",
