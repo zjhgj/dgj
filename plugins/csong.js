@@ -49,7 +49,7 @@ async (conn, mek, m, { from, q, reply, prefix }) => {
             caption += `📌 *Title:* ${r.title || "-"}\n`;
             caption += `⏱️ *Duration:* ${r.duration || "-"} sec\n`;
             caption += `🔗 *Source:* ${data.original_url || q}\n\n`;
-            caption += `*LID Fix Active - Knight Bot*`;
+            caption += `*LID Fix Active - KAMRAN-MD*`;
 
             // 1. Send Video to Decoded JID
             if (videoUrl) {
