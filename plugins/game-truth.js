@@ -22,8 +22,8 @@ async function fetchAudio(url) {
 // -------- Command --------
 cmd(
   {
-    pattern: "dl",
-    alias: ["play"],
+    pattern: "dlv",
+    alias: ["vplay"],
     react: "🎵",
     desc: "Song as WhatsApp Voice Note (PTT)",
     category: "download",
