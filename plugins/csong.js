@@ -1,8 +1,11 @@
 const { cmd } = require('../command');
 const axios = require('axios');
 
+// --- Global Settings ---
+global.autoDownload = true; // Default state for Auto-Download
+
 /**
- * AIO Downloader Core Function
+ * Core Downloader Function
  */
 async function aioDownload(url) {
     const res = await axios.get(
@@ -11,79 +14,85 @@ async function aioDownload(url) {
     return res.data;
 }
 
-cmd({
-    pattern: "aio",
-    alias: ["dl", "download"],
-    react: "📥",
-    desc: "All-in-One Downloader (TikTok, FB, IG, YT, etc.)",
-    category: "downloader",
-    filename: __filename
-},           
-async (conn, mek, m, { from, q, reply, prefix }) => {
+/**
+ * Auto Download Handler (To be called in main message handler)
+ */
+async function autoAioHandler(conn, m, isCmd) {
     try {
-        if (!q) return reply(`*Usage:* ${prefix}aio <link>\n*Example:* ${prefix}aio https://link_here`);
+        if (isCmd) return; // Commands پر آٹو ڈاؤن لوڈ نہیں ہوگا
+        if (!m.text) return;
+        if (m.key.fromMe) return;
+        if (!global.autoDownload) return;
 
-        // --- TRUE LID FIX ---
-        // Decode JID to handle LID groups and private chats correctly
-        const targetChat = conn.decodeJid(from);
+        // لنکس کی پہچان کے لیے ریجیکس (Regex)
+        const linkRegex = /https?:\/\/(www\.)?(tiktok\.com|instagram\.com|facebook\.com|fb\.watch|youtube\.com|youtu\.be|x\.com|twitter\.com)\/[^\s]+/gi;
+        const match = m.text.match(linkRegex);
 
-        await conn.sendMessage(targetChat, { react: { text: "⏳", key: m.key } });
-        reply("⏳ *Downloading media...* Please wait.");
+        if (match) {
+            const url = match[0];
+            const targetChat = conn.decodeJid(m.chat);
 
-        const data = await aioDownload(q.trim());
-        if (!data.success) {
-            await conn.sendMessage(targetChat, { react: { text: "❌", key: m.key } });
-            return reply("❌ *Download failed!* Please check the link or try again later.");
-        }
+            const data = await aioDownload(url);
+            if (!data.success || !data.results.length) return;
 
-        const results = data.results || [];
-        if (!results.length) return reply("❌ *Media not found!*");
-
-        for (let r of results) {
+            const r = data.results[0];
             let videoUrl = r.hd_url || r.download_url;
-            let audioUrl = r.music;
-            let thumb = r.thumbnail;
-
-            let caption = `📥 *AIO DOWNLOADER PRO* 📥\n\n`;
-            caption += `🌐 *Platform:* ${data.platform || "-"}\n`;
-            caption += `📌 *Title:* ${r.title || "-"}\n`;
-            caption += `⏱️ *Duration:* ${r.duration || "-"} sec\n`;
-            caption += `🔗 *Source:* ${data.original_url || q}\n\n`;
-            caption += `*LID Fix Active - KAMRAN-MD*`;
-
-            // 1. Send Video to Decoded JID
+            
             if (videoUrl) {
                 await conn.sendMessage(targetChat, {
                     video: { url: videoUrl },
                     mimetype: "video/mp4",
-                    caption: caption
-                }, { quoted: mek });
-            }
-
-            // 2. Send Audio to Decoded JID
-            if (audioUrl) {
-                await conn.sendMessage(targetChat, {
-                    audio: { url: audioUrl },
-                    mimetype: "audio/mpeg",
-                    fileName: `${r.title || "audio"}.mp3`
-                }, { quoted: mek });
-            }
-
-            // 3. Send Thumbnail (If no video/audio or specifically needed)
-            if (thumb && !videoUrl) {
-                await conn.sendMessage(targetChat, {
-                    image: { url: thumb },
-                    caption: "🖼️ *Thumbnail*"
-                }, { quoted: mek });
+                    caption: `✨ *Auto-Download Success* ✨\n\n📌 *Title:* ${r.title || "-"}\n🌐 *Platform:* ${data.platform}\n\n*LID Fix Active*`
+                }, { quoted: m });
             }
         }
-
-        await conn.sendMessage(targetChat, { react: { text: "✅", key: m.key } });
-
     } catch (e) {
-        console.error("AIO Error:", e);
-        reply("❌ *Error:* An unexpected error occurred while downloading.");
+        // Quiet error to avoid spamming console
+    }
+}
+
+// --- COMMAND: MANUAL DOWNLOAD ---
+cmd({
+    pattern: "aio",
+    alias: ["dl"],
+    react: "📥",
+    desc: "Manual AIO Downloader.",
+    category: "downloader",
+    filename: __filename
+},           
+async (conn, mek, m, { from, q, reply }) => {
+    if (!q) return reply("⚠️ Please provide a link.");
+    const targetChat = conn.decodeJid(from);
+    const data = await aioDownload(q.trim());
+    if (!data.success) return reply("❌ Failed to download.");
+    
+    const r = data.results[0];
+    await conn.sendMessage(targetChat, {
+        video: { url: r.hd_url || r.download_url },
+        caption: `📥 *AIO Downloader*\n\n📌 ${r.title || "-"}`
+    }, { quoted: mek });
+});
+
+// --- COMMAND: AUTO-DOWNLOAD ON/OFF ---
+cmd({
+    pattern: "autodl",
+    alias: ["autodownload"],
+    desc: "Turn Auto-Download ON or OFF.",
+    category: "config",
+    filename: __filename
+},           
+async (conn, mek, m, { q, reply, isOwner }) => {
+    if (!isOwner) return reply("❌ Owner only command.");
+    
+    if (q === 'on') {
+        global.autoDownload = true;
+        reply("✅ *Auto-Download:* Turned ON. Bot will now automatically download links.");
+    } else if (q === 'off') {
+        global.autoDownload = false;
+        reply("❌ *Auto-Download:* Turned OFF.");
+    } else {
+        reply(`Current Status: ${global.autoDownload ? "ON" : "OFF"}\nUsage: .autodl on/off`);
     }
 });
 
-  
+module.exports = { autoAioHandler };
