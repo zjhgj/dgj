@@ -1,4 +1,3 @@
-const ytdl = require('ytdl-core');
 const { cmd } = require('../command');
 const axios = require('axios');
 
