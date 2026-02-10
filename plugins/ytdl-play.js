@@ -63,7 +63,7 @@ const caption = `
 ╚══════════════════════════╝
 ⏳ *Please wait… Preparing high quality MP3*
 
-> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴘʀᴏᴠᴀ-ᴍᴅ
+> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ KAMRAN-MD
 `;
 
 await conn.sendMessage(
