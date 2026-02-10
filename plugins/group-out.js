@@ -1,49 +1,67 @@
 const { cmd } = require('../command');
+const { jidDecode } = require('@whiskeysockets/baileys');
 
 cmd({
-    pattern: "out",
-    alias: ["ck", "🦶"],
-    desc: "Removes all members with specific country code from the group",
-    category: "admin",
-    react: "❌",
+    pattern: "byekick",
+    desc: "Kick a member from group",
+    category: "group",
+    react: "👢",
     filename: __filename
 },
-async (conn, mek, m, {
-    from, q, isGroup, isBotAdmins, reply, groupMetadata, isCreator
-}) => {
-    if (!isGroup) return reply("❌ This command can only be used in groups.");
-
-    // Permission check using isCreator
-    if (!isCreator) {
-        return await conn.sendMessage(from, {
-            text: "*📛 This is an owner command.*"
-        }, { quoted: mek });
-    }
-
-    if (!isBotAdmins) return reply("❌ I need to be an admin to use this command.");
-    if (!q) return reply("❌ Please provide a country code. Example: .out 92");
-
-    const countryCode = q.trim();
-    if (!/^\d+$/.test(countryCode)) {
-        return reply("❌ Invalid country code. Please provide only numbers (e.g., 92 for +92 numbers)");
-    }
-
+async (conn, mek, m, { from, reply, isGroup, sender }) => {
     try {
-        const participants = await groupMetadata.participants;
-        const targets = participants.filter(
-            participant => participant.id.startsWith(countryCode) && !participant.admin
-        );
 
-        if (targets.length === 0) {
-            return reply(`❌ No members found with country code +${countryCode}`);
+        if (!isGroup) return reply("❌ This command works only in groups");
+
+        const metadata = await conn.groupMetadata(from);
+        const participants = metadata.participants;
+
+        // --- Get Admins ---
+        const groupAdmins = participants
+            .filter(p => p.admin)
+            .map(p => p.id);
+
+        // --- Check bot admin ---
+        const botId = jidDecode(conn.user.id).user + "@s.whatsapp.net";
+        if (!groupAdmins.includes(botId))
+            return reply("❌ Bot is not admin");
+
+        // --- Check sender admin ---
+        if (!groupAdmins.includes(sender))
+            return reply("❌ You are not admin");
+
+        // --- Get target user (mention / reply / text) ---
+        let target;
+
+        // 1. Mention
+        if (m.mentionedJid && m.mentionedJid.length > 0) {
+            target = m.mentionedJid[0];
+        }
+        // 2. Reply
+        else if (m.quoted) {
+            target = m.quoted.sender;
+        }
+        // 3. Number text
+        else if (m.text) {
+            const num = m.text.replace(/[^0-9]/g, '');
+            if (num.length > 7)
+                target = num + "@s.whatsapp.net";
         }
 
-        const jids = targets.map(p => p.id);
-        await conn.groupParticipantsUpdate(from, jids, "remove");
+        if (!target)
+            return reply("❌ Tag / Reply / Number required to kick");
 
-        reply(`✅ Successfully removed ${targets.length} members with country code +${countryCode}`);
-    } catch (error) {
-        console.error("Out command error:", error);
-        reply("❌ Failed to remove members. Error: " + error.message);
+        // --- Prevent kicking admins ---
+        if (groupAdmins.includes(target))
+            return reply("❌ Cannot kick an admin");
+
+        // --- Kick user ---
+        await conn.groupParticipantsUpdate(from, [target], "remove");
+
+        reply("✅ User kicked successfully");
+
+    } catch (e) {
+        console.log(e);
+        reply("❌ Error while kicking user");
     }
 });
