@@ -1,95 +1,84 @@
-//---------------------------------------------------------------------------
-//           KAMRAN-MD - GITHUB GISTS DOWNLOADER
-//---------------------------------------------------------------------------
-//  🚀 GET CODE FROM GITHUB GISTS (TEXT OR DOCUMENT SUPPORT)
-//---------------------------------------------------------------------------
+const axios = require("axios");
+const cheerio = require("cheerio");
+const sharp = require("sharp");
+const { cmd } = require("../command");
 
-const { cmd } = require('../command');
-const axios = require('axios');
-const config = require('../config');
-
-// Newsletter Context for professional look
-const newsletterContext = {
-    forwardingScore: 999,
-    isForwarded: true,
-    forwardedNewsletterMessageInfo: {
-        newsletterJid: '120363418144382782@newsletter',
-        newsletterName: 'KAMRAN-MD',
-        serverMessageId: 143
-    }
+const HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
 };
 
-/**
- * Function to extract ID from Github Gist URL
- */
-function extractId(url) {
-    try {
-        const parts = new URL(url).pathname.split('/').filter(Boolean);
-        const id = parts.pop();
-        return id || null;
-    } catch (e) {
-        return null;
-    }
+// ================= SESSION STORAGE =================
+if (!global.movieSessions) global.movieSessions = new Map();
+
+// ================= HELPERS =================
+async function getThumbnailBuffer(url) {
+  try {
+    if (!url) return null;
+    const { data } = await axios.get(url, { responseType: "arraybuffer", headers: HEADERS });
+    return await sharp(data).resize(300, 300).jpeg({ quality: 80 }).toBuffer();
+  } catch { return null; }
 }
 
-// --- COMMAND: GITS ---
+async function getFinalLink(dlPageUrl) {
+  try {
+    const { data } = await axios.get(dlPageUrl, { headers: HEADERS, maxRedirects: 5 });
+    const $ = cheerio.load(data);
+    return $("a.button2.download-link").attr("href") || $("a#download").attr("href");
+  } catch { return null; }
+}
 
+// ================= COMMAND =================
 cmd({
-    pattern: "gits",
-    alias: ["getgits", "gist"],
-    desc: "Get code/files from Github Gists.",
-    category: "tools",
-    react: "📁",
-    filename: __filename,
-}, async (conn, mek, m, { from, text, reply }) => {
-    if (!text) {
-        return reply(`⚠️ *Format Invalid*\n\nUsage: \`.gits <link>\` (Text output)\nUsage: \`.gits <link> --doc\` (File output)`);
-    }
-
+    pattern: "film",
+    alias: ["movie", "moviebd", "mdbd", "movies"],
+    react: "🎬",
+    desc: "Search & download movies from MovieDriveBD.",
+    category: "downloader",
+    filename: __filename
+},           
+async (conn, mek, m, { q, reply, sender, from }) => {
     try {
-        let [link, type] = text.split(" ");
-        if (!link.includes("github")) return reply("❌ Please provide a valid Github Gist link.");
+        if (!q) return reply("🔎 *Please provide a movie name!*");
 
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
 
-        const id = extractId(link);
-        if (!id) return reply("❌ Could not extract Gist ID.");
+        // ================= SEARCH PHASE =================
+        const searchUrl = `https://moviedrivebd.com/?s=${encodeURIComponent(q)}`;
+        const { data } = await axios.get(searchUrl, { headers: HEADERS });
+        const $ = cheerio.load(data);
 
-        // Fetching Gist Data from Github API
-        const response = await axios.get(`https://api.github.com/gists/${id}`);
-        const getRaw = response.data;
-        const files = Object.values(getRaw?.files || []);
+        const results = [];
+        $("div.result-item").each((i, el) => {
+            const title = $(el).find("article > div.details > div.title > a").text().trim();
+            const link = $(el).find("article > div.details > div.title > a").attr("href");
+            if (link) results.push({ title, link });
+        });
 
-        if (files.length === 0) return reply("❌ No files found in this Gist.");
+        if (!results.length) return reply("❌ No results found!");
 
-        for (const file of files) {
-            if (type === "--doc") {
-                // Send as Document
-                const buffer = Buffer.from(file.content, "utf-8");
+        let searchText = `🎬 *MOVIE SEARCH RESULTS*\n\n🔎 *Query:* ${q}\n\n`;
+        results.forEach((v, i) => { searchText += `*${i + 1}.* ${v.title}\n`; });
+        searchText += `\n✳️ *Reply with number to select movie.*`;
 
-                await conn.sendMessage(from, {
-                    document: buffer,
-                    fileName: file.filename,
-                    mimetype: 'text/plain', // Standard text file type
-                    caption: `*📄 File:* ${file.filename}\n*🚀 From:* KAMRAN-MD`,
-                    contextInfo: newsletterContext
-                }, { quoted: mek });
+        const sentMsg = await reply(searchText);
 
-            } else {
-                // Send as Text Message
-                const codeMsg = `*📄 File:* ${file.filename}\n\n\`\`\`${file.content}\`\`\`\n\n*🚀 KAMRAN-MD*`;
-                
-                await conn.sendMessage(from, { 
-                    text: codeMsg,
-                    contextInfo: newsletterContext
-                }, { quoted: mek });
-            }
-        }
+        // Save session for this user
+        global.movieSessions.set(sender, {
+            stage: "search",
+            results,
+            from: from
+        });
 
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        // ================= SESSION HANDLER =================
+        // Ye part aapke main bot handler (index.js) mein input catch karne ke liye setup hota hai
+        // Lekin yahan main template de raha hoon jo aksar 'upsert' ke through handle hota hai.
 
-    } catch (e) {
-        console.error("Gits Error:", e);
-        reply("❌ Error fetching Gist data. Please check the link or API status.");
+    } catch (err) {
+        console.error(err);
+        reply("❌ Error while searching movie!");
     }
 });
+
+// Note: Interactive Reply Logic (Catching numbers 1, 2, 3) 
+// Usually placed in your message listener.
+      
