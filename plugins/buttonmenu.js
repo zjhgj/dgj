@@ -1,107 +1,99 @@
-//---------------------------------------------------------------------------
-//           KAMRAN-MD - LYRICS SEARCH (LRCLIB)
-//---------------------------------------------------------------------------
-
-const { cmd } = require('../command');
 const axios = require('axios');
+const cheerio = require('cheerio');
+const { cmd } = require('../command');
 
-// Local cache to store search results per chat
-if (!global.lyricCache) global.lyricCache = new Map();
+// --- Helper Functions from your code ---
 
-function formatDuration(sec) {
-    if (!sec) return 'N/A';
-    const m = Math.floor(sec / 60);
-    const s = Math.round(sec % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
+function dxzExtractThumbnail($, element) {
+    const context = $(element).closest('li, div, article, .cb-lst-itm, .cb-nws-itm, .cb-nws-lst-itm, section');
+    const dxzCricbuzzSelectors = ['.cb-nws-thumb img', '.cb-lst-itm-thumb img', '.cb-nws-itm-thumb img', '.cb-thumb img', '[class*="thumb"] img'];
+    for (const selector of dxzCricbuzzSelectors) {
+        const imgEl = context.find(selector).first();
+        if (imgEl.length) {
+            let src = imgEl.attr('src') || imgEl.attr('data-src') || imgEl.attr('data-original');
+            if (src) return src.includes('http') ? src : `https:${src}`;
+        }
+    }
+    return '';
 }
 
+function dxzExtractCategory(context) {
+    const allText = context.text().toLowerCase();
+    if (allText.includes('report')) return 'Match Report';
+    if (allText.includes('preview')) return 'Preview';
+    if (allText.includes('analysis')) return 'Analysis';
+    if (allText.includes('live')) return 'Live Updates';
+    return 'Cricket News';
+}
+
+// --- Bot Command ---
+
 cmd({
-    pattern: "lirik",
-    alias: ["lyrics", "songlyric"],
-    desc: "Search for song lyrics.",
-    category: "music",
-    use: ".lirik Yellow - Coldplay",
-    filename: __filename,
-}, async (conn, mek, m, { from, q, reply, prefix }) => {
+    pattern: "cricnews",
+    alias: ["cricketnews", "cricbuzz"],
+    react: "🏏",
+    desc: "Get latest cricket news from Cricbuzz with thumbnails.",
+    category: "news",
+    filename: __filename
+},           
+async (conn, mek, m, { from, reply }) => {
     try {
-        if (!q) return reply(`Contoh:\n${prefix}lirik Yellow - Coldplay`);
+        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
-
-        const { data } = await axios.get('https://lrclib.net/api/search', {
-            params: { q: q }
+        const response = await axios.get('https://www.cricbuzz.com/', {
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            timeout: 15000
         });
 
-        if (!Array.isArray(data) || data.length === 0) {
-            return reply("❌ Lirik Tidak Ditemukan.");
-        }
-
-        const results = data.slice(0, 10);
-        global.lyricCache.set(from, results);
-
-        // If only one result, send it immediately
-        if (results.length === 1) {
-            const song = results[0];
-            const { data: lyric } = await axios.get(`https://lrclib.net/api/get/${song.id}`);
-            
-            let msg = `🎵 *LIRIK DITEMUKAN*\n\n`;
-            msg += `• *Judul* : ${lyric.trackName}\n`;
-            msg += `• *Artis* : ${lyric.artistName}\n`;
-            msg += `• *Album* : ${lyric.albumName || 'N/A'}\n`;
-            msg += `• *Durasi* : ${formatDuration(lyric.duration)}\n\n`;
-            msg += `──────────────────\n\n`;
-            msg += lyric.plainLyrics || lyric.syncedLyrics || '_Lirik tidak tersedia_';
-            
-            return reply(msg);
-        }
-
-        // Multiple results
-        let list = `🔍 *Ditemukan ${results.length} hasil*\n\n`;
-        results.forEach((v, i) => {
-            list += `*${i + 1}.* ${v.trackName} — ${v.artistName}\n`;
-        });
-        list += `\nKetik: *${prefix}getlirik <nomor>*\nContoh: *${prefix}getlirik 1*`;
+        const $ = cheerio.load(response.data);
+        const dxzNews = [];
         
-        return reply(list);
+        // Using main list selectors
+        $('.cb-nws-lst li, .cb-lst-itm, .cb-nws-itm').each((index, element) => {
+            if (dxzNews.length >= 10) return; // Limit to top 10 for WhatsApp
 
-    } catch (e) {
-        console.error(e);
-        reply(`❌ Kesalahan: ${e.message}`);
+            const linkEl = $(element).find('a').first();
+            const title = linkEl.text().trim();
+            let link = linkEl.attr('href') || '';
+            
+            if (title.length > 15 && link) {
+                const fullLink = link.startsWith('http') ? link : `https://www.cricbuzz.com${link}`;
+                const thumbnail = dxzExtractThumbnail($, element);
+                const category = dxzExtractCategory($(element));
+                
+                dxzNews.push({ title, link: fullLink, thumbnail, category });
+            }
+        });
+
+        if (dxzNews.length === 0) return reply("😞 No cricket news found at the moment.");
+
+        // Sending each news as a separate message with AdReply (Thumbnail)
+        for (let news of dxzNews) {
+            let newsCaption = `*【 ${news.category.toUpperCase()} 】*\n\n` +
+                              `📢 *${news.title}*\n\n` +
+                              `🔗 *Link:* ${news.link}\n\n` +
+                              `*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ DR KAMRAN*`;
+
+            await conn.sendMessage(from, {
+                text: newsCaption,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "CRICBUZZ LATEST NEWS",
+                        body: news.title,
+                        thumbnailUrl: news.thumbnail || "https://static.cricbuzz.com/images/cricbuzz-logo.png",
+                        sourceUrl: news.link,
+                        mediaType: 1,
+                        renderLargerThumbnail: true
+                    }
+                }
+            }, { quoted: mek });
+        }
+
+        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+
+    } catch (error) {
+        console.error(error);
+        reply("❌ *Scraper Error:* " + error.message);
     }
 });
-
-cmd({
-    pattern: "getlirik",
-    desc: "Retrieve specific lyrics from previous search.",
-    category: "music",
-    use: ".getlirik 1",
-    filename: __filename,
-}, async (conn, mek, m, { from, q, reply }) => {
-    try {
-        const cache = global.lyricCache.get(from);
-        if (!cache) return reply('❌ Silakan cari lirik dulu dengan command .lirik');
-
-        const idx = parseInt(q);
-        if (isNaN(idx) || idx < 1 || idx > cache.length)
-            return reply('❌ Nomor list tidak valid!');
-
-        await conn.sendMessage(from, { react: { text: "🎶", key: mek.key } });
-
-        const song = cache[idx - 1];
-        const { data: lyric } = await axios.get(`https://lrclib.net/api/get/${song.id}`);
-
-        let msg = `🎶 *LIRIK LAGU*\n\n`;
-        msg += `• *Judul* : ${lyric.trackName}\n`;
-        msg += `• *Artis* : ${lyric.artistName}\n`;
-        msg += `• *Album* : ${lyric.albumName || 'N/A'}\n`;
-        msg += `• *Durasi* : ${formatDuration(lyric.duration)}\n\n`;
-        msg += `──────────────────\n\n`;
-        msg += lyric.plainLyrics || lyric.syncedLyrics || '_Lirik tidak tersedia_';
-
-        return reply(msg);
-
-    } catch (e) {
-        console.error(e);
-        reply(`❌ Kesalahan: ${e.message}`);
-    }
-});
+    
