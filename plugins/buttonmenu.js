@@ -1,99 +1,89 @@
 const axios = require('axios');
-const cheerio = require('cheerio');
 const { cmd } = require('../command');
 
-// --- Helper Functions from your code ---
+/**
+ * Helper function to handle the Leofame API logic
+ */
+async function getFreeTiktokLikes(url) {
+    try {
+        // Step 1: Get the page to extract CSRF/Session token and cookies
+        const page = await axios.get('https://leofame.com/free-tiktok-likes', {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36'
+            }
+        });
 
-function dxzExtractThumbnail($, element) {
-    const context = $(element).closest('li, div, article, .cb-lst-itm, .cb-nws-itm, .cb-nws-lst-itm, section');
-    const dxzCricbuzzSelectors = ['.cb-nws-thumb img', '.cb-lst-itm-thumb img', '.cb-nws-itm-thumb img', '.cb-thumb img', '[class*="thumb"] img'];
-    for (const selector of dxzCricbuzzSelectors) {
-        const imgEl = context.find(selector).first();
-        if (imgEl.length) {
-            let src = imgEl.attr('src') || imgEl.attr('data-src') || imgEl.attr('data-original');
-            if (src) return src.includes('http') ? src : `https:${src}`;
-        }
+        const html = page.data;
+        const tokenMatch = html.match(/var\s+token\s*=\s*'([^']+)'/);
+        
+        if (!tokenMatch) throw new Error("Could not find security token.");
+        
+        const token = tokenMatch[1];
+        const cookies = page.headers['set-cookie']
+            ? page.headers['set-cookie'].map(v => v.split(';')[0]).join('; ')
+            : '';
+
+        // Step 2: Send the POST request to the API
+        const res = await axios.post('https://leofame.com/free-tiktok-likes?api=1',
+            new URLSearchParams({
+                token: token,
+                timezone_offset: 'Asia/Karachi', // Updated for your region
+                free_link: url
+            }).toString(),
+            {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Origin': 'https://leofame.com',
+                    'Referer': 'https://leofame.com/free-tiktok-likes',
+                    'Cookie': cookies,
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            }
+        );
+
+        return res.data;
+    } catch (error) {
+        throw error;
     }
-    return '';
-}
-
-function dxzExtractCategory(context) {
-    const allText = context.text().toLowerCase();
-    if (allText.includes('report')) return 'Match Report';
-    if (allText.includes('preview')) return 'Preview';
-    if (allText.includes('analysis')) return 'Analysis';
-    if (allText.includes('live')) return 'Live Updates';
-    return 'Cricket News';
 }
 
 // --- Bot Command ---
 
 cmd({
-    pattern: "cricnews",
-    alias: ["cricketnews", "cricbuzz"],
-    react: "🏏",
-    desc: "Get latest cricket news from Cricbuzz with thumbnails.",
-    category: "news",
+    pattern: "tlike",
+    alias: ["tiktoklike", "freelike"],
+    react: "❤️",
+    desc: "Get free TikTok likes on your video link.",
+    category: "tools",
     filename: __filename
 },           
-async (conn, mek, m, { from, reply }) => {
+async (conn, mek, m, { from, q, reply }) => {
     try {
+        if (!q) return reply("❓ *Please provide a TikTok video link.*\nExample: `.tlike https://vt.tiktok.com/xxxx/`承");
+
+        if (!q.includes('tiktok.com')) return reply("❌ Invalid TikTok URL.");
+
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        const response = await axios.get('https://www.cricbuzz.com/', {
-            headers: { 'User-Agent': 'Mozilla/5.0' },
-            timeout: 15000
-        });
+        const result = await getFreeTiktokLikes(q);
 
-        const $ = cheerio.load(response.data);
-        const dxzNews = [];
-        
-        // Using main list selectors
-        $('.cb-nws-lst li, .cb-lst-itm, .cb-nws-itm').each((index, element) => {
-            if (dxzNews.length >= 10) return; // Limit to top 10 for WhatsApp
-
-            const linkEl = $(element).find('a').first();
-            const title = linkEl.text().trim();
-            let link = linkEl.attr('href') || '';
+        // Leofame usually returns JSON with 'success' or 'error' message
+        if (result.status === 'success' || result.message?.toLowerCase().includes('success')) {
+            const successMsg = `✅ *TikTok Likes Requested!*\n\n` +
+                               `💬 *Status:* ${result.message || 'Processing'}\n` +
+                               `🔗 *URL:* ${q}\n\n` +
+                               `*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ DR KAMRAN*`;
             
-            if (title.length > 15 && link) {
-                const fullLink = link.startsWith('http') ? link : `https://www.cricbuzz.com${link}`;
-                const thumbnail = dxzExtractThumbnail($, element);
-                const category = dxzExtractCategory($(element));
-                
-                dxzNews.push({ title, link: fullLink, thumbnail, category });
-            }
-        });
-
-        if (dxzNews.length === 0) return reply("😞 No cricket news found at the moment.");
-
-        // Sending each news as a separate message with AdReply (Thumbnail)
-        for (let news of dxzNews) {
-            let newsCaption = `*【 ${news.category.toUpperCase()} 】*\n\n` +
-                              `📢 *${news.title}*\n\n` +
-                              `🔗 *Link:* ${news.link}\n\n` +
-                              `*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ DR KAMRAN*`;
-
-            await conn.sendMessage(from, {
-                text: newsCaption,
-                contextInfo: {
-                    externalAdReply: {
-                        title: "CRICBUZZ LATEST NEWS",
-                        body: news.title,
-                        thumbnailUrl: news.thumbnail || "https://static.cricbuzz.com/images/cricbuzz-logo.png",
-                        sourceUrl: news.link,
-                        mediaType: 1,
-                        renderLargerThumbnail: true
-                    }
-                }
-            }, { quoted: mek });
+            reply(successMsg);
+            await conn.sendMessage(from, { react: { text: '🚀', key: m.key } });
+        } else {
+            reply(`⚠️ *Notice:* ${result.message || 'API rejected the request. It might be on cooldown.'}`);
         }
 
-        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
-
-    } catch (error) {
-        console.error(error);
-        reply("❌ *Scraper Error:* " + error.message);
+    } catch (err) {
+        console.error("TikTok Like Error:", err);
+        reply(`❌ *Error:* ${err.message || "Failed to connect to the provider."}`);
     }
 });
-    
+
