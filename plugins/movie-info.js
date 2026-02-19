@@ -1,84 +1,252 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 const sharp = require("sharp");
-const { cmd } = require("../command");
+const config = require("../config");
+const { cmd, commands } = require('../command");
+const { fakevCard } = require("../lib/fakevCard");
 
 const HEADERS = {
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
 };
 
-// ================= SESSION STORAGE =================
-if (!global.movieSessions) global.movieSessions = new Map();
+// ================= SESSION MAP =================
+const sessions = new Map();
 
 // ================= HELPERS =================
 async function getThumbnailBuffer(url) {
   try {
     if (!url) return null;
-    const { data } = await axios.get(url, { responseType: "arraybuffer", headers: HEADERS });
+    const { data } = await axios.get(url, {
+      responseType: "arraybuffer",
+      headers: HEADERS,
+    });
     return await sharp(data).resize(300, 300).jpeg({ quality: 80 }).toBuffer();
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 async function getFinalLink(dlPageUrl) {
   try {
-    const { data } = await axios.get(dlPageUrl, { headers: HEADERS, maxRedirects: 5 });
+    const { data } = await axios.get(dlPageUrl, {
+      headers: HEADERS,
+      maxRedirects: 5,
+    });
     const $ = cheerio.load(data);
-    return $("a.button2.download-link").attr("href") || $("a#download").attr("href");
-  } catch { return null; }
+    return (
+      $("a.button2.download-link").attr("href") ||
+      $("a#download").attr("href")
+    );
+  } catch {
+    return null;
+  }
 }
 
 // ================= COMMAND =================
-cmd({
+arslan(
+  {
     pattern: "film",
     alias: ["movie", "moviebd", "mdbd", "movies"],
     react: "🎬",
-    desc: "Search & download movies from MovieDriveBD.",
+    desc: "Search & download movies (manual reply system)",
     category: "downloader",
-    filename: __filename
-},           
-async (conn, mek, m, { q, reply, sender, from }) => {
+    use: ".film <movie name>",
+    filename: __filename,
+  },
+
+  async (arslan, mek, m, { args, reply, sender }) => {
+    const from = m.chat;
+    const query = args.join(" ").trim();
+    if (!query) return reply("🔎 *Please provide a movie name!*");
+
     try {
-        if (!q) return reply("🔎 *Please provide a movie name!*");
+      await arslan.sendMessage(from, {
+        react: { text: "⏳", key: m.key },
+      });
 
-        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+      // ================= SEARCH =================
+      const searchUrl = `https://moviedrivebd.com/?s=${encodeURIComponent(
+        query
+      )}`;
+      const { data } = await axios.get(searchUrl, { headers: HEADERS });
+      const $ = cheerio.load(data);
 
-        // ================= SEARCH PHASE =================
-        const searchUrl = `https://moviedrivebd.com/?s=${encodeURIComponent(q)}`;
-        const { data } = await axios.get(searchUrl, { headers: HEADERS });
-        const $ = cheerio.load(data);
+      const results = [];
+      $("div.result-item").each((i, el) => {
+        const title = $(el)
+          .find("article > div.details > div.title > a")
+          .text()
+          .trim();
+        const link = $(el)
+          .find("article > div.details > div.title > a")
+          .attr("href");
+        if (link) results.push({ title, link });
+      });
 
-        const results = [];
-        $("div.result-item").each((i, el) => {
-            const title = $(el).find("article > div.details > div.title > a").text().trim();
-            const link = $(el).find("article > div.details > div.title > a").attr("href");
-            if (link) results.push({ title, link });
-        });
+      if (!results.length) return reply("❌ No results found!");
 
-        if (!results.length) return reply("❌ No results found!");
+      let text = `🎬 *KAMRAN-MD Movies Search*\n\n`;
+      text += `🔎 *Query:* ${query}\n\n`;
 
-        let searchText = `🎬 *MOVIE SEARCH RESULTS*\n\n🔎 *Query:* ${q}\n\n`;
-        results.forEach((v, i) => { searchText += `*${i + 1}.* ${v.title}\n`; });
-        searchText += `\n✳️ *Reply with number to select movie.*`;
+      results.forEach((v, i) => {
+        text += `*${i + 1}.* ${v.title}\n`;
+      });
 
-        const sentMsg = await reply(searchText);
+      text += `\n✳️ Reply with *movie number* to select`;
 
-        // Save session for this user
-        global.movieSessions.set(sender, {
-            stage: "search",
-            results,
-            from: from
-        });
+      await arslan.sendMessage(
+        from,
+        { text, footer: config.FOOTER },
+        { quoted: fakevCard }
+      );
 
-        // ================= SESSION HANDLER =================
-        // Ye part aapke main bot handler (index.js) mein input catch karne ke liye setup hota hai
-        // Lekin yahan main template de raha hoon jo aksar 'upsert' ke through handle hota hai.
+      sessions.set(sender, {
+        stage: "search",
+        results,
+      });
 
+      // ================= MANUAL HANDLER =================
+      const handler = async (update) => {
+        const msg = update.messages?.[0];
+        if (!msg?.message) return;
+
+        // 🔥 FIX: ignore bot reactions
+        if (msg.message.reactionMessage) return;
+
+        if (msg.key.remoteJid !== from) return;
+        if (!sessions.has(sender)) return;
+
+        const body =
+          msg.message.conversation ||
+          msg.message.extendedTextMessage?.text ||
+          msg.message.imageMessage?.caption ||
+          msg.message.videoMessage?.caption ||
+          "";
+
+        const choice = parseInt(body);
+        if (isNaN(choice)) return;
+
+        const session = sessions.get(sender);
+
+        // ========== MOVIE SELECT ==========
+        if (session.stage === "search") {
+          const selected = session.results[choice - 1];
+          if (!selected) return reply("❌ Invalid movie number");
+
+          setTimeout(() => {
+            arslan.sendMessage(from, {
+              react: { text: "📑", key: msg.key },
+            });
+          }, 300);
+
+          const { data: detData } = await axios.get(selected.link, {
+            headers: HEADERS,
+          });
+          const $d = cheerio.load(detData);
+
+          const movie = {
+            title: $d("h1").text().trim(),
+            imdb: $d("#repimdb > strong").text() || "N/A",
+            runtime: $d(".runtime").text() || "N/A",
+            date: $d(".date").text() || "N/A",
+            image: $d(".poster img").attr("src"),
+            initLink: $d("a[href*='/links/']").first().attr("href"),
+          };
+
+          const { data: qData } = await axios.get(movie.initLink, {
+            headers: HEADERS,
+          });
+          const dlPage = cheerio.load(qData)("#link").attr("href");
+
+          const { data: last } = await axios.get(dlPage, {
+            headers: HEADERS,
+          });
+          const $l = cheerio.load(last);
+
+          const downloads = [];
+          $l(".download-section a.download-btn").each((i, el) => {
+            downloads.push({
+              quality: $l(el)
+                .find(".btn-text")
+                .text()
+                .replace(/\s+/g, " ")
+                .trim(),
+              dlPage: $l(el).attr("href"),
+            });
+          });
+
+          let cap = `🎬 *${movie.title}*
+
+⭐ KANRAN-MD Movies: ${movie.imdb}
+⏳ Duration: ${movie.runtime}
+📅 Date: ${movie.date}
+
+*Available Qualities:*\n`;
+
+          downloads.forEach((d, i) => {
+            cap += `*${i + 1}.* ${d.quality}\n`;
+          });
+
+          cap += `\n✳️ Reply with *quality number*`;
+
+          await arslan.sendMessage(
+            from,
+            {
+              image: { url: movie.image },
+              caption: cap,
+              footer: config.FOOTER,
+            },
+            { quoted: fakevCard }
+          );
+
+          session.stage = "quality";
+          session.movie = movie;
+          session.downloads = downloads;
+        }
+
+        // ========== QUALITY SELECT ==========
+        else if (session.stage === "quality") {
+          const selected = session.downloads[choice - 1];
+          if (!selected) return reply("❌ Invalid quality number");
+
+          setTimeout(() => {
+            arslan.sendMessage(from, {
+              react: { text: "📥", key: msg.key },
+            });
+          }, 300);
+
+          const finalUrl = await getFinalLink(selected.dlPage);
+          if (!finalUrl)
+            return reply("❌ Download link expired. Try another quality.");
+
+          await arslan.sendMessage(
+            from,
+            {
+              document: { url: finalUrl },
+              mimetype: "video/mp4",
+              fileName: `${session.movie.title}.mp4`,
+              jpegThumbnail: await getThumbnailBuffer(
+                session.movie.image
+              ),
+              caption: `✅ *${session.movie.title}*\n${selected.quality}\n\n> ᴀʀꜱʟᴀɴ-ᴍᴅ`,
+            },
+            { quoted: msg }
+          );
+
+          sessions.delete(sender);
+        }
+      };
+
+      arslan.ev.on("messages.upsert", handler);
+
+      setTimeout(() => {
+        sessions.delete(sender);
+        arslan.ev.off("messages.upsert", handler);
+      }, 15 * 60 * 1000);
     } catch (err) {
-        console.error(err);
-        reply("❌ Error while searching movie!");
+      console.log(err);
+      reply("❌ Error while processing movie!");
     }
-});
-
-// Note: Interactive Reply Logic (Catching numbers 1, 2, 3) 
-// Usually placed in your message listener.
-      
+  }
+);
