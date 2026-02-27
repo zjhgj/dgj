@@ -2,64 +2,72 @@ const { cmd } = require('../command');
 const axios = require('axios');
 
 cmd({
-    pattern: "movie",
-    alias: ["cinesubz", "dinka", "m-dl"],
-    react: "🎬",
-    desc: "Extract movie links from Dinka or Cinesubz.",
+    pattern: "donghua",
+    alias: ["dh", "anime-detail"],
+    react: "🏮",
+    desc: "Get details and download links for Donghua movies.",
     category: "download",
-    use: ".movie <url>",
+    use: ".donghua <url>",
     filename: __filename
 }, async (conn, mek, m, { from, reply, text }) => {
     
-    // SAFE KEY LOGIC: "reading key" error se bachne ke liye
+    // SAFE KEY LOGIC: "reading key" error fix karne ke liye
     const msgKey = m?.key || mek?.key || null;
 
     try {
-        if (!text) return reply("🔗 Please provide a DinkaMovies or Cinesubz link!");
-
-        // URL detect karke sahi API select karna
-        let apiUrl = "";
-        if (text.includes("cinesubz.lk")) {
-            apiUrl = `https://api.srihub.store/movie/cinesubzdl?url=${encodeURIComponent(text)}`;
-        } else if (text.includes("blogspot.com")) {
-            apiUrl = `https://api.srihub.store/movie/dinkadl?url=${encodeURIComponent(text)}&apikey=dew_3sF2K3607ScVjFT0EpYlPu3HEeZmZbSKJR7uj9m7`;
-        } else {
-            return reply("❌ Invalid Link! Sirf Cinesubz.lk ya DinkaMovies (Blogspot) links support hain.");
-        }
+        if (!text) return reply("🔗 Please provide a DonghuaFilm URL!\nExample: .donghua https://donghuafilm.com/anime/soul-land-movie-sword-of-dust/");
 
         if (msgKey) await conn.sendMessage(from, { react: { text: '⏳', key: msgKey } });
-        
-        // Wait message handle karna taaki "key" error na aaye
-        const waitMsg = await conn.sendMessage(from, { text: "🎬 *Extracting movie data...*" }, { quoted: m });
 
-        const response = await axios.get(apiUrl);
+        // Stable Loading Message
+        let waitMsg = await conn.sendMessage(from, { text: "🏮 *Fetching Donghua details...*" }, { quoted: m });
+
+        // API Configuration
+        const apiUrl = `https://api.cuki.biz.id/api/movie/donghua-detail?apikey=cuki-x&url=${encodeURIComponent(text)}`;
+        
+        const response = await axios.get(apiUrl, {
+            headers: { 'x-api-key': 'cuki-x' }
+        });
+
         const data = response.data;
 
-        if (!data || data.status === false) throw new Error("Link extract nahi ho paya!");
+        if (!data || data.status !== 200 || !data.result) {
+            throw new Error("Data nahi mila! URL check karein ya API down ho sakti hai.");
+        }
 
-        const movie = data.result;
-        let resultMsg = `🎬 *MOVIE EXTRACTOR*\n\n`;
-        resultMsg += `📝 *Title:* ${movie.title || "N/A"}\n`;
-        resultMsg += `📅 *Year:* ${movie.year || "N/A"}\n\n`;
+        const dh = data.result;
+
+        // Message Formatting
+        let resMsg = `🏮 *DONGHUA MOVIE DETAIL*\n\n`;
+        resMsg += `📝 *Title:* ${dh.title || "N/A"}\n`;
+        resMsg += `🎬 *Type:* ${dh.type || "N/A"}\n`;
+        resMsg += `📅 *Status:* ${dh.status || "N/A"}\n`;
+        resMsg += `🌟 *Rating:* ${dh.rating || "N/A"}\n\n`;
         
-        if (movie.links && movie.links.length > 0) {
-            movie.links.forEach((link, index) => {
-                resultMsg += `${index + 1}. *${link.quality}* (${link.size || '??'})\n🔗 ${link.url}\n\n`;
+        // Handling Episode/Download Links
+        if (dh.episodes && dh.episodes.length > 0) {
+            resMsg += `📥 *Download Links:*\n`;
+            dh.episodes.forEach((ep) => {
+                resMsg += `\n📍 *${ep.title || 'Episode'}*\n🔗 ${ep.url}\n`;
             });
         }
 
-        // Editing message safely
+        resMsg += `\n> © PROVA MD ❤️`;
+
+        // SAFE EDIT: Checking if waitMsg.key exists before editing
         if (waitMsg && waitMsg.key) {
-            await conn.sendMessage(from, { text: resultMsg, edit: waitMsg.key });
+            await conn.sendMessage(from, { text: resMsg, edit: waitMsg.key });
         } else {
-            await reply(resultMsg);
+            await conn.sendMessage(from, { text: resMsg }, { quoted: m });
         }
 
         if (msgKey) await conn.sendMessage(from, { react: { text: '✅', key: msgKey } });
 
     } catch (e) {
-        reply(`❌ *Failed:* ${e.message}`);
+        console.error(e);
+        // Error handling without crashing
+        await conn.sendMessage(from, { text: `❌ *Error:* ${e.message}` }, { quoted: m });
         if (msgKey) await conn.sendMessage(from, { react: { text: '❌', key: msgKey } });
     }
 });
-                
+
