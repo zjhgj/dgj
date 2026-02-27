@@ -128,8 +128,8 @@ cmd({
 });
 
 cmd({
-    pattern: "txt2vid",
-    alias: ["sora", "aivideo"],
+    pattern: "txt2vid2",
+    alias: ["sora2", "aivideo3"],
     desc: "Generate AI Video from text",
     category: "ai",
     react: "🎬",
