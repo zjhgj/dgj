@@ -11,7 +11,6 @@ const headers = {
 
 let cookieStore = {};
 
-// Helper: Extract Cookies
 function extract(res) {
   const setC = res.headers['set-cookie'];
   if (setC) {
@@ -25,7 +24,6 @@ function extract(res) {
 function getkukis() { return Object.entries(cookieStore).map(([k, v]) => `${k}=${v}`).join('; '); }
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
-// --- BOT COMMAND ---
 cmd({
     pattern: "sora",
     alias: ["txt2video", "vidgen"],
@@ -36,16 +34,27 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, reply, q }) => {
     
-    // FIX: Safe Key logic to prevent 'reading key' error
+    // FIX 1: Ultimate Safe Key detection
     const msgKey = m?.key || mek?.key || null;
 
     try {
         if (!q) return reply("📝 Please provide a prompt (e.g., .sora a cat running on the moon)");
 
         if (msgKey) await conn.sendMessage(from, { react: { text: '⏳', key: msgKey } });
-        const waitMsg = await reply("🎥 *SORA AI VIDEO GENERATION...*\n\nStep 1: Creating Temporary Account...");
+        
+        // FIX 2: Check if waitMsg returns a valid object before using .key
+        let waitMsg = await conn.sendMessage(from, { text: "🎥 *SORA AI VIDEO GENERATION...*\n\nStep 1: Creating Temporary Account..." }, { quoted: m });
 
-        // 1. Setup Auth (OTP & Login)
+        // Helper function for safe editing
+        const safeEdit = async (text) => {
+            if (waitMsg && waitMsg.key) {
+                await conn.sendMessage(from, { text: text, edit: waitMsg.key });
+            } else {
+                await conn.sendMessage(from, { text: text }, { quoted: m });
+            }
+        };
+
+        // 1. Setup Auth
         const randomName = crypto.randomBytes(6).toString('hex');
         const email = `${randomName}@akunlama.com`;
         
@@ -62,7 +71,7 @@ cmd({
         }
         if (!code) throw new Error('OTP Code Timeout. Please try again.');
 
-        await conn.sendMessage(from, { text: "Step 2: Authenticating session...", edit: waitMsg.key });
+        await safeEdit("Step 2: Authenticating session...");
 
         const csrfRes = await axios.get('https://www.nanobana.net/api/auth/csrf', { headers: { ...headers, Cookie: getkukis() } });
         extract(csrfRes);
@@ -74,7 +83,7 @@ cmd({
         }).then(extract);
 
         // 2. Submit Task
-        await conn.sendMessage(from, { text: "Step 3: Prompting Sora & Generating Video...", edit: waitMsg.key });
+        await safeEdit("Step 3: Prompting Sora & Generating Video...");
         const subRes = await axios.post('https://www.nanobana.net/api/sora2/text-to-video/generate', 
             { prompt: q, aspect_ratio: 'landscape', n_frames: '10', remove_watermark: true }, 
             { headers: { ...headers, 'Content-Type': 'application/json', Cookie: getkukis() } }
@@ -89,14 +98,14 @@ cmd({
                 headers: { ...headers, Cookie: getkukis() }
             });
             result = chk.data;
-            if (result.status === 'success' || result.status === 'completed' || result.resultUrls?.length > 0) break;
+            if (result.status === 'success' || result.status === 'completed' || (result.resultUrls && result.resultUrls.length > 0)) break;
             if (result.status === 'failed') throw new Error('Generation failed by Sora filter.');
         }
 
-        const videoUrl = result.resultUrls?.[0] || (result.saved?.[0]?.url);
+        const videoUrl = result.resultUrls?.[0] || (result.saved && result.saved[0] ? result.saved[0].url : null);
         if (!videoUrl) throw new Error("Video URL not found in result.");
 
-        // 4. Send Result
+        // 4. Send Final Result
         await conn.sendMessage(from, { 
             video: { url: videoUrl },
             caption: `🎥 *SORA AI VIDEO COMPLETED*\n\n📝 *Prompt:* ${q}\n\n> © PROVA MD ❤️`
@@ -106,8 +115,9 @@ cmd({
 
     } catch (e) {
         console.error(e);
-        reply(`❌ *Sora Failed:* ${e.message}`);
+        // Using a direct reply for error to ensure visibility
+        await conn.sendMessage(from, { text: `❌ *Sora Failed:* ${e.message}` }, { quoted: m });
         if (msgKey) await conn.sendMessage(from, { react: { text: '❌', key: msgKey } });
     }
 });
-    
+                                                                                                                                          
