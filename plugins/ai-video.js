@@ -1,12 +1,12 @@
 const { cmd } = require('../command');
 const axios = require('axios');
-const crypto = require('crypto');
+const cheerio = require('cheerio');
 
-// Global Headers
+// Configuration
+const delay = ms => new Promise(r => setTimeout(r, ms));
 const headers = {
   'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
-  'origin': 'https://www.nanobana.net',
-  'referer': 'https://www.nanobana.net/m/sora2'
+  'Accept-Language': 'id-ID,id;q=0.9,en-AU;q=0.8,en;q=0.7,en-US;q=0.6'
 };
 
 let cookieStore = {};
@@ -22,30 +22,33 @@ function extract(res) {
 }
 
 function getkukis() { return Object.entries(cookieStore).map(([k, v]) => `${k}=${v}`).join('; '); }
-const delay = ms => new Promise(r => setTimeout(r, ms));
 
+// --- BOT COMMAND ---
 cmd({
     pattern: "sora",
-    alias: ["txt2video", "vidgen"],
-    react: "🎥",
-    desc: "Generate AI Video from text prompt using Sora",
+    alias: ["sora2", "genvideo"],
+    react: "🎬",
+    desc: "Generate AI Video from prompt (Nanobanana ORG)",
     category: "ai",
-    use: ".sora <prompt>",
+    use: ".sora <prompt> | <ratio>",
     filename: __filename
 }, async (conn, mek, m, { from, reply, q }) => {
     
-    // FIX 1: Ultimate Safe Key detection
+    // FIX: Safe Key Detection
     const msgKey = m?.key || mek?.key || null;
 
     try {
-        if (!q) return reply("📝 Please provide a prompt (e.g., .sora a cat running on the moon)");
+        if (!q) return reply("📝 Example: .sora a cat dancing | portrait");
+
+        const [prompt, ratio] = q.split('|').map(v => v.trim());
+        const aspect_ratio = ratio || 'landscape';
 
         if (msgKey) await conn.sendMessage(from, { react: { text: '⏳', key: msgKey } });
         
-        // FIX 2: Check if waitMsg returns a valid object before using .key
-        let waitMsg = await conn.sendMessage(from, { text: "🎥 *SORA AI VIDEO GENERATION...*\n\nStep 1: Creating Temporary Account..." }, { quoted: m });
+        // Step 1: Send Wait Message Safely
+        let waitMsg = await conn.sendMessage(from, { text: "🎬 *SORA AI: STARTING...*\n\nStep 1: Registering temporary account..." }, { quoted: m });
 
-        // Helper function for safe editing
+        // Safe Edit Function
         const safeEdit = async (text) => {
             if (waitMsg && waitMsg.key) {
                 await conn.sendMessage(from, { text: text, edit: waitMsg.key });
@@ -54,70 +57,75 @@ cmd({
             }
         };
 
-        // 1. Setup Auth
-        const randomName = crypto.randomBytes(6).toString('hex');
+        const randomName = Math.random().toString(36).substring(2, 12);
         const email = `${randomName}@akunlama.com`;
-        
-        await axios.post('https://www.nanobana.net/api/auth/email/send', { email }, { headers: { ...headers, 'Content-Type': 'application/json' } }).then(extract);
-        
+
+        // 2. Auth Process
+        await axios.post('https://nanobanana.org/api/auth/send-code', { email }, {
+            headers: { ...headers, 'Content-Type': 'application/json', origin: 'https://nanobanana.org', referer: 'https://nanobanana.org/sora2' }
+        }).then(extract);
+
+        await safeEdit("🎬 *SORA AI: FETCHING OTP...*\n\nStep 2: Monitoring temporary mailbox for sign-in code...");
+
         let code = null;
         for (let i = 0; i < 15; i++) {
             await delay(4000);
-            const res = await axios.get(`https://akunlama.com/api/v1/mail/list?recipient=${randomName}`);
-            if (res.data?.length > 0) {
-                const match = res.data[0].message.headers.subject.match(/Code:\s*(\d{6})/i);
+            const mailRes = await axios.get(`https://akunlama.com/api/v1/mail/list?recipient=${randomName}`);
+            if (mailRes.data?.length > 0) {
+                const mail = mailRes.data[0];
+                const htmlRes = await axios.get(`https://akunlama.com/api/v1/mail/getHtml?region=${mail.storage.region}&key=${mail.storage.key}`);
+                const $ = cheerio.load(htmlRes.data);
+                const text = $('body').text().replace(/\s+/g, ' ').trim();
+                const match = text.match(/sign in:\s*(\d{6})/);
                 if (match) { code = match[1]; break; }
             }
         }
-        if (!code) throw new Error('OTP Code Timeout. Please try again.');
+        if (!code) throw new Error("OTP Timeout. Server might be busy.");
 
-        await safeEdit("Step 2: Authenticating session...");
+        // 3. Login
+        await safeEdit("🎬 *SORA AI: LOGGING IN...*\n\nStep 3: Creating session and CSRF handshake...");
+        const csrfToken = await axios.get('https://nanobanana.org/api/auth/csrf', {
+            headers: { ...headers, referer: 'https://nanobanana.org/sora2', Cookie: getkukis() }
+        }).then(res => { extract(res); return res.data.csrfToken; });
 
-        const csrfRes = await axios.get('https://www.nanobana.net/api/auth/csrf', { headers: { ...headers, Cookie: getkukis() } });
-        extract(csrfRes);
-        const csrfToken = csrfRes.data.csrfToken;
-
-        const loginData = `email=${encodeURIComponent(email)}&code=${code}&redirect=false&csrfToken=${csrfToken}&callbackUrl=${encodeURIComponent('https://www.nanobana.net/m/sora2')}`;
-        await axios.post('https://www.nanobana.net/api/auth/callback/email-code', loginData, {
-            headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded', 'x-auth-return-redirect': '1', Cookie: getkukis() }
+        const loginData = new URLSearchParams({ email, code, redirect: 'false', csrfToken, callbackUrl: 'https://nanobanana.org/sora2' });
+        await axios.post('https://nanobanana.org/api/auth/callback/email-code', loginData.toString(), {
+            headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded', 'x-auth-return-redirect': '1', origin: 'https://nanobanana.org', referer: 'https://nanobanana.org/sora2', Cookie: getkukis() }
         }).then(extract);
+        await axios.get('https://nanobanana.org/api/auth/session', { headers: { ...headers, Cookie: getkukis() } }).then(extract);
 
-        // 2. Submit Task
-        await safeEdit("Step 3: Prompting Sora & Generating Video...");
-        const subRes = await axios.post('https://www.nanobana.net/api/sora2/text-to-video/generate', 
-            { prompt: q, aspect_ratio: 'landscape', n_frames: '10', remove_watermark: true }, 
-            { headers: { ...headers, 'Content-Type': 'application/json', Cookie: getkukis() } }
-        );
-        const taskId = subRes.data.taskId;
+        // 4. Submit & Wait
+        await safeEdit(`🎬 *SORA AI: GENERATING...*\n\nStep 4: Sora is rendering your video (${aspect_ratio})...`);
+        const subRes = await axios.post('https://nanobanana.org/api/sora2/submit', 
+            { model: 'sora2', type: 'text-to-video', prompt, aspect_ratio, n_frames: '10', remove_watermark: true }, 
+            { headers: { ...headers, 'Content-Type': 'application/json', origin: 'https://nanobanana.org', referer: 'https://nanobanana.org/sora2', Cookie: getkukis() } }
+        ).then(res => res.data.task_id);
 
-        // 3. Polling Result
         let result;
+        const pendingStatus = ['processing', 'pending', 'queue', 'in_queue', 'starting'];
         for (let i = 0; i < 30; i++) {
-            await delay(6000);
-            const chk = await axios.get(`https://www.nanobana.net/api/sora2/text-to-video/task/${taskId}?save=1&prompt=${encodeURIComponent(q)}`, {
+            await delay(10000);
+            const chk = await axios.get(`https://nanobanana.org/api/sora2/status/${subRes}`, {
                 headers: { ...headers, Cookie: getkukis() }
             });
-            result = chk.data;
-            if (result.status === 'success' || result.status === 'completed' || (result.resultUrls && result.resultUrls.length > 0)) break;
-            if (result.status === 'failed') throw new Error('Generation failed by Sora filter.');
+            result = chk.data.task;
+            if (!pendingStatus.includes(result.status.toLowerCase())) break;
         }
 
-        const videoUrl = result.resultUrls?.[0] || (result.saved && result.saved[0] ? result.saved[0].url : null);
-        if (!videoUrl) throw new Error("Video URL not found in result.");
+        if (result.status.toLowerCase() !== 'success' && !result.video_url) throw new Error("Generation failed or filtered.");
 
-        // 4. Send Final Result
+        // 5. Send Result
         await conn.sendMessage(from, { 
-            video: { url: videoUrl },
-            caption: `🎥 *SORA AI VIDEO COMPLETED*\n\n📝 *Prompt:* ${q}\n\n> © PROVA MD ❤️`
+            video: { url: result.video_url || result.result },
+            caption: `🎬 *SORA VIDEO GENERATED*\n\n📝 *Prompt:* ${prompt}\n📐 *Ratio:* ${aspect_ratio}\n\n> © PROVA MD ❤️`
         }, { quoted: m });
 
         if (msgKey) await conn.sendMessage(from, { react: { text: '✅', key: msgKey } });
 
     } catch (e) {
         console.error(e);
-        // Using a direct reply for error to ensure visibility
-        await conn.sendMessage(from, { text: `❌ *Sora Failed:* ${e.message}` }, { quoted: m });
+        await conn.sendMessage(from, { text: `❌ *Sora Error:* ${e.message}` }, { quoted: m });
         if (msgKey) await conn.sendMessage(from, { react: { text: '❌', key: msgKey } });
     }
 });
-                                                                                                                                          
+          
