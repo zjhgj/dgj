@@ -1,89 +1,81 @@
-const axios = require('axios');
 const { cmd } = require('../command');
-
-/**
- * Helper function to handle the Leofame API logic
- */
-async function getFreeTiktokLikes(url) {
-    try {
-        // Step 1: Get the page to extract CSRF/Session token and cookies
-        const page = await axios.get('https://leofame.com/free-tiktok-likes', {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36'
-            }
-        });
-
-        const html = page.data;
-        const tokenMatch = html.match(/var\s+token\s*=\s*'([^']+)'/);
-        
-        if (!tokenMatch) throw new Error("Could not find security token.");
-        
-        const token = tokenMatch[1];
-        const cookies = page.headers['set-cookie']
-            ? page.headers['set-cookie'].map(v => v.split(';')[0]).join('; ')
-            : '';
-
-        // Step 2: Send the POST request to the API
-        const res = await axios.post('https://leofame.com/free-tiktok-likes?api=1',
-            new URLSearchParams({
-                token: token,
-                timezone_offset: 'Asia/Karachi', // Updated for your region
-                free_link: url
-            }).toString(),
-            {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Origin': 'https://leofame.com',
-                    'Referer': 'https://leofame.com/free-tiktok-likes',
-                    'Cookie': cookies,
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
-            }
-        );
-
-        return res.data;
-    } catch (error) {
-        throw error;
-    }
-}
-
-// --- Bot Command ---
+const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
+const axios = require('axios');
+const FormData = require('form-data');
+const fs = require('fs');
 
 cmd({
-    pattern: "tlike",
-    alias: ["tiktoklike", "freelike"],
-    react: "❤️",
-    desc: "Get free TikTok likes on your video link.",
-    category: "tools",
+    pattern: "fakecall",
+    alias: ["fcall", "maker-call"],
+    react: "📞",
+    desc: "Create a fake WhatsApp call screen image.",
+    category: "maker",
+    use: ".fakecall name|time|image_url (or reply image)",
     filename: __filename
-},           
-async (conn, mek, m, { from, q, reply }) => {
+}, async (conn, mek, m, { from, reply, text, usedPrefix, command }) => {
+    
+    // FIX: Safe Key logic to stop the 'reading key' error
+    const msgKey = m?.key || mek?.key || null;
+
     try {
-        if (!q) return reply("❓ *Please provide a TikTok video link.*\nExample: `.tlike https://vt.tiktok.com/xxxx/`承");
+        if (!text) return reply(`*Contoh: ${usedPrefix + command} Kamran|13:46|image_url*\nAtau reply gambar dengan:\n*${usedPrefix + command} Kamran|13:46*`);
 
-        if (!q.includes('tiktok.com')) return reply("❌ Invalid TikTok URL.");
+        const args = text.split('|').map(v => v.trim());
+        if (args.length < 2) return reply(`*Format salah!* ⚠️\n\nGunakan format: *nama|waktu|image_url*`);
 
-        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
+        const nama = args[0];
+        const waktu = args[1];
+        let image = args[2] || null;
 
-        const result = await getFreeTiktokLikes(q);
+        if (msgKey) await conn.sendMessage(from, { react: { text: '⏳', key: msgKey } });
 
-        // Leofame usually returns JSON with 'success' or 'error' message
-        if (result.status === 'success' || result.message?.toLowerCase().includes('success')) {
-            const successMsg = `✅ *TikTok Likes Requested!*\n\n` +
-                               `💬 *Status:* ${result.message || 'Processing'}\n` +
-                               `🔗 *URL:* ${q}\n\n` +
-                               `*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ DR KAMRAN*`;
+        // Handling Image (URL or Quoted)
+        if (!image) {
+            const quoted = m.quoted ? m.quoted : (m.message?.extendedTextMessage?.contextInfo?.quotedMessage || m.message?.imageMessage || m);
+            const mime = (m.quoted ? m.quoted.mimetype : m.mimetype) || (quoted.mimetype) || "";
+
+            if (!mime.includes("image")) return reply(`*🍂 Reply gambar atau sertakan URL gambar!*`);
+
+            // Step 1: Download & Upload to Uguu.se
+            const stream = await downloadContentFromMessage(m.quoted ? m.quoted : m.message.imageMessage, "image");
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
             
-            reply(successMsg);
-            await conn.sendMessage(from, { react: { text: '🚀', key: m.key } });
-        } else {
-            reply(`⚠️ *Notice:* ${result.message || 'API rejected the request. It might be on cooldown.'}`);
+            const tempFile = `./tmp_call_${Date.now()}.png`;
+            fs.writeFileSync(tempFile, buffer);
+
+            const form = new FormData();
+            form.append('files[]', fs.createReadStream(tempFile), 'image.png');
+
+            const upload = await axios.post('https://uguu.se/upload.php', form, {
+                headers: form.getHeaders()
+            });
+
+            fs.unlinkSync(tempFile); // Cleanup temp file
+            
+            if (!upload.data?.files?.[0]?.url) throw new Error('Upload to Uguu.se failed');
+            image = upload.data.files[0].url;
         }
 
-    } catch (err) {
-        console.error("TikTok Like Error:", err);
-        reply(`❌ *Error:* ${err.message || "Failed to connect to the provider."}`);
+        // Step 2: Call Maker API
+        const endpoint = `https://kayzzidgf.my.id/api/maker/fakecall?nama=${encodeURIComponent(nama)}&waktu=${encodeURIComponent(waktu)}&image=${encodeURIComponent(image)}&apikey=FreeLimit`;
+
+        const res = await axios.get(endpoint, { responseType: 'arraybuffer' });
+
+        if (!res.headers['content-type'].includes('image')) throw new Error('API returned non-image response');
+
+        // Step 3: Send Final Image
+        await conn.sendMessage(from, { 
+            image: Buffer.from(res.data), 
+            caption: `📞 *FAKE CALL CREATED*\n👤 *To:* ${nama}\n⏰ *Time:* ${waktu}\n\n> © PROVA MD ❤️` 
+        }, { quoted: m });
+
+        if (msgKey) await conn.sendMessage(from, { react: { text: '✅', key: msgKey } });
+
+    } catch (e) {
+        console.error(e);
+        reply(`*Gagal membuat fake call!* 🍂\n${e.message}`);
+        if (msgKey) await conn.sendMessage(from, { react: { text: '❌', key: msgKey } });
     }
 });
-
+            
