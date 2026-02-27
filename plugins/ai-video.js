@@ -1,113 +1,113 @@
-const { cmd } = require('../command'); // Aapke bot ka command handler
-const fetch = require('node-fetch');
-const yts = require('yt-search');
+const { cmd } = require('../command');
+const axios = require('axios');
+const crypto = require('crypto');
 
-// Islamic Keywords Filter (Bot sirf inhi topics par kaam karega)
-const islamicKeywords = [
-    'naat', 'quran', 'surah', 'hadith', 'islamic', 'dua', 'azan', 'tafseer', 
-    'bayan', 'tilawat', 'hamd', 'nasheed', 'madarsa', 'sunnah', 'salah', 
-    'hajj', 'umrah', 'ramadan', 'roza', 'sehri', 'iftar', 'zakat', 'iman'
-];
+// Global Headers
+const headers = {
+  'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
+  'origin': 'https://www.nanobana.net',
+  'referer': 'https://www.nanobana.net/m/sora2'
+};
 
+let cookieStore = {};
+
+// Helper: Extract Cookies
+function extract(res) {
+  const setC = res.headers['set-cookie'];
+  if (setC) {
+    setC.forEach(c => {
+      const parts = c.split(';')[0].split('=');
+      if (parts.length > 1) cookieStore[parts[0]] = parts.slice(1).join('=');
+    });
+  }
+}
+
+function getkukis() { return Object.entries(cookieStore).map(([k, v]) => `${k}=${v}`).join('; '); }
+const delay = ms => new Promise(r => setTimeout(r, ms));
+
+// --- BOT COMMAND ---
 cmd({
-    pattern: "iplay",
-    alias: ["iaudio", "ivideo", "Islamic"],
-    react: "🕌",
-    desc: "Download Islamic Content from YouTube.",
-    category: "download",
-    use: '.play <title>',
+    pattern: "sora",
+    alias: ["txt2video", "vidgen"],
+    react: "🎥",
+    desc: "Generate AI Video from text prompt using Sora",
+    category: "ai",
+    use: ".sora <prompt>",
     filename: __filename
-}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
+}, async (conn, mek, m, { from, reply, q }) => {
+    
+    // FIX: Safe Key logic to prevent 'reading key' error
+    const msgKey = m?.key || mek?.key || null;
+
     try {
-        if (!q) return reply(`*🤔 Kya search karna hai?*\n\n*Example:* ${prefix}${command} Surah Rahman`);
+        if (!q) return reply("📝 Please provide a prompt (e.g., .sora a cat running on the moon)");
 
-        // Check if query is Islamic
-        const queryLower = q.toLowerCase();
-        const isIslamic = islamicKeywords.some(keyword => queryLower.includes(keyword));
+        if (msgKey) await conn.sendMessage(from, { react: { text: '⏳', key: msgKey } });
+        const waitMsg = await reply("🎥 *SORA AI VIDEO GENERATION...*\n\nStep 1: Creating Temporary Account...");
 
-        if (!isIslamic) {
-            return reply("*⚠️ Yeh bot sirf Islamic content download karne ke liye hai.*\n\nKripya Islamic keywords use karein (e.g., Naat, Quran, Hadees, etc).");
-        }
-
-        // Search on YouTube
-        const search = await yts(q);
-        const video = search.videos[0];
-        if (!video) return reply("❌ Content nahi mila!");
-
-        // Duration Check (Optional)
-        const infoMessage = `*✍🏻 ISLAMIC CONTENT FOUND*
-
-🍁 *Title:* ${video.title}
-⏰ *Duration:* ${video.timestamp}
-🔗 *Link:* ${video.url}
-
-> *Wait a moment while I send your file...*
-> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`;
-
-        // Send Info Message with Thumbnail
-        await conn.sendMessage(from, {
-            image: { url: video.thumbnail },
-            caption: infoMessage,
-            contextInfo: {
-                externalAdReply: {
-                    title: "KAMRAN-MD ISLAMIC AI",
-                    body: "Searching & Downloading...",
-                    mediaType: 1,
-                    sourceUrl: video.url,
-                    showAdAttribution: true
-                }
-            }
-        }, { quoted: mek });
-
-        // --- Downloading Process ---
-        // Hum multiple APIs use kar rahe hain jo aapke original code mein thi
-        let downloadUrl = "";
+        // 1. Setup Auth (OTP & Login)
+        const randomName = crypto.randomBytes(6).toString('hex');
+        const email = `${randomName}@akunlama.com`;
         
-        if (command === 'play' || command === 'audio') {
-            // Audio API
-            let res = await fetch(`https://api.zenkey.my.id/api/download/ytmp3?apikey=zenkey&url=${video.url}`);
-            let json = await res.json();
-            downloadUrl = json.result?.url || json.url;
-
-            if (downloadUrl) {
-                await conn.sendMessage(from, { 
-                    audio: { url: downloadUrl }, 
-                    mimetype: 'audio/mpeg' 
-                }, { quoted: mek });
-            } else {
-                throw new Error("Audio link not found");
+        await axios.post('https://www.nanobana.net/api/auth/email/send', { email }, { headers: { ...headers, 'Content-Type': 'application/json' } }).then(extract);
+        
+        let code = null;
+        for (let i = 0; i < 15; i++) {
+            await delay(4000);
+            const res = await axios.get(`https://akunlama.com/api/v1/mail/list?recipient=${randomName}`);
+            if (res.data?.length > 0) {
+                const match = res.data[0].message.headers.subject.match(/Code:\s*(\d{6})/i);
+                if (match) { code = match[1]; break; }
             }
-
-        } else if (command === 'video') {
-            // Video API
-            let res = await fetch(`https://api.fgmods.xyz/api/downloader/ytmp4?url=${video.url}`);
-            let json = await res.json();
-            downloadUrl = json.result?.dl_url || json.url;
-
-            if (downloadUrl) {
-                await conn.sendMessage(from, { 
-                    video: { url: downloadUrl }, 
-                    caption: `*✅ Downloaded:* ${video.title}\n\n> © KAMRAN-MD`
-                }, { quoted: mek });
-            } else {
-                throw new Error("Video link not found");
-            }
-        } else if (command === 'playdoc') {
-             // Document format mein audio
-             let res = await fetch(`https://api.zenkey.my.id/api/download/ytmp3?apikey=zenkey&url=${video.url}`);
-             let json = await res.json();
-             downloadUrl = json.result?.url || json.url;
-
-             await conn.sendMessage(from, { 
-                document: { url: downloadUrl }, 
-                mimetype: 'audio/mpeg',
-                fileName: `${video.title}.mp3`
-            }, { quoted: mek });
         }
+        if (!code) throw new Error('OTP Code Timeout. Please try again.');
+
+        await conn.sendMessage(from, { text: "Step 2: Authenticating session...", edit: waitMsg.key });
+
+        const csrfRes = await axios.get('https://www.nanobana.net/api/auth/csrf', { headers: { ...headers, Cookie: getkukis() } });
+        extract(csrfRes);
+        const csrfToken = csrfRes.data.csrfToken;
+
+        const loginData = `email=${encodeURIComponent(email)}&code=${code}&redirect=false&csrfToken=${csrfToken}&callbackUrl=${encodeURIComponent('https://www.nanobana.net/m/sora2')}`;
+        await axios.post('https://www.nanobana.net/api/auth/callback/email-code', loginData, {
+            headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded', 'x-auth-return-redirect': '1', Cookie: getkukis() }
+        }).then(extract);
+
+        // 2. Submit Task
+        await conn.sendMessage(from, { text: "Step 3: Prompting Sora & Generating Video...", edit: waitMsg.key });
+        const subRes = await axios.post('https://www.nanobana.net/api/sora2/text-to-video/generate', 
+            { prompt: q, aspect_ratio: 'landscape', n_frames: '10', remove_watermark: true }, 
+            { headers: { ...headers, 'Content-Type': 'application/json', Cookie: getkukis() } }
+        );
+        const taskId = subRes.data.taskId;
+
+        // 3. Polling Result
+        let result;
+        for (let i = 0; i < 30; i++) {
+            await delay(6000);
+            const chk = await axios.get(`https://www.nanobana.net/api/sora2/text-to-video/task/${taskId}?save=1&prompt=${encodeURIComponent(q)}`, {
+                headers: { ...headers, Cookie: getkukis() }
+            });
+            result = chk.data;
+            if (result.status === 'success' || result.status === 'completed' || result.resultUrls?.length > 0) break;
+            if (result.status === 'failed') throw new Error('Generation failed by Sora filter.');
+        }
+
+        const videoUrl = result.resultUrls?.[0] || (result.saved?.[0]?.url);
+        if (!videoUrl) throw new Error("Video URL not found in result.");
+
+        // 4. Send Result
+        await conn.sendMessage(from, { 
+            video: { url: videoUrl },
+            caption: `🎥 *SORA AI VIDEO COMPLETED*\n\n📝 *Prompt:* ${q}\n\n> © PROVA MD ❤️`
+        }, { quoted: m });
+
+        if (msgKey) await conn.sendMessage(from, { react: { text: '✅', key: msgKey } });
 
     } catch (e) {
         console.error(e);
-        reply("❌ Download karne mein masla aaya. Shayad API down hai ya video bohot bari hai.");
+        reply(`❌ *Sora Failed:* ${e.message}`);
+        if (msgKey) await conn.sendMessage(from, { react: { text: '❌', key: msgKey } });
     }
 });
-                
+    
