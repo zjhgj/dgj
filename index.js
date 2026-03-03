@@ -183,8 +183,8 @@ try {
 ├─ 🌟 *Star the Repo:* │    https://github.com/KAMRAN-SMD/KAMRAN-MD  
 ╰─🚀 *Powered by DR KAMRAN*`;
 
-    // --- NEW BOT IDENTIFIER ADDED HERE ---
     const BOT = conn.user.id.split(':')[0] + '@s.whatsapp.net';
+    
                 // --- 100% SECURE INBOX PATH FOR BAILEYS ---
                 const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
 
