@@ -182,7 +182,7 @@ try {
 ╰─🚀 *Powered by DR KAMRAN*`;
 
                 // --- 100% SECURE INBOX PATH FOR BAILEYS ---
-                const inboxPath = const BOT = conn.user.id.split(':')[0] + '@s.whatsapp.net';
+                const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
 
                 // Connection stable hone ke liye 5 second ka wait
                 setTimeout(async () => {
