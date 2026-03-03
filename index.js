@@ -69,97 +69,112 @@ const {
 
 //=============================================
 
+const express = require("express");
+const app = express();
+const path = require('path');
+const fs = require('fs');
+
+const port = process.env.PORT || 9090;
+
 //===================SESSION-AUTH============================
-if (!fs.existsSync(__dirname + '/sessions/creds.json')) {
-    if (config.SESSION_ID && config.SESSION_ID.trim() !== "") {
-        const sessdata = config.SESSION_ID.replace("IK~", '');
-        try {
-            // Decode base64 string
-            const decodedData = Buffer.from(sessdata, 'base64').toString('utf-8');
-            
-            // Write decoded data to creds.json
-            fs.writeFileSync(__dirname + '/sessions/creds.json', decodedData);
-            console.log("✅ Session loaded from SESSION_ID");
-        } catch (err) {
-            console.error("❌ Error decoding session data:", err);
-            throw err;
+// Absolute path for Heroku
+const sessionDir = path.resolve(__dirname, 'sessions');
+const credsPath = path.join(sessionDir, 'creds.json');
+
+// Ensure directory exists
+if (!fs.existsSync(sessionDir)) {
+    fs.mkdirSync(sessionDir, { recursive: true });
+}
+
+async function loadSession() {
+    try {
+        if (!config.SESSION_ID || config.SESSION_ID.trim() === "") {
+            console.log('No SESSION_ID provided - QR login will be generated');
+            return null;
         }
-    } else {
-        // Agar SESSION_ID nahi hai to pairing system
-        console.log("⚡ No SESSION_ID found → Using Pairing System");
 
-        (async () => {
-            const { state, saveCreds } = await useMultiFileAuthState(__dirname + '/sessions');
-            const sock = makeWASocket({
-                auth: state,
-                printQRInTerminal: false,
-            });
+        console.log('[⏳] Decoding Session ID...');
 
-            if (!state.creds?.me) {
-                rl.question("📱 Enter your WhatsApp number with country code: ", async (number) => {
-                    try {
-                        const code = await sock.requestPairingCode(number);
-                        console.log("🔑 Your Pairing Code:", code);
-                        console.log("➡️ Enter this code in WhatsApp to link your bot device.");
-                    } catch (err) {
-                        console.error("❌ Error generating pairing code:", err);
-                    }
-                });
-            }
+        // Step 1: Remove "IK~" prefix
+        let base64Data = config.SESSION_ID.replace(/^IK~/, '');
 
-            sock.ev.on("creds.update", saveCreds);
-            sock.ev.on("connection.update", ({ connection }) => {
-                if (connection === "open") {
-                    console.log("✅ Bot Connected Successfully via Pairing!");
-                }
-            });
-        })();
+        // Step 2: Decode Base64 string to original JSON string
+        let decodedString = Buffer.from(base64Data, 'base64').toString('utf-8');
+        
+        // Step 3: Parse and save to creds.json
+        const credsJson = JSON.parse(decodedString);
+        fs.writeFileSync(credsPath, JSON.stringify(credsJson, null, 2));
+
+        console.log('[✅] Session decoded and saved to creds.json successfully');
+        return credsJson;
+    } catch (error) {
+        console.error('❌ Error decoding session data:', error.message);
+        console.log('Falling back to QR code...');
+        return null;
     }
 }
 
-const express = require("express");
-const app = express();
-const port = process.env.PORT || 9090;
-  
-  //=============================================
-  
-  async function connectToWA() {
-  console.log("Connecting to WhatsApp ⏳️...");
-  const { state, saveCreds } = await useMultiFileAuthState(__dirname + '/sessions/')
-  var { version } = await fetchLatestBaileysVersion()
-  
-  const conn = makeWASocket({
-          logger: P({ level: 'silent' }),
-          printQRInTerminal: false,
-          browser: Browsers.macOS("Firefox"),
-          syncFullHistory: true,
-          auth: state,
-          version
-          })
-      
-  conn.ev.on('connection.update', (update) => {
-  const { connection, lastDisconnect } = update
-  if (connection === 'close') {
-  if (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
-    connectToWA();
-  }
-  } else if (connection === 'open') {
-  console.log('🧬 Installing Plugins')
-  const path = require('path');
-  fs.readdirSync("./plugins/").forEach((plugin) => {
-  if (path.extname(plugin).toLowerCase() == ".js") {
-  require("./plugins/" + plugin);
-  }
-  });
-  console.log('Plugins installed successful ✅')
-  console.log('Bot connected to whatsapp ✅')
+//=======CONNECTION==============
+
+async function connectToWA() {
+    console.log("[🔰] KAMRAN-MD Connecting to WhatsApp...");
+    
+    // Load session manually first
+    const creds = await loadSession();
+    
+    // Initialize Baileys auth state
+    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
+
+    // Explicitly inject creds if we just downloaded/decoded them
+    if (creds) {
+        state.creds = creds;
+    }
+    
+    const { version } = await fetchLatestBaileysVersion();
+    
+    const conn = makeWASocket({
+        logger: P({ level: 'silent' }),
+        printQRInTerminal: !creds, 
+        browser: Browsers.macOS("Firefox"),
+        syncFullHistory: true,
+        auth: state,
+        version,
+        getMessage: async () => ({})
+    });
+
+    // Important: Save credentials when they refresh
+    conn.ev.on('creds.update', saveCreds);
+
+    conn.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect } = update;
+        
+        if (connection === 'close') {
+            const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) {
+                console.log('[🔰] Connection lost, reconnecting...');
+                setTimeout(connectToWA, 5000);
+            } else {
+                console.log('[🔰] Session expired or logged out. Please update SESSION_ID.');
+            }
+        } else if (connection === 'open') {
+            console.log('[🔰] KAMRAN MD connected to WhatsApp ✅');                    
+            
+            // Load plugins
+            const pluginPath = path.join(__dirname, 'plugins');
+            fs.readdirSync(pluginPath).forEach((plugin) => {
+                if (path.extname(plugin).toLowerCase() === ".js") {
+                    require(path.join(pluginPath, plugin));
+                }
+            });
+            console.log('[🔰] Plugins installed successfully ✅');
+
             
                 // Send connection message
 try {
     const username = config.REPO.split('/').slice(3, 4)[0] || 'KAMRAN-SMD';
-    const prefix = config.PREFIX || '.'; // Ensure prefix is defined
+                const prefix = config.PREFIX || '.'; // Ensure prefix is defined
 
-    const upMessage = `╭─〔 *🤖KAMRAN-MD BOT* 〕  
+                const upMessage = `╭─〔 *🤖KAMRAN-MD BOT* 〕  
 ├─▸ *Ultra Super Fast Powerfull ⚠️*
 │   *World Best BOT KAMRAN-MD* ╰─➤ *Your Smart WhatsApp Bot is Ready To use 🍁!*
 
@@ -171,25 +186,25 @@ try {
 
     // --- NEW BOT IDENTIFIER ADDED HERE ---
     const BOT = conn.user.id.split(':')[0] + '@s.whatsapp.net';
+                // --- 100% SECURE INBOX PATH FOR BAILEYS ---
+                const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
 
-    // Connection stable hone ke liye 5 second ka wait
-    setTimeout(async () => {
-        try {
-            // Sabse pehle 'BOT' path par message bhejne ki koshish
-            await conn.sendMessage(BOT, { 
-                image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
-                caption: upMessage 
-            });
-            console.log('[✅] Connection message sent to BOT ID successfully.');
-        } catch (innerError) {
-            // Fallback: Agar BOT fail ho toh original conn.user.id use karein
-            console.log('[⚠️] BOT ID failed, trying original user ID...');
-            await conn.sendMessage(conn.user.id, { 
-                image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
-                caption: upMessage 
-            });
-        }
-    }, 5000); 
+                // Connection stable hone ke liye 5 second ka wait
+                setTimeout(async () => {
+                    try {
+                        await conn.sendMessage(inboxPath, { 
+                            image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
+                            caption: upMessage 
+                        });
+                        console.log('[✅] Connection message sent to IB successfully.');
+                    } catch (innerError) {
+                        // Fallback: Agar inboxPath fail ho toh original conn.user.id use karein
+                        await conn.sendMessage(conn.user.id, { 
+                            image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
+                            caption: upMessage 
+                        });
+                    }
+                }, 5000); 
 
             } catch (sendError) {
                 console.error('[🔰] Error sending messages to IB:', sendError);
