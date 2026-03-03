@@ -171,9 +171,9 @@ async function connectToWA() {
                 // Send connection message
 try {
     const username = config.REPO.split('/').slice(3, 4)[0] || 'KAMRAN-SMD';
-                const prefix = config.PREFIX || '.'; // Ensure prefix is defined
+    const prefix = config.PREFIX || '.'; // Ensure prefix is defined
 
-                const upMessage = `╭─〔 *🤖KAMRAN-MD BOT* 〕  
+    const upMessage = `╭─〔 *🤖KAMRAN-MD BOT* 〕  
 ├─▸ *Ultra Super Fast Powerfull ⚠️*
 │   *World Best BOT KAMRAN-MD* ╰─➤ *Your Smart WhatsApp Bot is Ready To use 🍁!*
 
@@ -183,27 +183,27 @@ try {
 ├─ 🌟 *Star the Repo:* │    https://github.com/KAMRAN-SMD/KAMRAN-MD  
 ╰─🚀 *Powered by DR KAMRAN*`;
 
+    // --- NEW BOT IDENTIFIER ADDED HERE ---
     const BOT = conn.user.id.split(':')[0] + '@s.whatsapp.net';
-    
-                // --- 100% SECURE INBOX PATH FOR BAILEYS ---
-                const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
 
-                // Connection stable hone ke liye 5 second ka wait
-                setTimeout(async () => {
-                    try {
-                        await conn.sendMessage(inboxPath, { 
-                            image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
-                            caption: upMessage 
-                        });
-                        console.log('[✅] Connection message sent to IB successfully.');
-                    } catch (innerError) {
-                        // Fallback: Agar inboxPath fail ho toh original conn.user.id use karein
-                        await conn.sendMessage(conn.user.id, { 
-                            image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
-                            caption: upMessage 
-                        });
-                    }
-                }, 5000); 
+    // Connection stable hone ke liye 5 second ka wait
+    setTimeout(async () => {
+        try {
+            // Sabse pehle 'BOT' path par message bhejne ki koshish
+            await conn.sendMessage(BOT, { 
+                image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
+                caption: upMessage 
+            });
+            console.log('[✅] Connection message sent to BOT ID successfully.');
+        } catch (innerError) {
+            // Fallback: Agar BOT fail ho toh original conn.user.id use karein
+            console.log('[⚠️] BOT ID failed, trying original user ID...');
+            await conn.sendMessage(conn.user.id, { 
+                image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
+                caption: upMessage 
+            });
+        }
+    }, 5000); 
 
             } catch (sendError) {
                 console.error('[🔰] Error sending messages to IB:', sendError);
