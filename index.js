@@ -69,105 +69,90 @@ const {
 
 //=============================================
 
+//===================SESSION-AUTH============================
+if (!fs.existsSync(__dirname + '/sessions/creds.json')) {
+    if (config.SESSION_ID && config.SESSION_ID.trim() !== "") {
+        const sessdata = config.SESSION_ID.replace("IK~", '');
+        try {
+            // Decode base64 string
+            const decodedData = Buffer.from(sessdata, 'base64').toString('utf-8');
+            
+            // Write decoded data to creds.json
+            fs.writeFileSync(__dirname + '/sessions/creds.json', decodedData);
+            console.log("✅ Session loaded from SESSION_ID");
+        } catch (err) {
+            console.error("❌ Error decoding session data:", err);
+            throw err;
+        }
+    } else {
+        // Agar SESSION_ID nahi hai to pairing system
+        console.log("⚡ No SESSION_ID found → Using Pairing System");
+
+        (async () => {
+            const { state, saveCreds } = await useMultiFileAuthState(__dirname + '/sessions');
+            const sock = makeWASocket({
+                auth: state,
+                printQRInTerminal: false,
+            });
+
+            if (!state.creds?.me) {
+                rl.question("📱 Enter your WhatsApp number with country code: ", async (number) => {
+                    try {
+                        const code = await sock.requestPairingCode(number);
+                        console.log("🔑 Your Pairing Code:", code);
+                        console.log("➡️ Enter this code in WhatsApp to link your bot device.");
+                    } catch (err) {
+                        console.error("❌ Error generating pairing code:", err);
+                    }
+                });
+            }
+
+            sock.ev.on("creds.update", saveCreds);
+            sock.ev.on("connection.update", ({ connection }) => {
+                if (connection === "open") {
+                    console.log("✅ Bot Connected Successfully via Pairing!");
+                }
+            });
+        })();
+    }
+}
+
 const express = require("express");
 const app = express();
 const port = process.env.PORT || 9090;
   
-//===================SESSION-AUTH============================
-// FIX: Using path.resolve to prevent the recursive directory (.cache) error
-const sessionDir = path.resolve(__dirname, 'sessions');
-const credsPath = path.join(sessionDir, 'creds.json');
-
-// Create session directory if it doesn't exist
-if (!fs.existsSync(sessionDir)) {
-    fs.mkdirSync(sessionDir, { recursive: true });
-}
-
-async function loadSession() {
-    try {
-        if (!config.SESSION_ID) {
-            console.log('No SESSION_ID provided - QR login will be generated');
-            return null;
-        }
-
-        console.log('[⏳] Downloading creds data...');
-        console.log('[🔰] Downloading MEGA.nz session...');
-        
-        // FIX: Removed hardcoded "IK~" to handle any prefix before the "~"
-        const megaFileId = config.SESSION_ID.includes('IK~') 
-            ? config.SESSION_ID.split('IK~')[1] 
-            : config.SESSION_ID;
-
-        const filer = File.fromURL(`https://mega.nz/file/${megaFileId}`);
-            
-        const data = await new Promise((resolve, reject) => {
-            filer.download((err, data) => {
-                if (err) reject(err);
-                else resolve(data);
-            });
-        });
-        
-        fs.writeFileSync(credsPath, data);
-        console.log('[✅] MEGA session downloaded successfully');
-        return JSON.parse(data.toString());
-    } catch (error) {
-        console.error('❌ Error loading session:', error.message);
-        console.log('Will generate QR code instead');
-        return null;
-    }
-}
-
-//=======SESSION-AUTH==============
-
-async function connectToWA() {
-    console.log("[🔰] KAMRAN-MD Connecting to WhatsApp ⏳️...");
-    
-    // Load session if available
-    const creds = await loadSession();
-    
-    // FIX: Using the absolute sessionDir path
-    const { state, saveCreds } = await useMultiFileAuthState(sessionDir, {
-        creds: creds || undefined 
-    });
-    
-    const { version } = await fetchLatestBaileysVersion();
-    
-    const conn = makeWASocket({
-        logger: P({ level: 'silent' }),
-        printQRInTerminal: !creds, 
-        browser: Browsers.macOS("Firefox"),
-        syncFullHistory: true,
-        auth: state,
-        version,
-        getMessage: async () => ({})
-    });
-
-    // Save creds update
-    conn.ev.on('creds.update', saveCreds);
-
-    conn.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        
-        if (connection === 'close') {
-            if (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut) {
-                console.log('[🔰] Connection lost, reconnecting...');
-                setTimeout(connectToWA, 5000);
-            } else {
-                console.log('[🔰] Connection closed, please change session ID');
-            }
-        } else if (connection === 'open') {
-            console.log('[🔰] KAMRAN MD connected to WhatsApp ✅');
-            
-            
-            // Load plugins
-            const pluginPath = path.join(__dirname, 'plugins');
-            fs.readdirSync(pluginPath).forEach((plugin) => {
-                if (path.extname(plugin).toLowerCase() === ".js") {
-                    require(path.join(pluginPath, plugin));
-                }
-            });
-            console.log('[🔰] Plugins installed successfully ✅');
-
+  //=============================================
+  
+  async function connectToWA() {
+  console.log("Connecting to WhatsApp ⏳️...");
+  const { state, saveCreds } = await useMultiFileAuthState(__dirname + '/sessions/')
+  var { version } = await fetchLatestBaileysVersion()
+  
+  const conn = makeWASocket({
+          logger: P({ level: 'silent' }),
+          printQRInTerminal: false,
+          browser: Browsers.macOS("Firefox"),
+          syncFullHistory: true,
+          auth: state,
+          version
+          })
+      
+  conn.ev.on('connection.update', (update) => {
+  const { connection, lastDisconnect } = update
+  if (connection === 'close') {
+  if (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
+    connectToWA();
+  }
+  } else if (connection === 'open') {
+  console.log('🧬 Installing Plugins')
+  const path = require('path');
+  fs.readdirSync("./plugins/").forEach((plugin) => {
+  if (path.extname(plugin).toLowerCase() == ".js") {
+  require("./plugins/" + plugin);
+  }
+  });
+  console.log('Plugins installed successful ✅')
+  console.log('Bot connected to whatsapp ✅')
             
                 // Send connection message
 try {
@@ -279,9 +264,9 @@ BotActivityFilter(conn);
   }
     if(mek.message.viewOnceMessageV2)
     mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-    if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_SEEN === "true") {
-    await conn.readMessages([mek.key])
-}
+    if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_SEEN === "true"){
+      await conn.readMessages([mek.key])
+    }
 
   const newsletterJids = [
   "120363418144382782@newsletter",
