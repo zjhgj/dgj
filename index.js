@@ -69,19 +69,18 @@ const {
 
 //=============================================
 
+// 1. TOP PAR CHECK KAREIN: Agar yeh line pehle se hai to dubara mat likhein
 const express = require("express");
 const app = express();
-const path = require('path');
 const fs = require('fs');
+const path = require('path'); // Is line ko check karein ke yeh double na ho
 
 const port = process.env.PORT || 9090;
 
-//===================SESSION-AUTH============================
-// Absolute path for Heroku
+// =================== SESSION-AUTH (FIXED) ============================
 const sessionDir = path.resolve(__dirname, 'sessions');
 const credsPath = path.join(sessionDir, 'creds.json');
 
-// Ensure directory exists
 if (!fs.existsSync(sessionDir)) {
     fs.mkdirSync(sessionDir, { recursive: true });
 }
@@ -95,37 +94,33 @@ async function loadSession() {
 
         console.log('[⏳] Decoding Session ID...');
 
-        // Step 1: Remove "IK~" prefix
+        // Prefix "IK~" ko hatana
         let base64Data = config.SESSION_ID.replace(/^IK~/, '');
 
-        // Step 2: Decode Base64 string to original JSON string
+        // Base64 ko decode karke JSON banana
         let decodedString = Buffer.from(base64Data, 'base64').toString('utf-8');
-        
-        // Step 3: Parse and save to creds.json
         const credsJson = JSON.parse(decodedString);
+        
+        // File write karna
         fs.writeFileSync(credsPath, JSON.stringify(credsJson, null, 2));
 
-        console.log('[✅] Session decoded and saved to creds.json successfully');
+        console.log('[✅] Session decoded and saved successfully');
         return credsJson;
     } catch (error) {
-        console.error('❌ Error decoding session data:', error.message);
-        console.log('Falling back to QR code...');
+        console.error('❌ Error decoding session:', error.message);
         return null;
     }
 }
-
-//=======CONNECTION==============
+// ======================================================================
 
 async function connectToWA() {
     console.log("[🔰] KAMRAN-MD Connecting to WhatsApp...");
     
-    // Load session manually first
     const creds = await loadSession();
     
-    // Initialize Baileys auth state
+    // Yahan useMultiFileAuthState call karein
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
 
-    // Explicitly inject creds if we just downloaded/decoded them
     if (creds) {
         state.creds = creds;
     }
@@ -136,28 +131,22 @@ async function connectToWA() {
         logger: P({ level: 'silent' }),
         printQRInTerminal: !creds, 
         browser: Browsers.macOS("Firefox"),
-        syncFullHistory: true,
         auth: state,
-        version,
-        getMessage: async () => ({})
+        version
     });
 
-    // Important: Save credentials when they refresh
     conn.ev.on('creds.update', saveCreds);
 
     conn.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
-        
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) {
-                console.log('[🔰] Connection lost, reconnecting...');
-                setTimeout(connectToWA, 5000);
-            } else {
-                console.log('[🔰] Session expired or logged out. Please update SESSION_ID.');
-            }
+            if (shouldReconnect) setTimeout(connectToWA, 5000);
         } else if (connection === 'open') {
-            console.log('[🔰] KAMRAN MD connected to WhatsApp ✅');                    
+            console.log('[🔰] KAMRAN MD connected to WhatsApp ✅');
+        }
+    });
+}                    
             
             // Load plugins
             const pluginPath = path.join(__dirname, 'plugins');
