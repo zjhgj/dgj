@@ -71,41 +71,51 @@ const {
 
 const express = require("express");
 const app = express();
-const path = require('path');
-const fs = require('fs'); // Sirf ye ek baar hona chahiye
-
 const port = process.env.PORT || 9090;
-
-// =================== SESSION-AUTH (CLEANED) ============================
+  
+//===================SESSION-AUTH============================
+// FIX: Using path.resolve to prevent the recursive directory (.cache) error
 const sessionDir = path.resolve(__dirname, 'sessions');
 const credsPath = path.join(sessionDir, 'creds.json');
 
-// Directory check
+// Create session directory if it doesn't exist
 if (!fs.existsSync(sessionDir)) {
     fs.mkdirSync(sessionDir, { recursive: true });
 }
 
 async function loadSession() {
     try {
-        if (!config.SESSION_ID || config.SESSION_ID.trim() === "") {
-            console.log('No SESSION_ID provided');
+        if (!config.SESSION_ID) {
+            console.log('No SESSION_ID provided - QR login will be generated');
             return null;
         }
 
-        console.log('[⏳] Decoding Session ID...');
-        let base64Data = config.SESSION_ID.replace(/^IK~/, '');
-        let decodedString = Buffer.from(base64Data, 'base64').toString('utf-8');
-        const credsJson = JSON.parse(decodedString);
+        console.log('[⏳] Downloading creds data...');
+        console.log('[🔰] Downloading MEGA.nz session...');
         
-        fs.writeFileSync(credsPath, JSON.stringify(credsJson, null, 2));
-        console.log('[✅] Session saved successfully');
-        return credsJson;
+        // FIX: Removed hardcoded "IK~" to handle any prefix before the "~"
+        const megaFileId = config.SESSION_ID.includes('IK~') 
+            ? config.SESSION_ID.split('IK~')[1] 
+            : config.SESSION_ID;
+
+        const filer = File.fromURL(`https://mega.nz/file/${megaFileId}`);
+            
+        const data = await new Promise((resolve, reject) => {
+            filer.download((err, data) => {
+                if (err) reject(err);
+                else resolve(data);
+            });
+        });
+        
+        fs.writeFileSync(credsPath, data);
+        console.log('[✅] MEGA session downloaded successfully');
+        return JSON.parse(data.toString());
     } catch (error) {
-        console.error('❌ Session Error:', error.message);
+        console.error('❌ Error loading session:', error.message);
+        console.log('Will generate QR code instead');
         return null;
     }
 }
-// ======================================================================
 
 //=======SESSION-AUTH==============
 
