@@ -69,18 +69,18 @@ const {
 
 //=============================================
 
-// 1. TOP PAR CHECK KAREIN: Agar yeh line pehle se hai to dubara mat likhein
 const express = require("express");
 const app = express();
-const fs = require('fs');
-const path = require('path'); // Is line ko check karein ke yeh double na ho
+const path = require('path');
+const fs = require('fs'); // Sirf ye ek baar hona chahiye
 
 const port = process.env.PORT || 9090;
 
-// =================== SESSION-AUTH (FIXED) ============================
+// =================== SESSION-AUTH (CLEANED) ============================
 const sessionDir = path.resolve(__dirname, 'sessions');
 const credsPath = path.join(sessionDir, 'creds.json');
 
+// Directory check
 if (!fs.existsSync(sessionDir)) {
     fs.mkdirSync(sessionDir, { recursive: true });
 }
@@ -88,42 +88,37 @@ if (!fs.existsSync(sessionDir)) {
 async function loadSession() {
     try {
         if (!config.SESSION_ID || config.SESSION_ID.trim() === "") {
-            console.log('No SESSION_ID provided - QR login will be generated');
+            console.log('No SESSION_ID provided');
             return null;
         }
 
         console.log('[⏳] Decoding Session ID...');
-
-        // Prefix "IK~" ko hatana
         let base64Data = config.SESSION_ID.replace(/^IK~/, '');
-
-        // Base64 ko decode karke JSON banana
         let decodedString = Buffer.from(base64Data, 'base64').toString('utf-8');
         const credsJson = JSON.parse(decodedString);
         
-        // File write karna
         fs.writeFileSync(credsPath, JSON.stringify(credsJson, null, 2));
-
-        console.log('[✅] Session decoded and saved successfully');
+        console.log('[✅] Session saved successfully');
         return credsJson;
     } catch (error) {
-        console.error('❌ Error decoding session:', error.message);
+        console.error('❌ Session Error:', error.message);
         return null;
     }
 }
 // ======================================================================
 
+//=======SESSION-AUTH==============
+
 async function connectToWA() {
-    console.log("[🔰] KAMRAN-MD Connecting to WhatsApp...");
+    console.log("[🔰] KAMRAN-MD Connecting to WhatsApp ⏳️...");
     
+    // Load session if available
     const creds = await loadSession();
     
-    // Yahan useMultiFileAuthState call karein
-    const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
-
-    if (creds) {
-        state.creds = creds;
-    }
+    // FIX: Using the absolute sessionDir path
+    const { state, saveCreds } = await useMultiFileAuthState(sessionDir, {
+        creds: creds || undefined 
+    });
     
     const { version } = await fetchLatestBaileysVersion();
     
@@ -131,22 +126,27 @@ async function connectToWA() {
         logger: P({ level: 'silent' }),
         printQRInTerminal: !creds, 
         browser: Browsers.macOS("Firefox"),
+        syncFullHistory: true,
         auth: state,
-        version
+        version,
+        getMessage: async () => ({})
     });
 
+    // Save creds update
     conn.ev.on('creds.update', saveCreds);
 
     conn.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+        
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) setTimeout(connectToWA, 5000);
+            if (lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut) {
+                console.log('[🔰] Connection lost, reconnecting...');
+                setTimeout(connectToWA, 5000);
+            } else {
+                console.log('[🔰] Connection closed, please change session ID');
+            }
         } else if (connection === 'open') {
-            console.log('[🔰] KAMRAN MD connected to WhatsApp ✅');
-        }
-    });
-}                    
+            console.log('[🔰] KAMRAN MD connected to WhatsApp ✅');                    
             
             // Load plugins
             const pluginPath = path.join(__dirname, 'plugins');
