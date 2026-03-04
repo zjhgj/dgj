@@ -37,7 +37,7 @@ cmd({
             var aiResponse = res.data.result;
         }
 
-        let resultMsg = `🤖 *AI RESPONSE (Blackbox)*\n\n${aiResponse}\n\n> © ᴘʀᴏᴠᴀ-ᴍᴅ ❤️`;
+        let resultMsg = `🤖 *AI RESPONSE (Blackbox)*\n\n${aiResponse}\n\n> © DR KAMRAN ❤️`;
 
         // Step 3: SAFE EDIT Logic
         if (waitMsg && waitMsg.key) {
