@@ -1,91 +1,66 @@
-const { cmd } = require('../command'); // Aapke bot ka command handler
-const axios = require('axios');
-
-// Function to handle the API request
-const img2toPrompt = async (base64Image) => {
-    const r = await axios.post(
-        'https://wabpfqsvdkdjpjjkbnok.supabase.co/functions/v1/unified-prompt-dev',
-        { 
-            feature: 'image-to-prompt-en', 
-            language: 'en', 
-            image: base64Image 
-        },
-        {
-            responseType: 'stream',
-            headers: {
-                'authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndhYnBmcXN2ZGtkanBqamtibm9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzczNjk5MjEsImV4cCI6MjA1Mjk0NTkyMX0.wGGq1SWLIRELdrntLntBz-QH-JxoHUdz8Gq-0ha-4a4',
-                'content-type': 'application/json',
-                'origin': 'https://generateprompt.ai',
-                'referer': 'https://generateprompt.ai/',
-                'user-agent': 'Mozilla/5.0'
-            }
-        }
-    );
-
-    return new Promise((resolve, reject) => {
-        let result = '';
-        let buffer = '';
-
-        r.data.on('data', (chunk) => {
-            buffer += chunk.toString();
-            const lines = buffer.split('\n');
-            buffer = lines.pop(); 
-
-            for (const line of lines) {
-                if (!line.startsWith('data:')) continue;
-                const raw = line.slice(5).trim();
-                try {
-                    const json = JSON.parse(raw);
-                    const text = json?.choices?.[0]?.delta?.content || json?.content || json?.text || '';
-                    result += text;
-                } catch {}
-            }
-        });
-
-        r.data.on('end', () => resolve(result.trim()));
-        r.data.on('error', reject);
-    });
-};
+const { cmd } = require("../command");
+const axios = require("axios");
+const FormData = require("form-data");
 
 cmd({
-    pattern: "img2prompt",
-    alias: ["toprompt", "getprompt"],
-    react: "🔍",
-    desc: "Convert an image into an AI prompt description.",
-    category: "tools",
-    use: "Reply to an image with .img2prompt",
+    pattern: "tobotak",
+    alias: ["botak", "makebald"],
+    react: "👨‍🦲",
+    desc: "Make someone bald using an image or URL.",
+    category: "maker",
     filename: __filename
-}, async (conn, mek, m, { from, reply, quoted, mime }) => {
-    // Image check logic
-    const q = quoted ? quoted : m;
-    const mediaMime = (q.msg || q).mimetype || '';
-
-    if (!mediaMime.startsWith('image/')) {
-        return reply("📸 Please reply to an image to convert it into a prompt.");
-    }
-
+}, async (nato, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        await reply("⏳ *Analyzing image, please wait...*");
+        // Media detection logic
+        const quotedMsg = m.quoted ? m.quoted : m;
+        const mime = (quotedMsg.msg || quotedMsg).mimetype || '';
 
-        // Download and convert to base64
-        const mediaBuffer = await q.download();
-        const base64 = `data:${mediaMime};base64,${mediaBuffer.toString('base64')}`;
-        
-        const result = await img2toPrompt(base64);
-        
-        if (!result) {
-            return reply("❌ Failed to get prompt from this image.");
+        // Agar text (URL) nahi hai aur image bhi nahi hai toh example dikhayein
+        if (!q && !/image/.test(mime)) {
+            return reply(`*Example:*\n\n• ${prefix + command} https://example.com/image.jpg\n• Reply to an image with ${prefix + command}`);
         }
 
-        let responseText = `📷 *IMAGE TO PROMPT*\n\n` +
-                          `${result}\n\n` +
-                          `> © kamran-ᴍᴅ ꜱʏꜱᴛᴇᴍ 🛡️`;
+        // Reaction using nato socket
+        await nato.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        await conn.sendMessage(from, { text: responseText }, { quoted: mek });
+        let imageUrl = q;
+
+        // Agar image reply ki gayi hai toh use upload karein
+        if (!q && /image/.test(mime)) {
+            const media = await quotedMsg.download();
+            const form = new FormData();
+            form.append('files[]', media, { filename: 'image.jpg' });
+
+            // Uguu.se par upload logic
+            const upload = await axios.post('https://uguu.se/upload.php', form, {
+                headers: { ...form.getHeaders() }
+            });
+
+            if (!upload.data.files || !upload.data.files[0]) {
+                throw new Error("Gagal mengunggah gambar ke server.");
+            }
+            imageUrl = upload.data.files[0].url;
+        }
+
+        // API Call for Tobotak
+        const api = `https://api.xte.web.id/v1/maker/tobotak?url=${encodeURIComponent(imageUrl)}`;
+        const res = await axios.get(api);
+
+        if (!res.data.status) {
+            return reply(`🍂 *Gagal memproses gambar.*`);
+        }
+
+        // Result bhejna
+        await nato.sendMessage(from, {
+            image: { url: res.data.result_url },
+            caption: `👨‍🦲 *NATO-MD BOTAK GENERATOR*\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`
+        }, { quoted: m });
+
+        await nato.sendMessage(from, { react: { text: '✅', key: m.key } });
 
     } catch (e) {
-        console.error(e);
-        reply("❌ Error processing image. The API might be busy.");
+        console.error("Tobotak Error:", e);
+        reply(`🍂 *Terjadi kesalahan:* ${e.message}`);
     }
 });
-                  
+
