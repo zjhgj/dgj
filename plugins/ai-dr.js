@@ -1,42 +1,63 @@
-const { cmd } = require('../command');
-const axios = require('axios');
+const { cmd } = require("../command");
+const axios = require("axios");
+const converter = require('../data/converter'); // Path check kar lein (data/ ya lib/)
+
+/**
+ * Timezone & Azan URL Handler
+ */
+function getAzanUrl() {
+    const now = new Date();
+    const utcHours = now.getUTCHours();
+    const wibHours = (utcHours + 7) % 24; // WIB Logic
+
+    if (wibHours >= 3 && wibHours <= 5) {
+        return "https://api.autoresbot.com/mp3/azan-subuh.m4a";
+    } else {
+        return "https://api.autoresbot.com/mp3/azan-umum.m4a";
+    }
+}
 
 cmd({
-    pattern: "kamran",
-    alias: ["dr", "xeon", "meta"],
-    react: "🤖",
-    desc: "Talk with AI (HangGTS API)",
-    category: "ai",
-    use: '.jawad <your question>',
+    pattern: "azan",
+    alias: ["adzan", "namaz"],
+    react: "🕋",
+    desc: "Play Azan audio as a Voice Note.",
+    category: "islamic",
     filename: __filename
-},
-async (conn, mek, m, { from, q, reply }) => {
+}, async (conn, mek, m, { from, reply }) => {
     try {
-        if (!q) return reply("❌ Please provide a question to ask AI.");
+        // Step 1: React with Clock
+        await conn.sendMessage(from, { 
+            react: { text: "⏰", key: m.key } 
+        });
 
-        // React: Processing
-        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
+        // Step 2: Audio URL fetch karein
+        const audioUrl = getAzanUrl();
+        
+        // Step 3: Audio ko Buffer mein download karein (Converter ke liye)
+        const response = await axios.get(audioUrl, { responseType: 'arraybuffer' });
+        const buffer = Buffer.from(response.data, 'utf-8');
 
-        // Show "typing" presence
-        await conn.sendPresenceUpdate("composing", from);
+        // Step 4: Converter use karke PTT (Ogg/Opus) mein badlein
+        // Isse audio 'Voice Note' ki tarah dikhega
+        const pttAudio = await converter.toPTT(buffer, 'm4a');
 
-        // Fetch AI response
-        const { data } = await axios.get(`https://api.hanggts.xyz/ai/chatgpt4o?text=${encodeURIComponent(q)}`);
+        // Step 5: Send Voice Note using KAMRAN-MD Socket
+        await conn.sendMessage(from, {
+            audio: pttAudio,
+            mimetype: 'audio/ogg; codecs=opus',
+            ptt: true
+        }, { quoted: m }); // Fix: mek ko m se replace kiya
 
-        if (!data.status || !data.result || !data.result.data) {
-            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return reply("❌ AI failed to respond.");
-        }
-
-        // React: Success
-        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
-
-        // Reply with AI message
-        await reply(`💬 *KAMRAN-AI:* ${data.result.data}`);
+        await conn.sendMessage(from, { 
+            react: { text: "✅", key: m.key } 
+        });
 
     } catch (e) {
-        console.error("JawadAI Error:", e);
-        await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-        reply("❌ An error occurred while talking to Jawad AI.");
+        console.error("KAMRAN-MD Azan/PTT Error:", e);
+        await conn.sendMessage(from, { 
+            react: { text: "⛔", key: m.key } 
+        });
+        reply("❌ *KAMRAN-MD Error:* Audio conversion failed.");
     }
 });
