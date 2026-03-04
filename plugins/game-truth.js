@@ -1,114 +1,93 @@
 const { cmd } = require("../command");
 const axios = require("axios");
-const fs = require("fs");
-const path = require("path");
-const FormData = require("form-data");
 
-/* ============================= */
-/* UTILS (AI LOGIC)              */
-/* ============================= */
-
-function genserial() {
-    let s = '';
-    for (let i = 0; i < 32; i++) s += Math.floor(Math.random() * 16).toString(16);
-    return s;
+/**
+ * KAMRAN-MD: Core Downloader Logic
+ * API Powered by savevideoid
+ */
+async function aioDownload(url) {
+    try {
+        const res = await axios.get(
+            `https://savevideoid.vercel.app/api/download?url=${encodeURIComponent(url)}`
+        );
+        return res.data;
+    } catch (e) {
+        return { success: false };
+    }
 }
-
-async function upimage(filename) {
-    const form = new FormData();
-    form.append('file_name', filename);
-    const res = await axios.post('https://api.imgupscaler.ai/api/common/upload/upload-image', form, {
-        headers: { ...form.getHeaders(), origin: 'https://imgupscaler.ai', referer: 'https://imgupscaler.ai/' }
-    });
-    return res.data.result;
-}
-
-async function uploadtoOSS(putUrl, buffer, mimeType) {
-    await axios.put(putUrl, buffer, {
-        headers: { 'Content-Type': mimeType, 'Content-Length': buffer.length },
-        maxBodyLength: Infinity
-    });
-    return true;
-}
-
-async function createJob(imageUrl, userPrompt) {
-    const form = new FormData();
-    form.append('model_name', 'magiceraser_v4');
-    form.append('original_image_url', imageUrl);
-    form.append('prompt', userPrompt); // User-defined prompt
-    form.append('ratio', 'match_input_image');
-    form.append('output_format', 'jpg');
-
-    const res = await axios.post('https://api.magiceraser.org/api/magiceraser/v2/image-editor/create-job', form, {
-        headers: { 
-            ...form.getHeaders(), 
-            'product-code': 'magiceraser', 
-            'product-serial': genserial(), 
-            origin: 'https://imgupscaler.ai', 
-            referer: 'https://imgupscaler.ai/' 
-        }
-    });
-    return res.data.result.job_id;
-}
-
-async function cekjob(jobId) {
-    const res = await axios.get(`https://api.magiceraser.org/api/magiceraser/v1/ai-remove/get-job/${jobId}`, {
-        headers: { origin: 'https://imgupscaler.ai', referer: 'https://imgupscaler.ai/' }
-    });
-    return res.data;
-}
-
-/* ============================= */
-/* MAIN COMMAND                  */
-/* ============================= */
 
 cmd({
-    pattern: "remove",
-    alias: ["eraser", "edit"],
-    react: "🪄",
-    desc: "Remove objects from image using AI.",
-    category: "ai",
+    pattern: "aio",
+    alias: ["dl", "allvid"],
+    react: "📥",
+    desc: "All-in-one downloader for FB, IG, TW, TikTok, etc.",
+    category: "download",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        const quotedMsg = m.quoted ? m.quoted : m;
-        const mime = (quotedMsg.msg || quotedMsg).mimetype || '';
+        // Step 1: Input Validation
+        if (!q) return reply(`❓ *Example:* ${prefix + command} https://link-video-anda`);
 
-        if (!/image/.test(mime)) return reply(`📸 Reply a photo to edit.\nExample: *${prefix + command}* remove background`);
-        if (!q) return reply(`❓ Please tell me what to remove.\nExample: *${prefix + command}* remove tree`);
-
+        // Step 2: Reaction & Initial Message
         await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+        reply("🚀 *KAMRAN-MD:* Processing your request, please wait...");
 
-        // Step 1: Download
-        const buffer = await quotedMsg.download();
-        const filename = `edit_${Date.now()}.jpg`;
+        // Step 3: Fetch Data from API
+        const data = await aioDownload(q);
+        if (!data.success || !data.results) {
+            await conn.sendMessage(from, { react: { text: "❌", key: m.key } });
+            return reply("❌ *Error:* Media not found or link is invalid.");
+        }
 
-        // Step 2: Upload & Process
-        const uploadInfo = await upimage(filename);
-        await uploadtoOSS(uploadInfo.url, buffer, mime);
+        const results = data.results || [];
+        const platform = data.platform || "Unknown";
 
-        const cdnUrl = 'https://cdn.imgupscaler.ai/' + uploadInfo.object_name;
-        const jobId = await createJob(cdnUrl, q);
+        // Step 4: Loop through results and send media
+        for (let r of results) {
+            let videoUrl = r.hd_url || r.download_url || r.url;
+            let audioUrl = r.music || r.audio;
+            let thumb = r.thumbnail;
 
-        let result;
-        do {
-            await new Promise(r => setTimeout(r, 4000));
-            result = await cekjob(jobId);
-        } while (result.code === 300006); // Status: Processing
+            let caption = `📥 *KAMRAN-MD DOWNLOADER*\n\n`;
+            caption += `🌐 *Platform:* ${platform.toUpperCase()}\n`;
+            caption += `📌 *Title:* ${r.title || "No Title"}\n`;
+            if (r.duration) caption += `⏱ *Duration:* ${r.duration} sec\n`;
+            caption += `🔗 *Source:* ${data.original_url}\n\n`;
+            caption += `> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`;
 
-        if (result.code !== 0) throw new Error("AI failed to process image.");
+            // --- SEND VIDEO ---
+            if (videoUrl) {
+                await conn.sendMessage(from, {
+                    video: { url: videoUrl },
+                    mimetype: "video/mp4",
+                    caption: caption
+                }, { quoted: m });
+            }
 
-        // Step 3: Send Result
-        await conn.sendMessage(from, {
-            image: { url: result.result.output_url[0] },
-            caption: `✅ *KAMRAN-MD AI SUCCESS*\n\n✨ *Action:* ${q}\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`
-        }, { quoted: m });
+            // --- SEND AUDIO ---
+            if (audioUrl) {
+                await conn.sendMessage(from, {
+                    audio: { url: audioUrl },
+                    mimetype: "audio/mpeg",
+                    fileName: "kamran_audio.mp3"
+                }, { quoted: m });
+            }
+
+            // --- SEND THUMBNAIL (Optional) ---
+            if (thumb && !videoUrl) {
+                await conn.sendMessage(from, {
+                    image: { url: thumb },
+                    caption: "🖼 *Thumbnail Result*"
+                }, { quoted: m });
+            }
+        }
 
         await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
 
-    } catch (err) {
-        console.error("Edit Error:", err);
-        reply("❌ *Error:* " + err.message);
+    } catch (e) {
+        console.error("AIO DL Error:", e);
+        await conn.sendMessage(from, { react: { text: "❌", key: m.key } });
+        reply("❌ *KAMRAN-MD Error:* An unexpected error occurred.");
     }
 });
-          
+        
