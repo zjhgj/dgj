@@ -1,82 +1,114 @@
 const { cmd } = require("../command");
-const yts = require("yt-search");
 const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
-const converter = require("../data/converter"); // jahan aapka toPTT hai
+const FormData = require("form-data");
 
-function normalizeYouTubeUrl(url) {
-  const match = url.match(/(?:youtu\.be\/|youtube\.com\/shorts\/|youtube\.com\/.*[?&]v=)([a-zA-Z0-9_-]{11})/);
-  return match ? `https://youtube.com/watch?v=${match[1]}` : null;
+/* ============================= */
+/* UTILS (AI LOGIC)              */
+/* ============================= */
+
+function genserial() {
+    let s = '';
+    for (let i = 0; i < 32; i++) s += Math.floor(Math.random() * 16).toString(16);
+    return s;
 }
 
-async function fetchAudio(url) {
-  try {
-    const api = `https://api-aswin-sparky.koyeb.app/api/downloader/song?search=${encodeURIComponent(url)}`;
-    const { data } = await axios.get(api);
-    return data?.data?.url || null;
-  } catch {
-    return null;
-  }
+async function upimage(filename) {
+    const form = new FormData();
+    form.append('file_name', filename);
+    const res = await axios.post('https://api.imgupscaler.ai/api/common/upload/upload-image', form, {
+        headers: { ...form.getHeaders(), origin: 'https://imgupscaler.ai', referer: 'https://imgupscaler.ai/' }
+    });
+    return res.data.result;
 }
 
-cmd(
-  {
-    pattern: "vdl",
-    alias: ["vplay"],
-    react: "🎵",
-    desc: "Song as WhatsApp Voice Note",
-    category: "download",
-    filename: __filename,
-  },
-  async (conn, mek, m, { from, q, reply, prefix }) => {
+async function uploadtoOSS(putUrl, buffer, mimeType) {
+    await axios.put(putUrl, buffer, {
+        headers: { 'Content-Type': mimeType, 'Content-Length': buffer.length },
+        maxBodyLength: Infinity
+    });
+    return true;
+}
+
+async function createJob(imageUrl, userPrompt) {
+    const form = new FormData();
+    form.append('model_name', 'magiceraser_v4');
+    form.append('original_image_url', imageUrl);
+    form.append('prompt', userPrompt); // User-defined prompt
+    form.append('ratio', 'match_input_image');
+    form.append('output_format', 'jpg');
+
+    const res = await axios.post('https://api.magiceraser.org/api/magiceraser/v2/image-editor/create-job', form, {
+        headers: { 
+            ...form.getHeaders(), 
+            'product-code': 'magiceraser', 
+            'product-serial': genserial(), 
+            origin: 'https://imgupscaler.ai', 
+            referer: 'https://imgupscaler.ai/' 
+        }
+    });
+    return res.data.result.job_id;
+}
+
+async function cekjob(jobId) {
+    const res = await axios.get(`https://api.magiceraser.org/api/magiceraser/v1/ai-remove/get-job/${jobId}`, {
+        headers: { origin: 'https://imgupscaler.ai', referer: 'https://imgupscaler.ai/' }
+    });
+    return res.data;
+}
+
+/* ============================= */
+/* MAIN COMMAND                  */
+/* ============================= */
+
+cmd({
+    pattern: "remove",
+    alias: ["eraser", "edit"],
+    react: "🪄",
+    desc: "Remove objects from image using AI.",
+    category: "ai",
+    filename: __filename
+}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-      if (!q) return reply(`Usage: ${prefix}dl <song name/link>`);
+        const quotedMsg = m.quoted ? m.quoted : m;
+        const mime = (quotedMsg.msg || quotedMsg).mimetype || '';
 
-      await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
+        if (!/image/.test(mime)) return reply(`📸 Reply a photo to edit.\nExample: *${prefix + command}* remove background`);
+        if (!q) return reply(`❓ Please tell me what to remove.\nExample: *${prefix + command}* remove tree`);
 
-      // ---- Search ----
-      let ytdata;
-      const url = normalizeYouTubeUrl(q);
+        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
 
-      if (url) {
-        const r = await yts({ videoId: url.split("v=")[1] });
-        ytdata = r;
-      } else {
-        const s = await yts(q);
-        if (!s.videos.length) return reply("❌ No results found!");
-        ytdata = s.videos[0];
-      }
+        // Step 1: Download
+        const buffer = await quotedMsg.download();
+        const filename = `edit_${Date.now()}.jpg`;
 
-      await reply(`🎶 *${ytdata.title}*\nConverting to voice note...`);
+        // Step 2: Upload & Process
+        const uploadInfo = await upimage(filename);
+        await uploadtoOSS(uploadInfo.url, buffer, mime);
 
-      // ---- Fetch Audio ----
-      const audioUrl = await fetchAudio(ytdata.url);
-      if (!audioUrl) return reply("❌ Audio fetch failed!");
+        const cdnUrl = 'https://cdn.imgupscaler.ai/' + uploadInfo.object_name;
+        const jobId = await createJob(cdnUrl, q);
 
-      const tempPath = path.join(__dirname, "song.mp3");
+        let result;
+        do {
+            await new Promise(r => setTimeout(r, 4000));
+            result = await cekjob(jobId);
+        } while (result.code === 300006); // Status: Processing
 
-      // Download file
-      const res = await axios({
-        url: audioUrl,
-        method: "GET",
-        responseType: "arraybuffer",
-      });
+        if (result.code !== 0) throw new Error("AI failed to process image.");
 
-      fs.writeFileSync(tempPath, res.data);
-
-      // ---- Convert to PTT using YOUR system ----
-      const buffer = fs.readFileSync(audioPath);
-        const fileExtension = data[matchText].split('.').pop();
-        const pttAudio = await converter.toPTT(buffer, fileExtension);
-
+        // Step 3: Send Result
         await conn.sendMessage(from, {
-            audio: pttAudio,
-            mimetype: 'audio/ogg; codecs=opus',
-            ptt: true
-        }, { quoted: mek });
+            image: { url: result.result.output_url[0] },
+            caption: `✅ *KAMRAN-MD AI SUCCESS*\n\n✨ *Action:* ${q}\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`
+        }, { quoted: m });
 
-    } catch (error) {
-        console.error("AutoVoice Listener Error:", error);
+        await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+
+    } catch (err) {
+        console.error("Edit Error:", err);
+        reply("❌ *Error:* " + err.message);
     }
 });
+          
