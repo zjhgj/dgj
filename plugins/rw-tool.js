@@ -3,84 +3,83 @@ const baileys = require('@whiskeysockets/baileys');
 const crypto = require('crypto');
 
 /**
- * KAMRAN-MD: Advanced Group Status V2 Handler
- * Supports Text and Video status relay.
+ * KAMRAN-MD: Universal Group Status V2 Relay
  */
-async function sendGroupStatus(conn, jid, content, type = 'text') {
+async function relayStatus(conn, jid, content, type) {
     const messageSecret = crypto.randomBytes(32);
-    let messageStructure;
+    let mediaObject = {};
 
-    if (type === 'video') {
-        // Video status generation logic
-        const videoContent = await baileys.generateWAMessageContent(
-            { video: content.video, caption: content.caption },
-            { upload: conn.waUploadToServer }
-        );
-        messageStructure = {
-            groupStatusMessageV2: {
-                message: {
-                    ...videoContent,
-                    messageContextInfo: { messageSecret }
-                }
+    // Automatically setting media type based on input
+    if (type === 'image') mediaObject = { image: content.buffer, caption: content.caption };
+    else if (type === 'video') mediaObject = { video: content.buffer, caption: content.caption };
+    else if (type === 'audio') mediaObject = { audio: content.buffer, ptt: true }; // Sends as Voice Status
+    else mediaObject = { text: content.text, backgroundColor: content.bgColor || '#075E54' };
+
+    const inside = await baileys.generateWAMessageContent(mediaObject, { upload: conn.waUploadToServer });
+    
+    const messageStructure = {
+        groupStatusMessageV2: {
+            message: {
+                ...inside,
+                messageContextInfo: { messageSecret }
             }
-        };
-    } else {
-        // Text status generation logic
-        const textContent = await baileys.generateWAMessageContent(
-            { text: content.text },
-            { upload: conn.waUploadToServer, backgroundColor: content.backgroundColor }
-        );
-        messageStructure = {
-            groupStatusMessageV2: {
-                message: {
-                    ...textContent,
-                    messageContextInfo: { messageSecret }
-                }
-            }
-        };
-    }
+        }
+    };
 
-    const m = baileys.generateWAMessageFromContent(jid, messageStructure, {
-        userJid: conn.user.id
-    });
-
+    const m = baileys.generateWAMessageFromContent(jid, messageStructure, { userJid: conn.user.id });
     await conn.relayMessage(jid, m.message, { messageId: m.key.id });
     return m;
 }
 
 cmd({
     pattern: "gcstatus",
-    alias: ["gst", "videostatus"],
-    react: "🎬",
-    desc: "Send text or video status to group.",
+    alias: ["groupstatus", "statusrelay"],
+    react: "🌟",
+    desc: "Relay Text/Photo/Video/Voice as Group Status.",
     category: "tools",
-    use: ".groupstatus (reply video or type text)",
+    use: ".gcstatus (reply to any media or type text)",
     filename: __filename
-}, async (conn, mek, m, { from, reply, text, quoted, isAdmins, isOwner, mime }) => {
+}, async (conn, mek, m, { from, reply, text, isAdmins, isOwner }) => {
     try {
         if (!isAdmins && !isOwner) return reply("❌ *KAMRAN-MD:* Admins only.");
 
         const q = m.quoted ? m.quoted : m;
-        const contentType = (q.msg || q).mimetype || '';
-
-        // --- VIDEO STATUS LOGIC ---
-        if (/video/.test(contentType)) {
-            await reply("⏳ *KAMRAN-MD is uploading video status...*");
-            const videoBuffer = await q.download();
-            await sendGroupStatus(conn, from, { video: videoBuffer, caption: text || '' }, 'video');
-            return reply("✅ *Video Status sent successfully!*");
-        } 
-
-        // --- TEXT STATUS LOGIC ---
-        if (!text) return reply("❌ Please provide text or reply to a video.");
+        const mime = (q.msg || q).mimetype || '';
         
-        await reply("⏳ *Sending text status...*");
-        await sendGroupStatus(conn, from, { text: text, backgroundColor: '#075E54' }, 'text');
-        reply("✅ *Text Status sent!*");
+        // --- 1. PHOTO STATUS ---
+        if (/image/.test(mime)) {
+            await reply("⏳ *Uploading Photo Status...*");
+            const buffer = await q.download();
+            await relayStatus(conn, from, { buffer, caption: text }, 'image');
+            return reply("✅ *Photo Status Shared!*");
+        }
+
+        // --- 2. VIDEO STATUS ---
+        if (/video/.test(mime)) {
+            await reply("⏳ *Uploading Video Status...*");
+            const buffer = await q.download();
+            await relayStatus(conn, from, { buffer, caption: text }, 'video');
+            return reply("✅ *Video Status Shared!*");
+        }
+
+        // --- 3. VOICE STATUS ---
+        if (/audio/.test(mime)) {
+            await reply("⏳ *Uploading Voice Status...*");
+            const buffer = await q.download();
+            await relayStatus(conn, from, { buffer }, 'audio');
+            return reply("✅ *Voice Status Shared!*");
+        }
+
+        // --- 4. TEXT STATUS ---
+        if (!text) return reply("❌ Please reply to media or provide text for status.");
+        
+        await reply("⏳ *Sending Text Status...*");
+        await relayStatus(conn, from, { text: text }, 'text');
+        reply("✅ *Text Status Shared!*");
 
     } catch (err) {
         console.error(err);
-        reply(`❌ *Error:* ${err.message}`);
+        reply(`❌ *KAMRAN-MD Error:* ${err.message}`);
     }
 });
                          
