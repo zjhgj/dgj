@@ -1,98 +1,113 @@
-const { cmd } = require('../command');
-const axios = require('axios');
+const { cmd } = require("../command");
+const axios = require("axios");
+const fs = require("fs");
+const path = require("path");
+const FormData = require("form-data");
 
-// --- Global Settings ---
-global.autoDownload = true; // Default state for Auto-Download
+/* ============================= */
+/* UTILS (AI LOGIC)              */
+/* ============================= */
 
-/**
- * Core Downloader Function
- */
-async function aioDownload(url) {
-    const res = await axios.get(
-        `https://kyzoymd-downloader.vercel.app/api/download?url=${encodeURIComponent(url)}`
-    );
+function genserial() {
+    let s = '';
+    for (let i = 0; i < 32; i++) s += Math.floor(Math.random() * 16).toString(16);
+    return s;
+}
+
+async function upimage(filename) {
+    const form = new FormData();
+    form.append('file_name', filename);
+    const res = await axios.post('https://api.imgupscaler.ai/api/common/upload/upload-image', form, {
+        headers: { ...form.getHeaders(), origin: 'https://imgupscaler.ai', referer: 'https://imgupscaler.ai/' }
+    });
+    return res.data.result;
+}
+
+async function uploadtoOSS(putUrl, buffer, mimeType) {
+    await axios.put(putUrl, buffer, {
+        headers: { 'Content-Type': mimeType, 'Content-Length': buffer.length },
+        maxBodyLength: Infinity
+    });
+    return true;
+}
+
+async function createJob(imageUrl, prompt) {
+    const form = new FormData();
+    form.append('model_name', 'magiceraser_v4');
+    form.append('original_image_url', imageUrl);
+    form.append('prompt', prompt);
+    form.append('ratio', 'match_input_image');
+    form.append('output_format', 'jpg');
+
+    const res = await axios.post('https://api.magiceraser.org/api/magiceraser/v2/image-editor/create-job', form, {
+        headers: { 
+            ...form.getHeaders(), 
+            'product-code': 'magiceraser', 
+            'product-serial': genserial(), 
+            origin: 'https://imgupscaler.ai', 
+            referer: 'https://imgupscaler.ai/' 
+        }
+    });
+    return res.data.result.job_id;
+}
+
+async function cekjob(jobId) {
+    const res = await axios.get(`https://api.magiceraser.org/api/magiceraser/v1/ai-remove/get-job/${jobId}`, {
+        headers: { origin: 'https://imgupscaler.ai', referer: 'https://imgupscaler.ai/' }
+    });
     return res.data;
 }
 
-/**
- * Auto Download Handler (To be called in main message handler)
- */
-async function autoAioHandler(conn, m, isCmd) {
+/* ============================= */
+/* MAIN COMMAND                  */
+/* ============================= */
+
+cmd({
+    pattern: "nano",
+    alias: ["banana", "nanobanana", "editimg"],
+    react: "🍌",
+    desc: "AI Image Editor (Magic Eraser V4)",
+    category: "ai",
+    filename: __filename
+}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        if (isCmd) return; // Commands پر آٹو ڈاؤن لوڈ نہیں ہوگا
-        if (!m.text) return;
-        if (m.key.fromMe) return;
-        if (!global.autoDownload) return;
+        const quotedMsg = m.quoted ? m.quoted : m;
+        const mime = (quotedMsg.msg || quotedMsg).mimetype || '';
 
-        // لنکس کی پہچان کے لیے ریجیکس (Regex)
-        const linkRegex = /https?:\/\/(www\.)?(tiktok\.com|instagram\.com|facebook\.com|fb\.watch|youtube\.com|youtu\.be|x\.com|twitter\.com)\/[^\s]+/gi;
-        const match = m.text.match(linkRegex);
+        if (!/image/.test(mime)) return reply(`❌ Reply a photo to edit.\nExample: *${prefix + command}* wearing sunglasses`);
+        if (!q) return reply(`❌ Please provide a prompt.\nExample: *${prefix + command}* smile wide`);
 
-        if (match) {
-            const url = match[0];
-            const targetChat = conn.decodeJid(m.chat);
+        // Step 1: Download Image to Buffer
+        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+        const buffer = await quotedMsg.download();
+        const filename = `nano_${Date.now()}.jpg`;
 
-            const data = await aioDownload(url);
-            if (!data.success || !data.results.length) return;
+        // Step 2: Process with AI APIs
+        const uploadInfo = await upimage(filename);
+        await uploadtoOSS(uploadInfo.url, buffer, mime);
 
-            const r = data.results[0];
-            let videoUrl = r.hd_url || r.download_url;
-            
-            if (videoUrl) {
-                await conn.sendMessage(targetChat, {
-                    video: { url: videoUrl },
-                    mimetype: "video/mp4",
-                    caption: `✨ *Auto-Download Success* ✨\n\n📌 *Title:* ${r.title || "-"}\n🌐 *Platform:* ${data.platform}\n\n*LID Fix Active*`
-                }, { quoted: m });
-            }
-        }
-    } catch (e) {
-        // Quiet error to avoid spamming console
-    }
-}
+        const cdnUrl = 'https://cdn.imgupscaler.ai/' + uploadInfo.object_name;
+        const jobId = await createJob(cdnUrl, q);
 
-// --- COMMAND: MANUAL DOWNLOAD ---
-cmd({
-    pattern: "aio",
-    alias: ["dl"],
-    react: "📥",
-    desc: "Manual AIO Downloader.",
-    category: "downloader",
-    filename: __filename
-},           
-async (conn, mek, m, { from, q, reply }) => {
-    if (!q) return reply("⚠️ Please provide a link.");
-    const targetChat = conn.decodeJid(from);
-    const data = await aioDownload(q.trim());
-    if (!data.success) return reply("❌ Failed to download.");
-    
-    const r = data.results[0];
-    await conn.sendMessage(targetChat, {
-        video: { url: r.hd_url || r.download_url },
-        caption: `📥 *AIO Downloader*\n\n📌 ${r.title || "-"}`
-    }, { quoted: mek });
-});
+        let result;
+        do {
+            await new Promise(r => setTimeout(r, 3000));
+            result = await cekjob(jobId);
+        } while (result.code === 300006); // Job Pending
 
-// --- COMMAND: AUTO-DOWNLOAD ON/OFF ---
-cmd({
-    pattern: "autodl2",
-    alias: ["autodownload2"],
-    desc: "Turn Auto-Download ON or OFF.",
-    category: "config",
-    filename: __filename
-},           
-async (conn, mek, m, { q, reply, isOwner }) => {
-    if (!isOwner) return reply("❌ Owner only command.");
-    
-    if (q === 'on') {
-        global.autoDownload = true;
-        reply("✅ *Auto-Download:* Turned ON. Bot will now automatically download links.");
-    } else if (q === 'off') {
-        global.autoDownload = false;
-        reply("❌ *Auto-Download:* Turned OFF.");
-    } else {
-        reply(`Current Status: ${global.autoDownload ? "ON" : "OFF"}\nUsage: .autodl on/off`);
+        if (result.code !== 0) throw new Error("AI Processing failed.");
+
+        // Step 3: Send Edited Image
+        await conn.sendMessage(from, {
+            image: { url: result.result.output_url[0] },
+            caption: `✅ *KAMRAN-MD AI EDIT SUCCESS*\n\n✨ *Prompt:* ${q}\n🆔 *Job ID:* ${jobId}\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`
+        }, { quoted: m });
+
+        await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+
+    } catch (err) {
+        console.error("Nano Error:", err);
+        reply("❌ *Error:* " + err.message);
     }
 });
-
-module.exports = { autoAioHandler };
+        
