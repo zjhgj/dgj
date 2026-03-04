@@ -3,89 +3,54 @@ const axios = require('axios');
 
 cmd({
     pattern: "ai",
-    alias: ["bot", "dj", "gpt", "gpt4", "bing"],
-    desc: "Chat with an AI model",
-    category: "ai",
-    react: "🤖",
-    filename: __filename
-},
-async (conn, mek, m, { from, args, q, reply, react }) => {
-    try {
-        if (!q) return reply("Please provide a message for the AI.\nExample: `.ai Hello`");
-
-        const apiUrl = `https://lance-frank-asta.onrender.com/api/gpt?q=${encodeURIComponent(q)}`;
-        const { data } = await axios.get(apiUrl);
-
-        if (!data || !data.message) {
-            await react("❌");
-            return reply("AI failed to respond. Please try again later.");
-        }
-
-        await reply(`🤖 *AI Response:*\n\n${data.message}`);
-        await react("✅");
-    } catch (e) {
-        console.error("Error in AI command:", e);
-        await react("❌");
-        reply("An error occurred while communicating with the AI.");
-    }
-});
-
-cmd({
-    pattern: "openai",
-    alias: ["chatgpt", "gpt3", "open-gpt"],
-    desc: "Chat with OpenAI",
-    category: "ai",
+    alias: ["blackbox", "chatgpt", "ask"],
     react: "🧠",
-    filename: __filename
-},
-async (conn, mek, m, { from, args, q, reply, react }) => {
-    try {
-        if (!q) return reply("Please provide a message for OpenAI.\nExample: `.openai Hello`");
-
-        const apiUrl = `https://vapis.my.id/api/openai?q=${encodeURIComponent(q)}`;
-        const { data } = await axios.get(apiUrl);
-
-        if (!data || !data.result) {
-            await react("❌");
-            return reply("OpenAI failed to respond. Please try again later.");
-        }
-
-        await reply(`🧠 *OpenAI Response:*\n\n${data.result}`);
-        await react("✅");
-    } catch (e) {
-        console.error("Error in OpenAI command:", e);
-        await react("❌");
-        reply("An error occurred while communicating with OpenAI.");
-    }
-});
-
-cmd({
-    pattern: "deepseek",
-    alias: ["deep", "seekai"],
-    desc: "Chat with DeepSeek AI",
+    desc: "Ask anything from AI (Blackbox v4).",
     category: "ai",
-    react: "🧠",
+    use: ".ai what is javascript?",
     filename: __filename
-},
-async (conn, mek, m, { from, args, q, reply, react }) => {
+}, async (conn, mek, m, { from, reply, text }) => {
+    
+    // SAFE KEY: Crash rokne ke liye
+    const msgKey = m?.key || mek?.key || null;
+
     try {
-        if (!q) return reply("Please provide a message for DeepSeek AI.\nExample: `.deepseek Hello`");
+        if (!text) return reply("❓ Please provide a question!\nExample: .ai write a short poem.");
 
-        const apiUrl = `https://api.ryzendesu.vip/api/ai/deepseek?text=${encodeURIComponent(q)}`;
-        const { data } = await axios.get(apiUrl);
+        if (msgKey) await conn.sendMessage(from, { react: { text: '⏳', key: msgKey } });
+        
+        // Step 1: Send Loading Message
+        let waitMsg = await conn.sendMessage(from, { text: "🔍 *AI is thinking...*" }, { quoted: m });
 
-        if (!data || !data.answer) {
-            await react("❌");
-            return reply("DeepSeek AI failed to respond. Please try again later.");
+        // Step 2: API Call (Using Blackbox v4 as it's usually faster)
+        const apiUrl = `https://arslan-apis.vercel.app/ai/blackboxv4?q=${encodeURIComponent(text)}`;
+        const res = await axios.get(apiUrl, { timeout: 30000 });
+
+        if (!res.data || !res.data.status) {
+            // Fallback to Blackbox v1 if v4 fails
+            const fallbackUrl = `https://arslan-apis.vercel.app/ai/blackbox?q=${encodeURIComponent(text)}`;
+            const fallbackRes = await axios.get(fallbackUrl);
+            if (!fallbackRes.data?.status) throw new Error("AI service is currently unavailable.");
+            
+            var aiResponse = fallbackRes.data.result;
+        } else {
+            var aiResponse = res.data.result;
         }
 
-        await reply(`🧠 *DeepSeek AI Response:*\n\n${data.answer}`);
-        await react("✅");
+        let resultMsg = `🤖 *AI RESPONSE (Blackbox)*\n\n${aiResponse}\n\n> © ᴘʀᴏᴠᴀ-ᴍᴅ ❤️`;
+
+        // Step 3: SAFE EDIT Logic
+        if (waitMsg && waitMsg.key) {
+            await conn.sendMessage(from, { text: resultMsg, edit: waitMsg.key });
+        } else {
+            await reply(resultMsg);
+        }
+
+        if (msgKey) await conn.sendMessage(from, { react: { text: '✅', key: msgKey } });
+
     } catch (e) {
-        console.error("Error in DeepSeek AI command:", e);
-        await react("❌");
-        reply("An error occurred while communicating with DeepSeek AI.");
+        console.error("AI Error:", e);
+        reply(`❌ *AI Error:* ${e.message || "Failed to get response."}`);
+        if (msgKey) await conn.sendMessage(from, { react: { text: '❌', key: msgKey } });
     }
 });
-
-
