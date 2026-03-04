@@ -1,74 +1,86 @@
 const { cmd } = require('../command');
-const baileys = require('@whiskeysockets/baileys'); // Standard Baileys library
+const baileys = require('@whiskeysockets/baileys');
 const crypto = require('crypto');
 
 /**
- * KAMRAN-MD: Group Status V2 Handler
- * Sends a status-style message directly to the group.
+ * KAMRAN-MD: Advanced Group Status V2 Handler
+ * Supports Text and Video status relay.
  */
-async function sendGroupStatus(conn, jid, content) {
-    const { backgroundColor } = content;
-    const tempContent = { ...content };
-    delete tempContent.backgroundColor;
-
-    // Generating message content using Baileys internal functions
-    const inside = await baileys.generateWAMessageContent(tempContent, {
-        upload: conn.waUploadToServer,
-        backgroundColor
-    });
-
+async function sendGroupStatus(conn, jid, content, type = 'text') {
     const messageSecret = crypto.randomBytes(32);
-    
-    // Creating the specialized GroupStatusMessageV2 structure
-    const m = baileys.generateWAMessageFromContent(jid, {
-        messageContextInfo: { messageSecret },
-        groupStatusMessageV2: {
-            message: {
-                ...inside,
-                messageContextInfo: { messageSecret }
-            }
-        }
-    }, {});
+    let messageStructure;
 
-    // Relaying the message to the group JID
-    await conn.relayMessage(jid, m.message, {
-        messageId: m.key.id
+    if (type === 'video') {
+        // Video status generation logic
+        const videoContent = await baileys.generateWAMessageContent(
+            { video: content.video, caption: content.caption },
+            { upload: conn.waUploadToServer }
+        );
+        messageStructure = {
+            groupStatusMessageV2: {
+                message: {
+                    ...videoContent,
+                    messageContextInfo: { messageSecret }
+                }
+            }
+        };
+    } else {
+        // Text status generation logic
+        const textContent = await baileys.generateWAMessageContent(
+            { text: content.text },
+            { upload: conn.waUploadToServer, backgroundColor: content.backgroundColor }
+        );
+        messageStructure = {
+            groupStatusMessageV2: {
+                message: {
+                    ...textContent,
+                    messageContextInfo: { messageSecret }
+                }
+            }
+        };
+    }
+
+    const m = baileys.generateWAMessageFromContent(jid, messageStructure, {
+        userJid: conn.user.id
     });
 
+    await conn.relayMessage(jid, m.message, { messageId: m.key.id });
     return m;
 }
 
 cmd({
-    pattern: "groupstatus",
-    alias: ["gstatus", "gst"],
-    react: "🪻",
-    desc: "Send a status-style message to the current group.",
+    pattern: "gcstatus",
+    alias: ["gst", "videostatus"],
+    react: "🎬",
+    desc: "Send text or video status to group.",
     category: "tools",
-    use: ".groupstatus Your message here",
+    use: ".groupstatus (reply video or type text)",
     filename: __filename
-}, async (conn, mek, m, { from, reply, text, isAdmins, isOwner }) => {
+}, async (conn, mek, m, { from, reply, text, quoted, isAdmins, isOwner, mime }) => {
     try {
-        // Permission Check: Sirf Admins ya Owner hi status bhej sakte hain
-        if (!isAdmins && !isOwner) return reply("❌ *KAMRAN-MD:* This command is for Admins only.");
+        if (!isAdmins && !isOwner) return reply("❌ *KAMRAN-MD:* Admins only.");
 
-        if (!text) return reply("❌ Please provide text for the status.\nExample: `.groupstatus Hello Group!`");
+        const q = m.quoted ? m.quoted : m;
+        const contentType = (q.msg || q).mimetype || '';
 
-        await reply("⏳ *KAMRAN-MD is sending group status...*");
+        // --- VIDEO STATUS LOGIC ---
+        if (/video/.test(contentType)) {
+            await reply("⏳ *KAMRAN-MD is uploading video status...*");
+            const videoBuffer = await q.download();
+            await sendGroupStatus(conn, from, { video: videoBuffer, caption: text || '' }, 'video');
+            return reply("✅ *Video Status sent successfully!*");
+        } 
 
-        const content = {
-            text: text,
-            backgroundColor: '#075E54' // WhatsApp Green (Aap ise change kar sakte hain)
-        };
-
-        const sent = await sendGroupStatus(conn, from, content);
+        // --- TEXT STATUS LOGIC ---
+        if (!text) return reply("❌ Please provide text or reply to a video.");
         
-        if (sent) {
-            return reply(`✅ *Group Status Sent Successfully!*\n🔑 *ID:* ${sent.key.id}`);
-        }
+        await reply("⏳ *Sending text status...*");
+        await sendGroupStatus(conn, from, { text: text, backgroundColor: '#075E54' }, 'text');
+        reply("✅ *Text Status sent!*");
 
     } catch (err) {
-        console.error("Group Status Error:", err);
-        reply(`❌ *Failed to send status:* ${err.message}`);
+        console.error(err);
+        reply(`❌ *Error:* ${err.message}`);
     }
 });
-            
+                         
