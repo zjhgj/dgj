@@ -53,7 +53,7 @@ cmd({
         // Result bhejna
         await nato.sendMessage(from, {
             image: { url: res.data.result_url },
-            caption: `👨‍🦲 *NATO-MD BOTAK GENERATOR*\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`
+            caption: `👨‍🦲 *KAMRAN-MD BOTAK GENERATOR*\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`
         }, { quoted: m });
 
         await nato.sendMessage(from, { react: { text: '✅', key: m.key } });
