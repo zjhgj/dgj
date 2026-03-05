@@ -1,97 +1,70 @@
 const { cmd } = require("../command");
-const yts = require("yt-search");
 const axios = require("axios");
+const yts = require("yt-search"); // Pehle 'npm install yt-search' kar lein
 
-// --- Helper Functions ---
+const commands = ["mp3url", "ytmp3", "play", "song"]; // 'song' command bhi add kar di
 
-function normalizeYouTubeUrl(url) {
-const match = url.match(/(?:youtu.be\/|youtube.com\/shorts\/|youtube.com\/.*[?&]v=)([a-zA-Z0-9_-]{11})/);
-return match ? `https://youtube.com/watch?v=${match[1]}` : null;
-}
+commands.forEach(command => {
+  cmd({
+    pattern: command,
+    desc: "Download YouTube audio by Name or URL",
+    category: "downloader",
+    react: "🎵",
+    filename: __filename
+  }, async (conn, mek, m, { from, q, reply }) => {
+    try {
+      if (!q) return reply("❌ Please provide a YouTube link or Song Name.");
 
-/**
-Fetch Audio Link (Koyeb API)
-*/
-async function fetchAudioData(url) {
-try {
-const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/song?search=${encodeURIComponent(url)}`;
-const { data } = await axios.get(apiUrl);
-return data.status && data.data ? data.data.url : null;
-} catch (e) { return null; }
-}
+      let cleanUrl = q;
 
-// --- MAIN AUDIO COMMAND ---
+      // Check agar input URL nahi hai (Song Name hai)
+      if (!q.includes("youtube.com") && !q.includes("youtu.be")) {
+        await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
+        
+        // YouTube par search karein
+        const search = await yts(q);
+        const video = search.videos[0]; // Pehla result uthayein
 
-cmd(
-{
-pattern: "dl",
-alias: ["play", "audio"],
-react: "🎧",
-desc: "Download YouTube Audio (MP3).",
-category: "download",
-filename: __filename,
-},
-async (conn, mek, m, { from, q, reply, prefix }) => {
-try {
+        if (!video) return reply("❌ No results found for this song name.");
+        cleanUrl = video.url; // Search se URL mil gayi
+      } else {
+        // Agar URL hai toh purana logic
+        cleanUrl = q.split("&")[0].replace("https://youtu.be/", "https://www.youtube.com/watch?v=");
+      }
 
-if (!q) return reply(`❓ *Usage:* \`${prefix}dl <song name / link>\``);
+      // API Call for downloading
+      const apiUrl = `https://arslan-apis.vercel.app/download/ytmp3?url=${encodeURIComponent(cleanUrl)}`;
+      const res = await axios.get(apiUrl, { timeout: 20000 });
 
-await conn.sendMessage(from, { react: { text: "🔎", key: mek.key } });
+      if (!res.data?.result?.status) {
+        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+        return reply("❌ Failed to fetch audio.");
+      }
 
-// Step 1: Search Video
-let ytdata;
-const url = normalizeYouTubeUrl(q);
+      const meta = res.data.result.metadata;
+      const downloadUrl = res.data.result.download.url;
 
-if (url) {
-const results = await yts({ videoId: url.split('v=')[1] });
-ytdata = results;
-} else {
-const search = await yts(q);
-if (!search.videos.length) return reply("❌ *No results found!*");
-ytdata = search.videos[0];
-}
+      await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-// Stylish Caption
-const caption = `
-╔═══════〔 🎵 𝚈𝚃  𝙰𝚄𝙳𝙸𝙾  𝙳𝙻 〕═══════╗
+      // Thumbnail aur Detail bhejna
+      await conn.sendMessage(from, {
+        image: { url: meta.thumbnail },
+        caption: `🎶 *${meta.title}*\n\n👤 *Channel:* ${meta.author || "Unknown"}\n💽 *Quality:* MP3\n\n> *🤍ᴘᴏᴡᴇʀᴇᴅ ʙʏ KAMRAN-ᴍᴅ🤍*`
+      }, { quoted: mek });
 
-🎼 *Title:* ${ytdata.title}
-⏱️ *Duration:* ${ytdata.timestamp}
-👀 *Views:* ${ytdata.views.toLocaleString()}
-🔗 *URL:* ${ytdata.url}
+      // Audio file bhejna
+      await conn.sendMessage(from, {
+        audio: { url: downloadUrl },
+        mimetype: "audio/mpeg",
+        fileName: `${meta.title}.mp3`
+      }, { quoted: mek });
 
-╚══════════════════════════╝
-⏳ *Please wait… Preparing high quality MP3*
+      await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
-> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ KAMRAN-MD
-`;
-
-await conn.sendMessage(
-from,
-{ image: { url: ytdata.thumbnail || ytdata.image }, caption },
-{ quoted: mek }
-);
-
-// Step 2: Fetch & Send Audio
-const audioUrl = await fetchAudioData(ytdata.url);
-if (!audioUrl) return reply("❌ *Audio download failed!*");
-
-await conn.sendMessage(
-from,
-{
-audio: { url: audioUrl },
-mimetype: "audio/mpeg",
-ptt: false
-},
-{ quoted: mek }
-);
-
-await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-
-} catch (e) {
-console.error(e);
-reply("⚠️ *Error occurred while processing!*");
-}
-}
-);
-       
+    } catch (e) {
+      console.error(`${command} command error:`, e);
+      await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+      reply("❌ An error occurred while processing.");
+    }
+  });
+});
