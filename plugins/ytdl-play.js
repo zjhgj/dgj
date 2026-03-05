@@ -3,10 +3,11 @@ const axios = require("axios");
 const yts = require("yt-search");
 
 cmd({
-    pattern: "song", "play", "ytmp3",
+    pattern: "song",
+    alias: ["play", "audio", "ytmp3"],
     desc: "Download YouTube audio by Name or URL",
-    category: "downloader",
-    react: "🎵",
+    category: "download",
+    react: "🎧",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
     try {
@@ -51,4 +52,4 @@ cmd({
         reply("❌ An error occurred.");
     }
 });
-          
+            
