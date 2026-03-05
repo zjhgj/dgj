@@ -15,15 +15,15 @@ cmd({
         const mime = (quoted.msg || quoted).mimetype || '';
 
         if (!/image/.test(mime)) {
-            return reply(`📸 *KAMRAN-MD:* Please reply to an image.\nExample: *${prefix + command}*`);
+            return reply(`📸 *KAMRAN-MD:* Please reply to an image to use the Nano Banana AI.`);
         }
 
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        // Step 1: Download Media
+        // Step 1: Download image from WhatsApp
         const media = await quoted.download();
 
-        // Step 2: Upload to Uguu (Because API needs URL)
+        // Step 2: Upload image to get URL (Zenz API needs a URL)
         const form = new FormData();
         form.append('files[]', media, { filename: 'image.jpg' });
 
@@ -31,30 +31,25 @@ cmd({
             headers: { ...form.getHeaders() }
         });
 
-        if (!upload.data.files || !upload.data.files[0]) throw new Error("Upload failed.");
         const imageUrl = upload.data.files[0].url;
 
-        // Step 3: Fetch AI Image from Zenz API
+        // Step 3: Call AI API with strict arraybuffer mode
         const api = `https://api.zenzxz.my.id/ai/nanobanana?url=${encodeURIComponent(imageUrl)}`;
-        
-        // Hamesha 'arraybuffer' use karein taaki image data corrupt na ho
         const response = await axios.get(api, { responseType: 'arraybuffer' });
-        const buffer = Buffer.from(response.data, 'binary');
+        
+        // Convert to Buffer properly to avoid "Can't open image" error
+        const finalBuffer = Buffer.from(response.data, 'binary');
 
-        // Check karein agar buffer khali toh nahi
-        if (buffer.length < 100) throw new Error("API returned empty image.");
-
-        // Step 4: Send Image with fixed Caption
-        await conn.sendMessage(from, {
-            image: buffer,
+        // Step 4: Send processed image         await conn.sendMessage(from, {
+            image: finalBuffer,
             caption: `🍌 *NANO BANANA AI SUCCESS*\n\n✨ *Style:* Nano Banana V1\n🚀 *Powered by:* KAMRAN-MD\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`
         }, { quoted: m });
 
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
     } catch (e) {
-        console.error("Nano Error:", e);
-        reply(`❌ *KAMRAN-MD Error:* Image processing failed. Please try again.`);
+        console.error("Nano Banana Error:", e);
+        reply(`❌ *KAMRAN-MD Error:* AI process failed. Try a different image or check API status.`);
     }
 });
-        
+            
