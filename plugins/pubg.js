@@ -1,107 +1,63 @@
-const { cmd } = require('../command');
-const axios = require('axios');
+const { cmd } = require("../command");
+const axios = require("axios");
+const FormData = require("form-data");
 
-// Auto-DL Status
-let autoDL = true;
-
-/**
- * Downloader API
- */
-async function aioDownload(url) {
-    const res = await axios.get(
-        `https://kyzoymd-downloader.vercel.app/api/download?url=${encodeURIComponent(url)}`
-    );
-    return res.data;
-}
-
-/**
- * Convert video URL to Buffer (VERY IMPORTANT to hide link)
- */
-async function getBuffer(url) {
-    const res = await axios.get(url, { responseType: 'arraybuffer' });
-    return Buffer.from(res.data);
-}
-
-// ---------------- AUTO DOWNLOAD ----------------
 cmd({
-    on: "body"
-},
-async (conn, mek, m, { from, body }) => {
+    pattern: "nanobanana",
+    alias: ["nano", "banana", "aiimage"],
+    react: "🍌",
+    desc: "Transform your image using Nano Banana AI.",
+    category: "ai",
+    filename: __filename
+}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        if (!autoDL || !body) return;
+        const quoted = m.quoted ? m.quoted : m;
+        const mime = (quoted.msg || quoted).mimetype || '';
 
-        const urlRegex = /https?:\/\/[^\s]+/gi;
-        const links = body.match(urlRegex);
-        if (!links) return;
-
-        const url = links[0];
-
-        // Supported sites only
-        const supported = [
-            "tiktok.com",
-            "facebook.com",
-            "instagram.com",
-            "youtube.com",
-            "x.com",
-            "open.spotify.com"
-        ];
-        if (!supported.some(d => url.includes(d))) return;
-
-        const targetChat = conn.decodeJid(from);
-
-        await conn.sendMessage(targetChat, {
-            react: { text: "📥", key: m.key }
-        });
-
-        const data = await aioDownload(url);
-        if (!data.success || !data.results.length) return;
-
-        for (let r of data.results) {
-            const videoUrl = r.hd_url || r.download_url;
-            if (!videoUrl) continue;
-
-            // 🔥 Convert to buffer (link hidden forever)
-            const buffer = await getBuffer(videoUrl);
-
-            const caption = `✨ *AUTO DOWNLOADER* ✨
-
-📌 *Title:* ${r.title || "Media"}
-
-LID Fix Active - KAMRAN-MD`;
-
-            await conn.sendMessage(targetChat, {
-                video: buffer,
-                mimetype: "video/mp4",
-                caption: caption,
-                linkPreview: false
-            }, { quoted: mek });
+        // Step 1: Check if an image is provided
+        if (!/image/.test(mime)) {
+            return reply(`📸 *KAMRAN-MD:* Please reply to an image to use the Nano Banana AI.\nExample: *${prefix + command}*`);
         }
 
+        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
+
+        // Step 2: Download the image
+        const media = await quoted.download();
+
+        // Step 3: Upload to Uguu.se to get a temporary URL
+        // 
+        const form = new FormData();
+        form.append('files[]', media, { filename: 'image.jpg' });
+
+        const upload = await axios.post('https://uguu.se/upload.php', form, {
+            headers: { ...form.getHeaders() }
+        });
+
+        if (!upload.data.files || !upload.data.files[0]) {
+            throw new Error("Gagal mengunggah gambar ke server uploader.");
+        }
+
+        const imageUrl = upload.data.files[0].url;
+
+        // Step 4: Call Nano Banana AI API
+        // 
+        const api = `https://api.zenzxz.my.id/ai/nanobanana?url=${encodeURIComponent(imageUrl)}`;
+        
+        const response = await axios.get(api, { responseType: 'arraybuffer' });
+        const buffer = Buffer.from(response.data, 'utf-8');
+
+        // Step 5: Send the AI result back to user
+        await conn.sendMessage(from, {
+            image: buffer,
+            caption: `🍌 *NANO BANANA AI SUCCESS*\n\n✨ *Style:* Nano Banana V1\n🚀 *Powered by:* KAMRAN-MD\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`
+        }, { quoted: m });
+
+        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+
     } catch (e) {
-        console.log("AutoDL Error:", e.message);
+        console.error("Nano Banana Error:", e);
+        await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+        reply(`❌ *KAMRAN-MD Error:* ${e.message || "Failed to process AI image."}`);
     }
 });
-
-// ---------------- ON/OFF COMMAND ----------------
-cmd({
-    pattern: "autodl",
-    desc: "Turn Auto Downloader On/Off",
-    category: "owner",
-    use: ".autodl on/off",
-    filename: __filename
-},
-async (conn, mek, m, { q, reply }) => {
-    if (!q) return reply("*Usage:* .autodl on/off");
-
-    if (q.toLowerCase() === "on") {
-        autoDL = true;
-        return reply("✅ Auto Downloader Turned ON");
-    }
-
-    if (q.toLowerCase() === "off") {
-        autoDL = false;
-        return reply("🔴 Auto Downloader Turned OFF");
-    }
-
-    reply("Use only: on / off");
-});
+    
