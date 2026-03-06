@@ -264,65 +264,51 @@ conn.ev.on("presence.update", (update) => PresenceControl(conn, update));
 	
 BotActivityFilter(conn);	
 	
- /// READ STATUS + NEWSLETTER REACT
-
-conn.ev.on("messages.upsert", async ({ messages }) => {
+ conn.ev.on("messages.upsert", async ({ messages }) => {
 try {
 
 const mek = messages[0]
 if (!mek || !mek.message) return
 
-// unwrap ephemeral message
 if (mek.message.ephemeralMessage) {
 mek.message = mek.message.ephemeralMessage.message
 }
 
-/* =============================
-AUTO STATUS VIEW
-============================= */
+/* ===== STATUS VIEW ===== */
 
-if (mek.key?.remoteJid === "status@broadcast") {
+if (
+mek.key?.remoteJid === "status@broadcast" &&
+config.AUTO_STATUS_SEEN === "true"
+){
 
-if (config.AUTO_STATUS_SEEN === "true") {
-
-await conn.readMessages([{
-remoteJid: "status@broadcast",
-id: mek.key.id,
-participant: mek.key.participant || "0@s.whatsapp.net"
-}])
-
-console.log("✅ Status Viewed")
+await conn.readMessages([mek.key])
+console.log("Status Viewed")
 
 }
 
+/* ===== STATUS REACT ===== */
+
+if (
+mek.key?.remoteJid === "status@broadcast" &&
+config.AUTO_STATUS_REACT === "true"
+){
+
+const emojis = ['❤️','🔥','💯','💫','💎','👍','😎']
+const randomEmoji = emojis[Math.floor(Math.random()*emojis.length)]
+
+await conn.sendMessage(mek.key.remoteJid,{
+react:{
+text: randomEmoji,
+key: mek.key
+}
+})
+
 }
 
-/* =============================
-NEWSLETTER AUTO REACT
-============================= */
-
-const newsletterJids = [
-"120363418144382782@newsletter"
-]
-
-const emojis = ["❤️", "👍", "😮", "😎", "💀"]
-
-if (newsletterJids.includes(mek.key?.remoteJid)) {
-
-const serverId = mek.newsletterServerId
-if (serverId) {
-
-const emoji = emojis[Math.floor(Math.random() * emojis.length)]
-
-await conn.newsletterReactMessage(
-mek.key.remoteJid,
-serverId.toString(),
-emoji);
-      }
-    } catch (e) {
-    
-    }
-  }	  
+} catch(e){
+console.log(e.message)
+}
+})	  
 	  
   if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_REACT === "true"){
     const jawadlike = await conn.decodeJid(conn.user.id);
