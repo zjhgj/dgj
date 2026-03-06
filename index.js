@@ -265,22 +265,24 @@ conn.ev.on("presence.update", (update) => PresenceControl(conn, update));
 BotActivityFilter(conn);	
 	
  /// READ STATUS       
-  conn.ev.on('messages.upsert', async(mek) => {
-    mek = mek.messages[0]
-    if (!mek.message) return
-    mek.message = (getContentType(mek.message) === 'ephemeralMessage') 
-    ? mek.message.ephemeralMessage.message 
-    : mek.message;
+  conn.ev.on('messages.upsert', async (mek) => {
+mek = mek.messages[0]
+if (!mek.message) return
+    mek.message = (getContentType(mek.message) === 'ephemeralMessage')
+? mek.message.ephemeralMessage.message
+: mek.message;
     //console.log("New Message Detected:", JSON.stringify(mek, null, 2));
   if (config.READ_MESSAGE === 'true') {
-    await conn.readMessages([mek.key]);  // Mark message as read
-    console.log(`Marked message from ${mek.key.remoteJid} as read.`);
+await conn.readMessages([mek.key])
+console.log(`Marked message from ${mek.key.remoteJid} as read.`);
   }
     if(mek.message.viewOnceMessageV2)
     mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-    if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_SEEN === "true"){
-      await conn.readMessages([mek.key])
-    }
+    if (mek.key?.remoteJid === "status@broadcast") {
+if (config.AUTO_STATUS_SEEN === "true") {
+await conn.readMessages([mek.key]);
+}
+}
 
   const newsletterJids = [
   "120363418144382782@newsletter",
