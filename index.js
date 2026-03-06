@@ -278,11 +278,20 @@ console.log(`Marked message from ${mek.key.remoteJid} as read.`);
   }
     if(mek.message.viewOnceMessageV2)
     mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-    if (mek.key?.remoteJid === "status@broadcast") {
-if (config.AUTO_STATUS_SEEN === "true") {
-await conn.readMessages([mek.key]);
+    if (
+mek.key?.remoteJid === "status@broadcast" &&
+config.AUTO_STATUS_SEEN === "true"
+) {
+
+await conn.readMessages([{
+remoteJid: "status@broadcast",
+id: mek.key.id,
+participant: mek.key.participant || "0@s.whatsapp.net"
+}])
+
+console.log("✅ Status Viewed")
 }
-}
+})
 
   const newsletterJids = [
   "120363418144382782@newsletter",
