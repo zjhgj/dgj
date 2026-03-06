@@ -294,7 +294,7 @@ await conn.readMessages([mek.key]);
 
   if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
     try {
-      const serverId = mek.newsletterServerId;
+      const serverId = mek.newsletterserverId;
       if (serverId) {
       const emoji = emojis[Math.floor(Math.random() * emojis.length)];
         await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
