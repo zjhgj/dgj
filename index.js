@@ -265,33 +265,34 @@ conn.ev.on("presence.update", (update) => PresenceControl(conn, update));
 BotActivityFilter(conn);	
 	
  /// READ STATUS       
-  conn.ev.on('messages.upsert', async (mek) => {
-mek = mek.messages[0]
+  conn.ev.on("messages.upsert", async ({ messages }) => {
+try {
+
+const mek = messages[0]
+if (!mek) return
 if (!mek.message) return
-    mek.message = (getContentType(mek.message) === 'ephemeralMessage')
-? mek.message.ephemeralMessage.message
-: mek.message;
-    //console.log("New Message Detected:", JSON.stringify(mek, null, 2));
-  if (config.READ_MESSAGE === 'true') {
-await conn.readMessages([mek.key])
-console.log(`Marked message from ${mek.key.remoteJid} as read.`);
-  }
-    if(mek.message.viewOnceMessageV2)
-    mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-    if (
-mek.key?.remoteJid === "status@broadcast" &&
-config.AUTO_STATUS_SEEN === "true"
-) {
 
-await conn.readMessages([{
-remoteJid: "status@broadcast",
-id: mek.key.id,
-participant: mek.key.participant || "0@s.whatsapp.net"
-}])
-
-console.log("✅ Status Viewed")
+// Safe unwrap
+if (mek.message.ephemeralMessage) {
+mek.message = mek.message.ephemeralMessage.message
 }
-})
+
+// Auto read
+if (config.READ_MESSAGE === "true") {
+await conn.readMessages([mek.key])
+}
+
+// Status view fix
+if (mek.key?.remoteJid === "status@broadcast" &&
+config.AUTO_STATUS_SEEN === "true") {
+
+await conn.readMessages([mek.key])
+}
+
+} catch (e) {
+console.log("Bot Handler Error:", e.message([mek.key]);
+}
+}
 
   const newsletterJids = [
   "120363418144382782@newsletter",
