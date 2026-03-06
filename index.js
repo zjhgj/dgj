@@ -264,51 +264,45 @@ conn.ev.on("presence.update", (update) => PresenceControl(conn, update));
 	
 BotActivityFilter(conn);	
 	
- conn.ev.on("messages.upsert", async ({ messages }) => {
-try {
-
-const mek = messages[0]
-if (!mek || !mek.message) return
-
-if (mek.message.ephemeralMessage) {
-mek.message = mek.message.ephemeralMessage.message
-}
-
-/* ===== STATUS VIEW ===== */
-
-if (
-mek.key?.remoteJid === "status@broadcast" &&
-config.AUTO_STATUS_SEEN === "true"
-){
-
+ /// READ STATUS       
+  conn.ev.on('messages.upsert', async (mek) => {
+mek = mek.messages[0]
+if (!mek.message) return
+    mek.message = (getContentType(mek.message) === 'ephemeralMessage')
+? mek.message.ephemeralMessage.message
+: mek.message;
+    //console.log("New Message Detected:", JSON.stringify(mek, null, 2));
+  if (config.READ_MESSAGE === 'true') {
 await conn.readMessages([mek.key])
-console.log("Status Viewed")
-
+console.log(`Marked message from ${mek.key.remoteJid} as read.`);
+  }
+    if(mek.message.viewOnceMessageV2)
+    mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
+    if (mek.key?.remoteJid === "status@broadcast") {
+if (config.AUTO_STATUS_SEEN === "true") {
+await conn.readMessages([mek.key]);
+}
 }
 
-/* ===== STATUS REACT ===== */
+  const newsletterJids = [
+  "120363418144382782@newsletter",
+  "120363418144382782@newsletter",	  
+  "120363418144382782@newsletter",	  
+  "120363418144382782@newsletter"
+];
+  const emojis = ["❤️", "👍", "😮", "😎", "💀"];
 
-if (
-mek.key?.remoteJid === "status@broadcast" &&
-config.AUTO_STATUS_REACT === "true"
-){
-
-const emojis = ['❤️','🔥','💯','💫','💎','👍','😎']
-const randomEmoji = emojis[Math.floor(Math.random()*emojis.length)]
-
-await conn.sendMessage(mek.key.remoteJid,{
-react:{
-text: randomEmoji,
-key: mek.key
-}
-})
-
-}
-
-} catch(e){
-console.log(e.message)
-}
-})	  
+  if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
+    try {
+      const serverId = mek.newsletterServerId;
+      if (serverId) {
+      const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+        await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
+      }
+    } catch (e) {
+    
+    }
+  }	  
 	  
   if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_REACT === "true"){
     const jawadlike = await conn.decodeJid(conn.user.id);
