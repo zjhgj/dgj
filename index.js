@@ -264,50 +264,60 @@ conn.ev.on("presence.update", (update) => PresenceControl(conn, update));
 	
 BotActivityFilter(conn);	
 	
- /// READ STATUS       
-  conn.ev.on("messages.upsert", async ({ messages }) => {
+ /// READ STATUS + NEWSLETTER REACT
+
+conn.ev.on("messages.upsert", async ({ messages }) => {
 try {
 
 const mek = messages[0]
-if (!mek) return
-if (!mek.message) return
+if (!mek || !mek.message) return
 
-// Safe unwrap
+// unwrap ephemeral message
 if (mek.message.ephemeralMessage) {
 mek.message = mek.message.ephemeralMessage.message
 }
 
-// Auto read
-if (config.READ_MESSAGE === "true") {
-await conn.readMessages([mek.key])
+/* =============================
+AUTO STATUS VIEW
+============================= */
+
+if (mek.key?.remoteJid === "status@broadcast") {
+
+if (config.AUTO_STATUS_SEEN === "true") {
+
+await conn.readMessages([{
+remoteJid: "status@broadcast",
+id: mek.key.id,
+participant: mek.key.participant || "0@s.whatsapp.net"
+}])
+
+console.log("✅ Status Viewed")
+
 }
 
-// Status view fix
-if (mek.key?.remoteJid === "status@broadcast" &&
-config.AUTO_STATUS_SEEN === "true") {
-
-await conn.readMessages([mek.key])
 }
 
-} catch (e) {
-console.log("Bot Handler Error:", e.message([mek.key]);
-}
-}
+/* =============================
+NEWSLETTER AUTO REACT
+============================= */
 
-  const newsletterJids = [
-  "120363418144382782@newsletter",
-  "120363418144382782@newsletter",	  
-  "120363418144382782@newsletter",	  
-  "120363418144382782@newsletter"
-];
-  const emojis = ["❤️", "👍", "😮", "😎", "💀"];
+const newsletterJids = [
+"120363418144382782@newsletter"
+]
 
-  if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
-    try {
-      const serverId = mek.newsletterServerId;
-      if (serverId) {
-      const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-        await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
+const emojis = ["❤️", "👍", "😮", "😎", "💀"]
+
+if (newsletterJids.includes(mek.key?.remoteJid)) {
+
+const serverId = mek.newsletterServerId
+if (serverId) {
+
+const emoji = emojis[Math.floor(Math.random() * emojis.length)]
+
+await conn.newsletterReactMessage(
+mek.key.remoteJid,
+serverId.toString(),
+emoji);
       }
     } catch (e) {
     
