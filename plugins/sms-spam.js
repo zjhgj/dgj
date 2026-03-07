@@ -14,65 +14,59 @@ cmd({
         const quoted = m.quoted ? m.quoted : m;
         const mime = (quoted.msg || quoted).mimetype || '';
 
-        // Step 1: Input Validation
-        if (!q && !mime) {
-            return reply(`*Example:* ➜ Reply photo with caption: *${prefix + command}* change background to galaxy\n\n➜ Use URL: *${prefix + command}* https://url.com/img.jpg make it 3d`);
-        }
+        if (!q && !mime) return reply(`❌ *Usage:* Reply to image or provide URL + Prompt.`);
 
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
         let imageUrl = '';
-        let prompt = '';
+        let prompt = q;
 
-        // Step 2: Handle Image Source (Reply or URL)
+        // Step 1: Upload Logic
         if (mime && /image/.test(mime)) {
-            prompt = q;
-            if (!prompt) return reply(`❌ *Prompt Missing:* Please provide instructions for the AI.`);
-
-            // Download media for upload
             const buffer = await quoted.download();
             const form = new FormData();
             form.append('files[]', buffer, { filename: 'image.jpg' });
 
-            // Using Uguu.se for temporary image link
+            // Uploading to Uguu
             const upload = await axios.post('https://uguu.se/upload.php', form, {
                 headers: form.getHeaders()
             });
-
+            
+            if (!upload.data.files?.[0]?.url) throw new Error("Upload failed at Uguu");
             imageUrl = upload.data.files[0].url;
+            console.log("DEBUG: Image URL:", imageUrl);
         } else {
-            // Parse text input for URL + Prompt
             const parts = q.split(' ');
-            if (parts.length < 2) return reply(`❌ *Format Wrong:* Use URL + Prompt or reply to a photo.`);
             imageUrl = parts[0].trim();
             prompt = parts.slice(1).join(' ').trim();
         }
 
-        // Step 3: API Request to Xrizaldev AI
+        // Step 2: API Call
         const api = `https://restapis.xrizaldev.my.id/api/ai2/editimg?image_url=${encodeURIComponent(imageUrl)}&prompt=${encodeURIComponent(prompt)}`;
+        console.log("DEBUG: API URL:", api);
+        
         const response = await axios.get(api);
-        const json = response.data;
+        
+        // Log API response for debugging
+        console.log("DEBUG: API Response:", JSON.stringify(response.data));
 
-        if (!json.status || !json.result.output_image) {
-            throw new Error('API failed to process image');
+        if (!response.data.status || !response.data.result?.output_image) {
+            throw new Error(`API Response Incomplete: ${JSON.stringify(response.data)}`);
         }
 
-        // Step 4: Download result as Buffer to avoid "Can't open image" error
-        const finalImg = await axios.get(json.result.output_image, { responseType: 'arraybuffer' });
-        const buffer = Buffer.from(finalImg.data, 'binary');
-
-        // Step 5: Send final edited image
+        // Step 3: Send Final Image
+        const finalImg = await axios.get(response.data.result.output_image, { responseType: 'arraybuffer' });
+        
         await conn.sendMessage(from, {
-            image: buffer,
-            caption: `✅ *AI EDIT SUCCESSFUL*\n\n✨ *Prompt:* ${prompt}\n🚀 *Powered by:* KAMRAN-MD\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`
+            image: Buffer.from(finalImg.data, 'binary'),
+            caption: `✅ *AI EDIT SUCCESSFUL*\n✨ *Prompt:* ${prompt}\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ`
         }, { quoted: m });
 
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
     } catch (e) {
-        console.error("EditImg Error:", e);
-        await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-        reply(`🍂 *KAMRAN-MD Error:* Gagal memproses permintaan AI.`);
+        console.error("DEBUG ERROR:", e.message);
+        reply(`🍂 *KAMRAN-MD Debug Error:* ${e.message}`); // Ab yahan asli error dikhega
     }
 });
-      
+            
