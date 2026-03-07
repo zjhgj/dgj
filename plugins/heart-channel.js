@@ -1,53 +1,70 @@
-const axios = require("axios");
 const { cmd } = require("../command");
+const axios = require("axios");
 
-// --- NEW API CONFIGURATION ---
-// Purana movanest band ho gaya hai, isliye hum alternative use kar rahe hain.
-const API_ENDPOINT = "https://api.apocalypse.web.id/download/aio"; 
+/**
+ * KAMRAN-MD YTMP3 Engine
+ */
+async function Ytmp3(url) {
+    try {
+        const oembed = await axios.get("https://www.youtube.com/oembed", {
+            params: { url: url, format: "json" },
+            headers: { "Accept": "application/json", "User-Agent": "Mozilla/5.0" }
+        });
+
+        const convert = await axios.post("https://hub.ytconvert.org/api/download", {
+            url: url,
+            os: "android",
+            output: { type: "audio", format: "mp3" },
+            audio: { bitrate: "128k" }
+        }, { headers: { "Accept": "application/json", "Content-Type": "application/json" } });
+
+        const statusUrl = convert.data.statusUrl;
+        let result;
+
+        // Status polling logic
+        for (let i = 0; i < 15; i++) { // Max 30 seconds limit
+            const status = await axios.get(statusUrl, { headers: { "Accept": "application/json" } });
+            if (status.data.status === "completed") {
+                result = status.data;
+                break;
+            }
+            await new Promise(r => setTimeout(r, 2000));
+        }
+
+        if (!result) throw new Error("Conversion timed out.");
+        return { title: result.title || oembed.data.title, duration: result.duration, download: result.downloadUrl };
+    } catch (err) {
+        throw err;
+    }
+}
 
 cmd({
-    pattern: "react",
-    alias: ["reactch", "rch"],
-    desc: "React to a WhatsApp Channel post (Alternative API).",
-    category: 'tools', 
-    react: '⚡',
+    pattern: "mp3",
+    alias: ["yta", "ytmp3"],
+    react: "🎵",
+    desc: "Download YouTube Audio (MP3).",
+    category: "download",
     filename: __filename
-}, async (conn, mek, m, { args, text, prefix, command, from, reply }) => {
-  try {
-    if (!text) {
-      return reply(`*Incorrect Usage:*\nExample: ${prefix + command} <link> <emoji>`);
-    }
-
-    const postUrl = args[0];
-    const emojis = args.slice(1).join(" ");
-
-    if (!postUrl || !emojis) {
-        return reply(`❌ *Format:* ${prefix + command} <link> <emoji>`);
-    }
+}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
+    if (!q) return reply(`❓ *Example:* ${prefix + command} https://youtube.com/watch?v=xxxx`);
     
-    // Status update [attachment_0](attachment)
     await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
-    reply("⏳ *KAMRAN-MD:* Switching to alternative server...");
+    reply("🚀 *KAMRAN-MD:* Processing MP3 conversion...");
 
-    /* NOTE: Kyunke movanest band hai, hum filhal direct reaction API 
-       dhund rahe hain. Tab tak hum link validation check kar rahe hain.
-    */
-    
-    // Yahan hum alternative API call karenge
-    const apiUrl = `https://asitha.top/creact?url=${encodeURIComponent(postUrl)}&reaction=${encodeURIComponent(emojis)}&apikey=b354f2bfca2f92fd4575d1b7ed0ce56c341a4da22674c55a34a13ced483c3f98`;
+    try {
+        const data = await Ytmp3(q);
+        
+        await conn.sendMessage(from, {
+            audio: { url: data.download },
+            mimetype: "audio/mpeg",
+            ptt: false, // Set true if you want it as a voice note
+            caption: `🎵 *${data.title}*\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`
+        }, { quoted: m });
 
-    const res = await axios.get(apiUrl);
-
-    if (res.data.status) {
         await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
-        return reply(`✅ *SUCCESS*\n\n🎭 *Emoji:* ${emojis}\n🚀 *Server:* Asitha Backup\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`);
-    } else {
-        throw new Error("Server response failed.");
+    } catch (e) {
+        console.error(e);
+        reply("❌ *Error:* Failed to download audio. Try again later.");
     }
-
-  } catch (e) {
-    console.error("[KAMRAN-MD ERROR]", e);
-    // 
-    reply("❌ *API Down:* Movanest server band ho chuka hai aur alternative server bhi filhal response nahi de raha. Please kuch der baad try karein.");
-  }
 });
+            
