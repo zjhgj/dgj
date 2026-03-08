@@ -1,70 +1,112 @@
 const { cmd } = require("../command");
-const axios = require("axios");
-const yts = require("yt-search"); // Pehle 'npm install yt-search' kar lein
+const axios = require('axios');
 
-const commands = ["mp3url", "ytmp3", "play", "song"]; // 'song' command bhi add kar di
+// --- SCRAPER ENGINE ---
+const qualityvideo = ['144', '240', '360', '720', '1080'];
+const qualityaudio = ['96', '128', '256', '320'];
 
-commands.forEach(command => {
-  cmd({
-    pattern: command,
-    desc: "Download YouTube audio by Name or URL",
-    category: "downloader",
-    react: "🎵",
+function convertid(url) {
+    const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|embed|watch|shorts)\/|.*[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?:[&?]|$)/;
+    const match = url.match(regex);
+    return match ? match[1] : null;
+}
+
+function mapaudioquality(bitrate) {
+    const map = { '320': 0, '256': 1, '128': 4, '96': 5 };
+    return map[String(bitrate)] || 4;
+}
+
+async function request(endpoint, data) {
+    return axios.post(endpoint, data, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 10)',
+            'Content-Type': 'application/json',
+            'origin': 'https://cnvmp3.com',
+            'referer': 'https://cnvmp3.com/v51'
+        }
+    });
+}
+
+async function cnvmp3(yturl, quality, format = 'mp3') {
+    const youtube_id = convertid(yturl);
+    if (!youtube_id) throw new Error('Invalid YouTube URL');
+
+    const formatValue = format === 'mp4' ? 0 : 1;
+    let finalQuality;
+
+    if (formatValue === 0) {
+        if (!qualityvideo.includes(String(quality))) quality = '360';
+        finalQuality = parseInt(quality);
+    } else {
+        if (!qualityaudio.includes(String(quality))) quality = '128';
+        finalQuality = mapaudioquality(quality);
+    }
+
+    // Step 1: Check Database
+    const check = await request('https://cnvmp3.com/check_database.php', { youtube_id, quality: finalQuality, formatValue });
+    if (check.data && check.data.success) {
+        return { title: check.data.data.title, download: check.data.data.server_path };
+    }
+
+    // Step 2: Fetch Video Data
+    const yturlfull = `https://www.youtube.com/watch?v=${youtube_id}`;
+    const viddata = await request('https://cnvmp3.com/get_video_data.php', { url: yturlfull, token: "1234" });
+    if (viddata.data.error) throw new Error(viddata.data.error);
+
+    const title = viddata.data.title;
+
+    // Step 3: Trigger Download/Conversion
+    const download = await request('https://cnvmp3.com/download_video_ucep.php', { url: yturlfull, quality: finalQuality, title, formatValue });
+    if (download.data.error) throw new Error(download.data.error);
+
+    const finalLink = download.data.download_link;
+
+    // Step 4: Insert back to DB for next time
+    await request('https://cnvmp3.com/insert_to_database.php', { youtube_id, server_path: finalLink, quality: finalQuality, title, formatValue });
+
+    return { title, download: finalLink };
+}
+
+// --- COMMANDS ---
+
+cmd({
+    pattern: "cnv",
+    alias: ["ytv", "yta"],
+    react: "📥",
+    desc: "Download YouTube MP3/MP4 via Cnvmp3.",
+    category: "download",
     filename: __filename
-  }, async (conn, mek, m, { from, q, reply }) => {
+}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-      if (!q) return reply("❌ Please provide a YouTube link or Song Name.");
+        if (!q) return reply(`❓ *Example:* \n${prefix + command} <url>|<quality>|<format>\n\n*Example MP3:* ${prefix + command} https://youtu.be/xxx|256|mp3\n*Example MP4:* ${prefix + command} https://youtu.be/xxx|720|mp4`);
 
-      let cleanUrl = q;
+        const [url, qual, type] = q.split('|');
+        const format = (type || 'mp3').toLowerCase();
+        const quality = qual || (format === 'mp4' ? '360' : '128');
 
-      // Check agar input URL nahi hai (Song Name hai)
-      if (!q.includes("youtube.com") && !q.includes("youtu.be")) {
-        await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
-        
-        // YouTube par search karein
-        const search = await yts(q);
-        const video = search.videos[0]; // Pehla result uthayein
+        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+        reply(`🚀 *KAMRAN-MD:* Fetching ${format.toUpperCase()} (${quality})...`);
 
-        if (!video) return reply("❌ No results found for this song name.");
-        cleanUrl = video.url; // Search se URL mil gayi
-      } else {
-        // Agar URL hai toh purana logic
-        cleanUrl = q.split("&")[0].replace("https://youtu.be/", "https://www.youtube.com/watch?v=");
-      }
+        const result = await cnvmp3(url.trim(), quality.trim(), format);
 
-      // API Call for downloading
-      const apiUrl = `https://arslan-apis.vercel.app/download/ytmp3?url=${encodeURIComponent(cleanUrl)}`;
-      const res = await axios.get(apiUrl, { timeout: 20000 });
+        if (format === 'mp3') {
+            await conn.sendMessage(from, { 
+                audio: { url: result.download }, 
+                mimetype: 'audio/mpeg',
+                caption: `🎵 *${result.title}*\n🚀 *Engine:* Cnvmp3\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`
+            }, { quoted: m });
+        } else {
+            await conn.sendMessage(from, { 
+                video: { url: result.download }, 
+                caption: `🎬 *${result.title}*\n✨ *Quality:* ${quality}p\n\n> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`
+            }, { quoted: m });
+        }
 
-      if (!res.data?.result?.status) {
-        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-        return reply("❌ Failed to fetch audio.");
-      }
-
-      const meta = res.data.result.metadata;
-      const downloadUrl = res.data.result.download.url;
-
-      await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-
-      // Thumbnail aur Detail bhejna
-      await conn.sendMessage(from, {
-        image: { url: meta.thumbnail },
-        caption: `🎶 *${meta.title}*\n\n👤 *Channel:* ${meta.author || "Unknown"}\n💽 *Quality:* MP3\n\n> *🤍ᴘᴏᴡᴇʀᴇᴅ ʙʏ KAMRAN-ᴍᴅ🤍*`
-      }, { quoted: mek });
-
-      // Audio file bhejna
-      await conn.sendMessage(from, {
-        audio: { url: downloadUrl },
-        mimetype: "audio/mpeg",
-        fileName: `${meta.title}.mp3`
-      }, { quoted: mek });
-
-      await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
 
     } catch (e) {
-      console.error(`${command} command error:`, e);
-      await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-      reply("❌ An error occurred while processing.");
+        console.error(e);
+        reply(`❌ *Error:* ${e.message}`);
     }
-  });
 });
+          
