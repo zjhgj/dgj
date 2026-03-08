@@ -63,13 +63,24 @@ cmd({
             return reply("âœ… *Video Status Shared!*");
         }
 
-        // --- 3. VOICE STATUS ---
+         // --- 3. VOICE STATUS ---
         if (/audio/.test(mime)) {
-            await reply("â³ *Uploading Voice Status...*");
+            await reply("⏳ *Uploading Voice Status...*");
             const buffer = await q.download();
+            
+            // 1. Relay as Group Status
             await relayStatus(conn, from, { buffer }, 'audio');
-            return reply("âœ… *Voice Status Shared!*");
+            
+            // 2. Send back to the group as a Voice Note (PTT)
+            await conn.sendMessage(from, {
+                audio: buffer,
+                mimetype: 'audio/ogg; codecs=opus',
+                ptt: true
+            }, { quoted: mek });
+
+            return reply("✅ *Voice Status Shared & Voice Note Sent!*");
         }
+
 
         // --- 4. TEXT STATUS ---
         if (!text) return reply("âŒ Please reply to media or provide text for status.");
