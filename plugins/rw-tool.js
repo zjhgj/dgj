@@ -1,7 +1,7 @@
-Const { cmd } = require('../command');
+const { cmd } = require('../command');
 const baileys = require('@whiskeysockets/baileys');
-const crypto = require('crypto');
 const converter = require('../data/converter');
+const crypto = require('crypto');
 
 /**
  * KAMRAN-MD: Universal Group Status V2 Relay
@@ -35,51 +35,52 @@ async function relayStatus(conn, jid, content, type) {
 cmd({
     pattern: "gcstatus",
     alias: ["groupstatus", "statusrelay"],
-    react: "🌟",
+    react: "ðŸŒŸ",
     desc: "Relay Text/Photo/Video/Voice as Group Status.",
     category: "tools",
     use: ".gcstatus (reply to any media or type text)",
     filename: __filename
 }, async (conn, mek, m, { from, reply, text, isAdmins, isOwner }) => {
     try {
-        if (!isAdmins && !isOwner) return reply("❌ *KAMRAN-MD:* Admins only.");
+        if (!isAdmins && !isOwner) return reply("âŒ *KAMRAN-MD:* Admins only.");
 
         const q = m.quoted ? m.quoted : m;
         const mime = (q.msg || q).mimetype || '';
         
         // --- 1. PHOTO STATUS ---
         if (/image/.test(mime)) {
-            await reply("⏳ *Uploading Photo Status...*");
+            await reply("â³ *Uploading Photo Status...*");
             const buffer = await q.download();
             await relayStatus(conn, from, { buffer, caption: text }, 'image');
-            return reply("✅ *Photo Status Shared!*");
+            return reply("âœ… *Photo Status Shared!*");
         }
 
         // --- 2. VIDEO STATUS ---
         if (/video/.test(mime)) {
-            await reply("⏳ *Uploading Video Status...*");
+            await reply("â³ *Uploading Video Status...*");
             const buffer = await q.download();
             await relayStatus(conn, from, { buffer, caption: text }, 'video');
-            return reply("✅ *Video Status Shared!*");
+            return reply("âœ… *Video Status Shared!*");
         }
 
         // --- 3. VOICE STATUS ---
         if (/audio/.test(mime)) {
-            await reply("⏳ *Uploading Voice Status...*");
+            await reply("â³ *Uploading Voice Status...*");
             const buffer = await q.download();
             await relayStatus(conn, from, { buffer }, 'audio');
-            return reply("✅ *Voice Status Shared!*");
+            return reply("âœ… *Voice Status Shared!*");
         }
 
         // --- 4. TEXT STATUS ---
-        if (!text) return reply("❌ Please reply to media or provide text for status.");
+        if (!text) return reply("âŒ Please reply to media or provide text for status.");
         
-        await reply("⏳ *Sending Text Status...*");
+        await reply("â³ *Sending Text Status...*");
         await relayStatus(conn, from, { text: text }, 'text');
-        reply("✅ *Text Status Shared!*");
+        reply("âœ… *Text Status Shared!*");
 
     } catch (err) {
         console.error(err);
-        reply(`❌ *KAMRAN-MD Error:* ${err.message}`);
+        reply(`âŒ *KAMRAN-MD Error:* ${err.message}`);
     }
 });
+                         
