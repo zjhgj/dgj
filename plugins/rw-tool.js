@@ -64,23 +64,29 @@ cmd({
         }
 
          // --- 3. VOICE STATUS ---
-if (/audio/.test(mime)) {
-    await reply("⏳ *Uploading Voice Status...*");
-    
-    // Download and convert to status-compatible format if needed
-    let buffer = await q.download();
-    
-    // Status Relay (Mimetype change ke sath)
-    await relayStatus(conn, from, { buffer }, 'audio');
+        if (/audio/.test(mime)) {
+            await reply("⏳ *Uploading Voice Status...*");
+            
+            // 1. Audio Download karein
+            const buffer = await q.download();
+            const fileExtension = mime.split('/')[1] || 'mp3';
+            
+            // 2. Converter se PTT format (Ogg/Opus) banayein chat ke liye
+            const pttAudio = await converter.toPTT(buffer, fileExtension);
 
-    // Reply as Voice Note (Original Chat mein bhejne ke liye)
-    await conn.sendMessage(from, {
-        audio: buffer,
-        mimetype: 'audio/ogg; codecs=opus',
-        ptt: true
-    }, { quoted: mek });
+            // 3. Status Relay (Isme hum direct buffer ya pttAudio bhej sakte hain)
+            // Note: Status ke liye relayStatus function ko 'audio/mp4' suggest karna behtar hai
+            await relayStatus(conn, from, { buffer: pttAudio }, 'audio');
 
-    return reply("✅ *Voice Status Shared!*");
+            // 4. Same audio ko chat mein bhejien as Voice Note
+            await conn.sendMessage(from, {
+                audio: pttAudio,
+                mimetype: 'audio/ogg; codecs=opus',
+                ptt: true
+            }, { quoted: mek });
+
+            return reply("✅ *Voice Status Shared & Replied!*");
+                                           }
 }
 
         
