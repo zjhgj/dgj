@@ -1,6 +1,8 @@
 const { cmd } = require('../command');
 const baileys = require('@whiskeysockets/baileys');
 const crypto = require('crypto');
+const fs = require('fs');
+const converter = require('../data/converter'); // Ensure your converter path is correct
 
 /**
  * KAMRAN-MD: Universal Group Status V2 Relay
@@ -9,11 +11,24 @@ async function relayStatus(conn, jid, content, type) {
     const messageSecret = crypto.randomBytes(32);
     let mediaObject = {};
 
-    // Automatically setting media type based on input
-    if (type === 'image') mediaObject = { image: content.buffer, caption: content.caption };
-    else if (type === 'video') mediaObject = { video: content.buffer, caption: content.caption };
-    else if (type === 'audio') mediaObject = { audio: content.buffer, ptt: true }; // Sends as Voice Status
-    else mediaObject = { text: content.text, backgroundColor: content.bgColor || '#075E54' };
+    if (type === 'image') {
+        mediaObject = { image: content.buffer, caption: content.caption };
+    } else if (type === 'video') {
+        mediaObject = { video: content.buffer, caption: content.caption };
+    } else if (type === 'audio') {
+        // Voice Status MUST be in Ogg/Opus format to be playable
+        mediaObject = { 
+            audio: content.buffer, 
+            mimetype: 'audio/ogg; codecs=opus', 
+            ptt: true 
+        };
+    } else {
+        mediaObject = { 
+            text: content.text, 
+            backgroundColor: content.bgColor || '#075E54',
+            font: 1 
+        };
+    }
 
     const inside = await baileys.generateWAMessageContent(mediaObject, { upload: conn.waUploadToServer });
     
@@ -21,6 +36,7 @@ async function relayStatus(conn, jid, content, type) {
         groupStatusMessageV2: {
             message: {
                 ...inside,
+                // Add context for voice/media status
                 messageContextInfo: { messageSecret }
             }
         }
@@ -30,6 +46,8 @@ async function relayStatus(conn, jid, content, type) {
     await conn.relayMessage(jid, m.message, { messageId: m.key.id });
     return m;
 }
+
+
 
 cmd({
     pattern: "gcstatus",
@@ -62,24 +80,31 @@ cmd({
             return reply("✅ *Video Status Shared!*");
         }
 
-        // --- 3. VOICE STATUS ---
+        // --- 3. VOICE STATUS (FIXED) ---
         if (/audio/.test(mime)) {
-            await reply("⏳ *Uploading Voice Status...*");
-            const buffer = await q.download();
-            await relayStatus(conn, from, { buffer }, 'audio');
-            return reply("✅ *Voice Status Shared!*");
+            await reply("⏳ *Converting & Uploading Voice Status...*");
+            const audioBuffer = await q.download();
+            
+            // Convert to Ogg/Opus using your bot's converter
+            // If you don't have toAudio, use fluent-ffmpeg logic
+            const statusAudio = await toAudio(audioBuffer, 'opus'); 
+            
+            await relayStatus(conn, from, { buffer: statusAudio.data }, 'audio');
+            return reply("✅ *Voice Status Shared! (Playable)*");
         }
 
         // --- 4. TEXT STATUS ---
-        if (!text) return reply("❌ Please reply to media or provide text for status.");
-        
-        await reply("⏳ *Sending Text Status...*");
-        await relayStatus(conn, from, { text: text }, 'text');
-        reply("✅ *Text Status Shared!*");
+        if (text) {
+            await reply("⏳ *Sending Text Status...*");
+            await relayStatus(conn, from, { text: text }, 'text');
+            return reply("✅ *Text Status Shared!*");
+        }
+
+        reply("❌ Please reply to media (Image/Video/Audio) or provide text.");
 
     } catch (err) {
         console.error(err);
         reply(`❌ *KAMRAN-MD Error:* ${err.message}`);
     }
 });
-                         
+        
