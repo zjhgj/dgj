@@ -2,32 +2,52 @@ const { cmd } = require('../command');
 const baileys = require('@whiskeysockets/baileys');
 const crypto = require('crypto');
 const fs = require('fs');
-const converter = require('../data/converter'); // Ensure your converter path is correct
+const path = require('path');
+const { exec } = require('child_process');
+const converter = require('../data/converter');
 
 /**
- * KAMRAN-MD: Universal Group Status V2 Relay
+ * INTERNAL AUDIO CONVERTER 
+ * (Voice Status ke liye Opus format zaroori hai)
+ */
+function toAudio(buffer, ext) {
+    return new Promise((resolve, reject) => {
+        let tmp = path.join(__dirname, `../${Date.now()}.${ext}`);
+        let out = path.join(__dirname, `../${Date.now()}.opus`);
+        fs.writeFileSync(tmp, buffer);
+        
+        // Ffmpeg command for WhatsApp Status compatible Opus
+        exec(`ffmpeg -i ${tmp} -c:a libopus -b:a 128k -vbr on ${out}`, (err) => {
+            if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+            if (err) return reject(err);
+            if (fs.existsSync(out)) {
+                let data = fs.readFileSync(out);
+                fs.unlinkSync(out);
+                resolve({ data });
+            } else {
+                reject(new Error("Conversion failed"));
+            }
+        });
+    });
+}
+
+/**
+ * STATUS RELAY ENGINE
  */
 async function relayStatus(conn, jid, content, type) {
     const messageSecret = crypto.randomBytes(32);
     let mediaObject = {};
 
-    if (type === 'image') {
-        mediaObject = { image: content.buffer, caption: content.caption };
-    } else if (type === 'video') {
-        mediaObject = { video: content.buffer, caption: content.caption };
-    } else if (type === 'audio') {
-        // Voice Status MUST be in Ogg/Opus format to be playable
+    if (type === 'image') mediaObject = { image: content.buffer, caption: content.caption };
+    else if (type === 'video') mediaObject = { video: content.buffer, caption: content.caption };
+    else if (type === 'audio') {
         mediaObject = { 
             audio: content.buffer, 
             mimetype: 'audio/ogg; codecs=opus', 
             ptt: true 
         };
     } else {
-        mediaObject = { 
-            text: content.text, 
-            backgroundColor: content.bgColor || '#075E54',
-            font: 1 
-        };
+        mediaObject = { text: content.text, backgroundColor: content.bgColor || '#075E54' };
     }
 
     const inside = await baileys.generateWAMessageContent(mediaObject, { upload: conn.waUploadToServer });
@@ -36,7 +56,6 @@ async function relayStatus(conn, jid, content, type) {
         groupStatusMessageV2: {
             message: {
                 ...inside,
-                // Add context for voice/media status
                 messageContextInfo: { messageSecret }
             }
         }
@@ -47,15 +66,12 @@ async function relayStatus(conn, jid, content, type) {
     return m;
 }
 
-
-
 cmd({
     pattern: "gcstatus",
     alias: ["groupstatus", "statusrelay"],
     react: "🌟",
     desc: "Relay Text/Photo/Video/Voice as Group Status.",
     category: "tools",
-    use: ".gcstatus (reply to any media or type text)",
     filename: __filename
 }, async (conn, mek, m, { from, reply, text, isAdmins, isOwner }) => {
     try {
@@ -85,26 +101,5 @@ cmd({
             await reply("⏳ *Converting & Uploading Voice Status...*");
             const audioBuffer = await q.download();
             
-            // Convert to Ogg/Opus using your bot's converter
-            // If you don't have toAudio, use fluent-ffmpeg logic
-            const statusAudio = await toAudio(audioBuffer, 'opus'); 
-            
-            await relayStatus(conn, from, { buffer: statusAudio.data }, 'audio');
-            return reply("✅ *Voice Status Shared! (Playable)*");
-        }
-
-        // --- 4. TEXT STATUS ---
-        if (text) {
-            await reply("⏳ *Sending Text Status...*");
-            await relayStatus(conn, from, { text: text }, 'text');
-            return reply("✅ *Text Status Shared!*");
-        }
-
-        reply("❌ Please reply to media (Image/Video/Audio) or provide text.");
-
-    } catch (err) {
-        console.error(err);
-        reply(`❌ *KAMRAN-MD Error:* ${err.message}`);
-    }
-});
+            // Yahan humne toAudio function define kiya hai upar
         
