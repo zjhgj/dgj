@@ -64,24 +64,26 @@ cmd({
         }
 
          // --- 3. VOICE STATUS ---
-        if (/audio/.test(mime)) {
-            await reply("⏳ *Uploading Voice Status...*");
-            const buffer = await q.download();
-            
-            // 1. Relay as Group Status
-            await relayStatus(conn, from, { buffer }, 'audio');
-            
-            // 2. Send back to the group as a Voice Note (PTT)
-            await conn.sendMessage(from, {
-                audio: buffer,
-                mimetype: 'audio/ogg; codecs=opus',
-                ptt: true
-            }, { quoted: mek });
+if (/audio/.test(mime)) {
+    await reply("⏳ *Uploading Voice Status...*");
+    
+    // Download and convert to status-compatible format if needed
+    let buffer = await q.download();
+    
+    // Status Relay (Mimetype change ke sath)
+    await relayStatus(conn, from, { buffer }, 'audio');
 
-            return reply("✅ *Voice Status Shared & Voice Note Sent!*");
-        }
+    // Reply as Voice Note (Original Chat mein bhejne ke liye)
+    await conn.sendMessage(from, {
+        audio: buffer,
+        mimetype: 'audio/ogg; codecs=opus',
+        ptt: true
+    }, { quoted: mek });
 
+    return reply("✅ *Voice Status Shared!*");
+}
 
+        
         // --- 4. TEXT STATUS ---
         if (!text) return reply("âŒ Please reply to media or provide text for status.");
         
