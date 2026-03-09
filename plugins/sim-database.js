@@ -3,44 +3,37 @@ const axios = require("axios");
 
 cmd({
     pattern: "sim",
-    alias: ["number", "simdetail"],
     react: "🔎",
-    desc: "Fetch SIM owner details using Number or CNIC.",
+    desc: "Search SIM database.",
     category: "tools",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        if (!q) return reply(`❓ *Example:* \n${prefix + command} 03001234567\n${prefix + command} 35201xxxxxxx`);
+        if (!q) return reply(`❓ *Example:* ${prefix + command} 03001234567`);
 
-        const accessKey = "AHMAD-786"; // Decryption Key provided by user
+        const accessKey = "AHMAD-786";
+        // Ensure the URL is correct for your specific API version
         const apiUrl = `https://mhcloud.kesug.com/view.php?site=ahmad-sim-database&i=1&query=${q}&key=${accessKey}`;
 
         await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
-        reply("🚀 *KAMRAN-MD:* Searching database... Please wait.");
 
-        const response = await axios.get(apiUrl);
+        const response = await axios.get(apiUrl, { timeout: 10000 });
         const data = response.data;
 
-        // Note: Response handling depends on the API's JSON structure. 
-        // Assuming standard format for SIM APIs.
-        if (data && data.status) {
-            let result = `👤 *SIM OWNER DETAILS*\n\n`;
+        // Added more robust check for data
+        if (data && (data.status === true || data.name)) {
+            let result = `👤 *SIM DETAILS FOUND*\n\n`;
             result += `📝 *Name:* ${data.name || 'N/A'}\n`;
             result += `🆔 *CNIC:* ${data.cnic || 'N/A'}\n`;
             result += `📱 *Number:* ${data.number || q}\n`;
-            result += `🏠 *Address:* ${data.address || 'N/A'}\n`;
-            result += `📅 *Date:* ${data.date || 'N/A'}\n\n`;
+            result += `🏠 *Address:* ${data.address || 'N/A'}\n\n`;
             result += `> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`;
-
-            await conn.sendMessage(from, { text: result }, { quoted: m });
-            await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+            reply(result);
         } else {
-            reply("❌ *Error:* No details found or API key expired.");
+            // Detailed error message
+            reply("❌ *Error:* Details not found. The database might not have this number or the API key 'AHMAD-786' is invalid.");
         }
-
     } catch (e) {
-        console.error("SIM Lookup Error:", e);
-        reply(`🍂 *KAMRAN-MD Error:* Failed to connect to SIM database.`);
+        reply(`❌ *Network Error:* API is currently unreachable.`);
     }
 });
-      
