@@ -7,7 +7,7 @@ const commands = ["mp3url", "ytmp3", "audio", "song"];
 commands.forEach(command => {
   cmd({
     pattern: command,
-    desc: "Download YouTube audio as MP3 (Supports Text & URL)",
+    desc: "Download YouTube audio as MP3 (Dual API Backup)",
     category: "downloader",
     react: "🎵",
     filename: __filename
@@ -17,7 +17,7 @@ commands.forEach(command => {
 
       let videoUrl = q;
 
-      // --- Step 1: Text to URL Conversion (Search) ---
+      // --- Step 1: Text to URL Search ---
       if (!q.includes("youtube.com") && !q.includes("youtu.be")) {
         await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
         const search = await yts(q);
@@ -25,32 +25,51 @@ commands.forEach(command => {
         videoUrl = search.videos[0].url;
       }
 
-      // Clean URL for API
-      let cleanUrl = videoUrl.split("&")[0].replace("https://youtu.be/", "https://www.youtube.com/watch?v=");
-
+      const cleanUrl = videoUrl.split("&")[0].replace("https://youtu.be/", "https://www.youtube.com/watch?v=");
       await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-      // --- Step 2: Fetch Audio via Arslan API ---
-      const apiUrl = `https://arslan-apis.vercel.app/download/ytmp3?url=${encodeURIComponent(cleanUrl)}`;
-      const res = await axios.get(apiUrl, { timeout: 25000 });
+      let downloadUrl;
+      let meta = {};
 
-      if (!res.data?.result?.status) {
-          await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-          return reply("❌ Failed to fetch audio. API might be down.");
+      // --- Step 2: Try Primary API (Arslan) ---
+      try {
+        const res = await axios.get(`https://arslan-apis.vercel.app/download/ytmp3?url=${encodeURIComponent(cleanUrl)}`, { timeout: 15000 });
+        if (res.data?.result?.status) {
+          downloadUrl = res.data.result.download.url;
+          meta = res.data.result.metadata;
+        }
+      } catch (err) {
+        console.log("Primary API Failed, trying backup...");
       }
 
-      const meta = res.data.result.metadata;
-      const downloadUrl = res.data.result.download.url;
+      // --- Step 3: Try Backup API if Primary fails ---
+      if (!downloadUrl) {
+        try {
+          const res2 = await axios.get(`https://api-aswin-sparky.koyeb.app/api/downloader/song?search=${encodeURIComponent(cleanUrl)}`, { timeout: 15000 });
+          if (res2.data?.status) {
+            downloadUrl = res2.data.data.url;
+            meta = {
+              title: res2.data.data.title,
+              thumbnail: res2.data.data.thumbnail,
+              author: res2.data.data.channel
+            };
+          }
+        } catch (err) {
+          throw new Error("Both APIs are currently down.");
+        }
+      }
 
-      // --- Step 3: Send Preview Image & Info ---
+      if (!downloadUrl) return reply("❌ *Error:* Could not fetch audio from any server.");
+
+      // --- Step 4: Send Response ---
       await conn.sendMessage(from, {
-        image: { url: meta.thumbnail },
+        image: { url: meta.thumbnail || 'https://i.ibb.co/video-placeholder.png' },
         caption: `
 ╭━━━━━━━〔 𝐘𝐓 𝐀𝐔𝐃𝐈𝐎 〕━━━━━━━┈⊷
 ┃
 ┃ 🎵 *𝗧𝗶𝘁𝗹𝗲:* ${meta.title}
 ┃ 👤 *𝗔𝘂𝘁𝗵𝗼𝗿:* ${meta.author || "Unknown"}
-┃ 💽 *𝗤𝘂𝗮𝗹𝗶𝘁𝘆:* High Quality MP3
+┃ 💽 *𝗦𝗲𝗿𝘃𝗲𝗿:* Multi-Server Active
 ┃
 ╰━━━━━━━━━━━━━━━━━━━━━━━━┈⊷
 ⚡ *Sending your audio...*
@@ -58,7 +77,6 @@ commands.forEach(command => {
 > *🤍ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ🤍*`
       }, { quoted: mek });
 
-      // --- Step 4: Send Audio File ---
       await conn.sendMessage(from, {
         audio: { url: downloadUrl },
         mimetype: "audio/mpeg",
@@ -70,7 +88,7 @@ commands.forEach(command => {
     } catch (e) {
       console.error(`${command} command error:`, e);
       await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-      reply("❌ An error occurred while processing your request.");
+      reply(`❌ *Failed:* ${e.message || "An unexpected error occurred."}`);
     }
   });
 });
