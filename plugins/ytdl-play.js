@@ -1,98 +1,76 @@
 const { cmd } = require("../command");
-const yts = require("yt-search");
 const axios = require("axios");
+const yts = require("yt-search");
 
-// --- Helper Functions ---
+const commands = ["mp3url", "ytmp3", "audio", "song"];
 
-function normalizeYouTubeUrl(url) {
-    const match = url.match(/(?:youtu.be\/|youtube.com\/shorts\/|youtube.com\/.*[?&]v=)([a-zA-Z0-9_-]{11})/);
-    return match ? `https://youtube.com/watch?v=${match[1]}` : null;
-}
-
-/**
- * Fetch Audio Link (Koyeb API)
- */
-async function fetchAudioData(url) {
+commands.forEach(command => {
+  cmd({
+    pattern: command,
+    desc: "Download YouTube audio as MP3 (Supports Text & URL)",
+    category: "downloader",
+    react: "🎵",
+    filename: __filename
+  }, async (conn, mek, m, { from, q, reply, prefix }) => {
     try {
-        const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/song?search=${encodeURIComponent(url)}`;
-        const { data } = await axios.get(apiUrl);
-        return data.status && data.data ? data.data.url : null;
-    } catch (e) { return null; }
-}
+      if (!q) return reply(`❌ *Usage:* \n${prefix + command} <song name> OR <youtube link>`);
 
-// --- MAIN AUDIO COMMAND ---
+      let videoUrl = q;
 
-cmd({
-    pattern: "song",
-    alias: ["play", "audio", "music"],
-    react: "🎧",
-    desc: "Download YouTube Audio (MP3).",
-    category: "download",
-    filename: __filename,
-},
-async (conn, mek, m, { from, q, reply, prefix }) => {
-    try {
-        if (!q) return reply(`*❓ Usage:* \`${prefix}song <name / link>\`\n\n*Example:* \`${prefix}song Tera Chehra\``);
-
-        // Searching Reaction
+      // --- Step 1: Text to URL Conversion (Search) ---
+      if (!q.includes("youtube.com") && !q.includes("youtu.be")) {
         await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
+        const search = await yts(q);
+        if (!search.videos.length) return reply("❌ *No results found!*");
+        videoUrl = search.videos[0].url;
+      }
 
-        // Step 1: Search Video
-        let ytdata;
-        const checkUrl = normalizeYouTubeUrl(q);
+      // Clean URL for API
+      let cleanUrl = videoUrl.split("&")[0].replace("https://youtu.be/", "https://www.youtube.com/watch?v=");
 
-        if (checkUrl) {
-            const videoId = checkUrl.split('v=')[1];
-            ytdata = await yts({ videoId });
-        } else {
-            const search = await yts(q);
-            if (!search.videos.length) return reply("❌ *No results found for your query!*");
-            ytdata = search.videos[0];
-        }
+      await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // --- Stylish Caption ---
-        const caption = `
-╭━━━━━━━〔 𝐘𝐓 𝐏𝐋𝐀𝐘𝐄𝐑 〕━━━━━━━┈⊷
+      // --- Step 2: Fetch Audio via Arslan API ---
+      const apiUrl = `https://arslan-apis.vercel.app/download/ytmp3?url=${encodeURIComponent(cleanUrl)}`;
+      const res = await axios.get(apiUrl, { timeout: 25000 });
+
+      if (!res.data?.result?.status) {
+          await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+          return reply("❌ Failed to fetch audio. API might be down.");
+      }
+
+      const meta = res.data.result.metadata;
+      const downloadUrl = res.data.result.download.url;
+
+      // --- Step 3: Send Preview Image & Info ---
+      await conn.sendMessage(from, {
+        image: { url: meta.thumbnail },
+        caption: `
+╭━━━━━━━〔 𝐘𝐓 𝐀𝐔𝐃𝐈𝐎 〕━━━━━━━┈⊷
 ┃
-┃ 🎵 *𝗧𝗶𝘁𝗹𝗲:* ${ytdata.title}
-┃ 🕒 *𝗗𝘂𝗿𝗮𝘁𝗶𝗼𝗻:* ${ytdata.timestamp}
-┃ 👤 *𝗖𝗵𝗮𝗻𝗻𝗲𝗹:* ${ytdata.author.name}
-┃ 👁️ *𝗩𝗶𝗲𝘄𝘀:* ${ytdata.views.toLocaleString()}
-┃ 🗓️ *𝗨𝗽𝗹𝗼𝗮𝗱𝗲𝗱:* ${ytdata.ago}
-┃ 🔗 *𝗟𝗶𝗻𝗸:* ${ytdata.url}
+┃ 🎵 *𝗧𝗶𝘁𝗹𝗲:* ${meta.title}
+┃ 👤 *𝗔𝘂𝘁𝗵𝗼𝗿:* ${meta.author || "Unknown"}
+┃ 💽 *𝗤𝘂𝗮𝗹𝗶𝘁𝘆:* High Quality MP3
 ┃
 ╰━━━━━━━━━━━━━━━━━━━━━━━━┈⊷
-⚡ *Preparing your audio, please wait...*
+⚡ *Sending your audio...*
 
-> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`;
+> *🤍ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ🤍*`
+      }, { quoted: mek });
 
-        // Send Thumbnail with Caption
-        await conn.sendMessage(from, { 
-            image: { url: ytdata.thumbnail || ytdata.image }, 
-            caption: caption 
-        }, { quoted: mek });
+      // --- Step 4: Send Audio File ---
+      await conn.sendMessage(from, {
+        audio: { url: downloadUrl },
+        mimetype: "audio/mpeg",
+        fileName: `${meta.title}.mp3`
+      }, { quoted: mek });
 
-        // Step 2: Fetch Audio Data
-        await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
-        const audioUrl = await fetchAudioData(ytdata.url);
-
-        if (!audioUrl) {
-            return reply("❌ *Download Failed:* API server is not responding. Try again later.");
-        }
-
-        // Step 3: Send Audio File
-        await conn.sendMessage(from, {
-            audio: { url: audioUrl },
-            mimetype: "audio/mpeg",
-            fileName: `${ytdata.title}.mp3`,
-            ptt: false
-        }, { quoted: mek });
-
-        // Final Success Reaction
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+      await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error(e);
-        reply("⚠️ *Critical Error:* Gagal memproses permintaan audio.");
+      console.error(`${command} command error:`, e);
+      await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+      reply("❌ An error occurred while processing your request.");
     }
+  });
 });
