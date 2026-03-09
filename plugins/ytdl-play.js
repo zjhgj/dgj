@@ -1,94 +1,66 @@
 const { cmd } = require("../command");
 const axios = require("axios");
-const yts = require("yt-search");
 
-const commands = ["mp3url", "ytmp3", "audio", "song"];
-
-commands.forEach(command => {
-  cmd({
-    pattern: command,
-    desc: "Download YouTube audio as MP3 (Dual API Backup)",
-    category: "downloader",
-    react: "🎵",
+cmd({
+    pattern: "ytmp3",
+    alias: ["audio", "song"],
+    react: "🎶",
+    desc: "Download YouTube Audio via Arslan API.",
+    category: "download",
     filename: __filename
-  }, async (conn, mek, m, { from, q, reply, prefix }) => {
+}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-      if (!q) return reply(`❌ *Usage:* \n${prefix + command} <song name> OR <youtube link>`);
-
-      let videoUrl = q;
-
-      // --- Step 1: Text to URL Search ---
-      if (!q.includes("youtube.com") && !q.includes("youtu.be")) {
-        await conn.sendMessage(from, { react: { text: "🔍", key: mek.key } });
-        const search = await yts(q);
-        if (!search.videos.length) return reply("❌ *No results found!*");
-        videoUrl = search.videos[0].url;
-      }
-
-      const cleanUrl = videoUrl.split("&")[0].replace("https://youtu.be/", "https://www.youtube.com/watch?v=");
-      await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-
-      let downloadUrl;
-      let meta = {};
-
-      // --- Step 2: Try Primary API (Arslan) ---
-      try {
-        const res = await axios.get(`https://arslan-apis.vercel.app/download/ytmp3?url=${encodeURIComponent(cleanUrl)}`, { timeout: 15000 });
-        if (res.data?.result?.status) {
-          downloadUrl = res.data.result.download.url;
-          meta = res.data.result.metadata;
+        if (!q || !q.includes("http")) {
+            return reply(`❓ *Example:* \n${prefix + command} https://youtu.be/0geqOYqwL0s`);
         }
-      } catch (err) {
-        console.log("Primary API Failed, trying backup...");
-      }
 
-      // --- Step 3: Try Backup API if Primary fails ---
-      if (!downloadUrl) {
-        try {
-          const res2 = await axios.get(`https://api-aswin-sparky.koyeb.app/api/downloader/song?search=${encodeURIComponent(cleanUrl)}`, { timeout: 15000 });
-          if (res2.data?.status) {
-            downloadUrl = res2.data.data.url;
-            meta = {
-              title: res2.data.data.title,
-              thumbnail: res2.data.data.thumbnail,
-              author: res2.data.data.channel
-            };
-          }
-        } catch (err) {
-          throw new Error("Both APIs are currently down.");
+        const url = q.trim();
+        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+
+        // API URL updated based on your working link
+        const apiUrl = `https://arslan-apis.vercel.app/download/ytmp3?url=${encodeURIComponent(url)}`;
+        const res = await axios.get(apiUrl);
+        const data = res.data;
+
+        // Validating working response format
+        if (!data || !data.status || !data.result || !data.result.status) {
+            return reply("❌ *Error:* Data audio tidak ditemukan atau API expired.");
         }
-      }
 
-      if (!downloadUrl) return reply("❌ *Error:* Could not fetch audio from any server.");
+        const metadata = data.result.metadata;
+        const downloadUrl = data.result.download.url;
 
-      // --- Step 4: Send Response ---
-      await conn.sendMessage(from, {
-        image: { url: meta.thumbnail || 'https://i.ibb.co/video-placeholder.png' },
-        caption: `
-╭━━━━━━━〔 𝐘𝐓 𝐀𝐔𝐃𝐈𝐎 〕━━━━━━━┈⊷
+        // --- Stylish Caption ---
+        const caption = `
+╭━━━━━━━〔 𝐘𝐓 𝐌𝐏𝟑 𝐃𝐋 〕━━━━━━━┈⊷
 ┃
-┃ 🎵 *𝗧𝗶𝘁𝗹𝗲:* ${meta.title}
-┃ 👤 *𝗔𝘂𝘁𝗵𝗼𝗿:* ${meta.author || "Unknown"}
-┃ 💽 *𝗦𝗲𝗿𝘃𝗲𝗿:* Multi-Server Active
+┃ 🎵 *𝗧𝗶𝘁𝗹𝗲:* ${metadata.title}
+┃ 🕒 *𝗗𝘂𝗿𝗮𝘁𝗶𝗼𝗻:* ${metadata.duration} seconds
+┃ 🔗 *𝗧𝘆𝗽𝗲:* ${metadata.type}
 ┃
 ╰━━━━━━━━━━━━━━━━━━━━━━━━┈⊷
-⚡ *Sending your audio...*
+⚡ *Audio sedang dikirim...*
 
-> *🤍ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ🤍*`
-      }, { quoted: mek });
+> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`;
 
-      await conn.sendMessage(from, {
-        audio: { url: downloadUrl },
-        mimetype: "audio/mpeg",
-        fileName: `${meta.title}.mp3`
-      }, { quoted: mek });
+        // Step 1: Send Info Caption
+        await conn.sendMessage(from, { 
+            image: { url: 'https://i.ibb.co/video-placeholder.png' }, // Placeholder if thumb missing
+            caption: caption 
+        }, { quoted: mek });
 
-      await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        // Step 2: Send Audio File
+        await conn.sendMessage(from, {
+            audio: { url: downloadUrl },
+            mimetype: "audio/mpeg",
+            fileName: `${metadata.title}.mp3`,
+            ptt: false
+        }, { quoted: mek });
 
-    } catch (e) {
-      console.error(`${command} command error:`, e);
-      await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-      reply(`❌ *Failed:* ${e.message || "An unexpected error occurred."}`);
+        await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+
+    } catch (err) {
+        console.error("YTMP3 Error:", err);
+        reply("❌ *Error:* Connection timed out or invalid API response.");
     }
-  });
 });
