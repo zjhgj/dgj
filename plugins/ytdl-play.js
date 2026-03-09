@@ -1,89 +1,81 @@
 const { cmd } = require("../command");
+const arslan = cmd; // Isse "arslan" define ho jayega jo niche use ho raha hai
 const fetch = require("node-fetch");
 const yts = require("yt-search");
 const axios = require("axios");
 const { fakevCard } = require('../lib/video-utils');
 
 arslan({
-pattern: "song",
-alias: ["ytmp3", "play"],
-react: "🎵",
-desc: "YouTube search & MP3 play",
-category: "download",
-use: ".play ",
-filename: __filename
+    pattern: "song",
+    alias: ["ytmp3", "play"],
+    react: "🎵",
+    desc: "YouTube search & MP3 play",
+    category: "download",
+    use: ".play ",
+    filename: __filename
 },
 async (arslan, mek, m, { from, args, reply }) => {
+    try {
+        const query = args.join(" ");
+        if (!query) return reply("❌ Please Provide Me A song Query or Link");
 
-try {
+        await arslan.sendMessage(from, { react: { text: "⏳", key: m.key } });
 
-const query = args.join(" ");
-if (!query) return reply("❌ Please Provide Me A song Query or Link");
+        /* 🔍 YouTube Search */
+        const search = await yts(query);
 
-await arslan.sendMessage(from, { react: { text: "⏳", key: m.key } });
+        if (!search.videos || !search.videos.length) {
+            return reply("❌ No result Found");
+        }
 
-/* 🔍 YouTube Search */
-const search = await yts(query);
+        const video = search.videos[0];
 
-if (!search.videos || !search.videos.length) {
-return reply("❌ No result Found");
-}
+        /* 🎧 MP3 API */
+        const apiUrl = `https://arslan-apis.vercel.app/download/ytmp3?url=${video.url}`;
 
-const video = search.videos[0];
+        const res = await axios.get(apiUrl, { timeout: 60000 });
 
-/* 🎧 MP3 API */
-const apiUrl = `https://arslan-apis.vercel.app/download/ytmp3?url=${video.url}`;
+        if (
+            !res.data ||
+            !res.data.status ||
+            !res.data.result ||
+            !res.data.result.download ||
+            !res.data.result.download.url
+        ) {
+            return reply("❌ Audio Not Generated");
+        }
 
-const res = await axios.get(apiUrl, { timeout: 60000 });
+        const dlUrl = res.data.result.download.url;
+        const meta = res.data.result.metadata;
+        const quality = res.data.result.download.quality || "128kbps";
 
-if (
- !res.data ||
- !res.data.status ||
- !res.data.result ||
- !res.data.result.download ||
- !res.data.result.download.url
-) {
- return reply("❌ Audio Not Generated");
-}
+        /* 🎵 SEND AUDIO */
+        await arslan.sendMessage(from, {
+            audio: { url: dlUrl },
+            mimetype: "audio/mpeg",
+            ptt: false,
+            fileName: `${meta.title || "song"}.mp3`,
+            caption:
+                `🎵 *${meta.title || "Unknown Title"}*\n` +
+                `🎚️ Quality: ${quality}\n\n` +
+                `> © kamran-MD`,
+            contextInfo: {
+                externalAdReply: {
+                    title: meta.title ? meta.title.substring(0, 40) : "YouTube Song",
+                    body: "YouTube MP3",
+                    thumbnailUrl: video.thumbnail,
+                    sourceUrl: video.url,
+                    mediaType: 1,
+                    renderLargerThumbnail: true
+                }
+            }
+        }, { quoted: m }); // Yahan quoted: m behtar rahega agar fakevCard error de
 
-const dlUrl = res.data.result.download.url;
-const meta = res.data.result.metadata;
-const quality = res.data.result.download.quality || "128kbps";
+        await arslan.sendMessage(from, { react: { text: "✅", key: m.key } });
 
-/* 🎵 SEND AUDIO */
-await arslan.sendMessage(from, {
-audio: { url: dlUrl },
-mimetype: "audio/mpeg",
-ptt: false,
-fileName: `${meta.title || "song"}.mp3`,
-caption:
-`🎵 *${meta.title || "Unknown Title"}*\n` +
-`🎚️ Quality: ${quality}\n\n` +
-`> © kamran-MD`,
-contextInfo: {
-externalAdReply: {
-title: meta.title
-? meta.title.substring(0, 40)
-: "YouTube Song",
-body: "YouTube MP3",
-thumbnailUrl: video.thumbnail,
-sourceUrl: video.url,
-mediaType: 1,
-renderLargerThumbnail: true
-}
-}
-}, { quoted: fakevCard });
-
-await arslan.sendMessage(from, { react: { text: "✅", key: m.key } });
-
-} catch (err) {
-
-console.error("PLAY ERROR:", err);
-
-reply("❌ Error Found Please Try Later");
-
-await arslan.sendMessage(from, { react: { text: "❌", key: m.key } });
-
-}
-
+    } catch (err) {
+        console.error("PLAY ERROR:", err);
+        reply("❌ Error Found Please Try Later");
+        await arslan.sendMessage(from, { react: { text: "❌", key: m.key } });
+    }
 });
