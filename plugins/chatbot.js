@@ -1,48 +1,48 @@
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// Initialize memory safely
+// Safe memory initialization
 if (!global.autoAiStatus) global.autoAiStatus = {}; 
 
 cmd({
     pattern: "autoai",
+    alias: ["aiauto", "aion"], // Added aliases for your convenience
     desc: "Enable/Disable Auto AI for this chat.",
     category: "ai",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply, isAdmins, isOwner }) => {
-    if (!isAdmins && !isOwner) return reply("❌ Admins only.");
+    if (!isAdmins && !isOwner) return reply("❌ Only Admins can use this.");
     
     if (!q) return reply("❓ *Usage:* .autoai on / off");
 
     if (q.toLowerCase() === 'on') {
         global.autoAiStatus[from] = true;
-        return reply("✅ *Auto AI is now ON.* I will reply to users.");
+        return reply("✅ *Auto AI is now ON.* I will reply to normal messages.");
     } else {
         global.autoAiStatus[from] = false;
         return reply("❌ *Auto AI is now OFF.*");
     }
 });
 
-// Listener that only acts when the AI is ON
+// Listener for automatic replies
 cmd({
     on: "body"
 }, async (conn, mek, m, { from, body, isBot }) => {
-    // Basic gatekeepers to prevent crashes
+    // 1. Safety checks
     if (!global.autoAiStatus || !global.autoAiStatus[from]) return;
-    if (m.key.fromMe || isBot || !body) return; // Ignore self and other bots
+    if (m.key.fromMe || isBot || !body) return; // Prevent bot talking to itself
     if (body.startsWith('.') || body.startsWith('/')) return; // Ignore commands
 
     try {
         await conn.sendPresenceUpdate('composing', from);
 
-        // Added 10-second timeout to prevent the bot from hanging
+        // Fetch AI response
         const res = await axios.get(`https://api.ryuu-dev.offc.my.id/ai/mahiru-ai?text=${encodeURIComponent(body)}`, { timeout: 10000 });
         
         if (res.data && res.data.output) {
             await conn.sendMessage(from, { text: res.data.output.trim() }, { quoted: mek });
         }
     } catch (e) {
-        console.error("AI Error:", e.message);
-        // We don't reply with error to avoid spamming the chat
+        console.error("AutoAI Plugin Error:", e.message);
     }
 });
