@@ -1,67 +1,96 @@
 const { cmd } = require("../command");
+const yts = require("yt-search");
 const axios = require("axios");
-const yts = require('yt-search');
 
-cmd({
-    pattern: "ytmp3",
-    alias: ["audio", "song"],
-    react: "🎶",
-    desc: "Download YouTube Audio via Arslan API.",
-    category: "download",
-    filename: __filename
-}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
-    try {
-        if (!q || !q.includes("http")) {
-            return reply(`❓ *Example:* \n${prefix + command} https://youtu.be/0geqOYqwL0s`);
-        }
+// --- Helper Functions ---
 
-        const url = q.trim();
-        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+function normalizeYouTubeUrl(url) {
+const match = url.match(/(?:youtu.be\/|youtube.com\/shorts\/|youtube.com\/.*[?&]v=)([a-zA-Z0-9_-]{11})/);
+return match ? `https://youtube.com/watch?v=${match[1]}` : null;
+}
 
-        // API URL updated based on your working link
-        const apiUrl = `https://arslan-apis.vercel.app/download/ytmp3?url=${encodeURIComponent(url)}`;
-        const res = await axios.get(apiUrl);
-        const data = res.data;
+/**
+Fetch Audio Link (Koyeb API)
+*/
+async function fetchAudioData(url) {
+try {
+const apiUrl = `https://api-aswin-sparky.koyeb.app/api/downloader/song?search=${encodeURIComponent(url)}`;
+const { data } = await axios.get(apiUrl);
+return data.status && data.data ? data.data.url : null;
+} catch (e) { return null; }
+}
 
-        // Validating working response format
-        if (!data || !data.status || !data.result || !data.result.status) {
-            return reply("❌ *Error:* Data audio tidak ditemukan atau API expired.");
-        }
+// --- MAIN AUDIO COMMAND ---
 
-        const metadata = data.result.metadata;
-        const downloadUrl = data.result.download.url;
+cmd(
+{
+pattern: "song",
+alias: ["play", "audio"],
+react: "🎧",
+desc: "Download YouTube Audio (MP3).",
+category: "download",
+filename: __filename,
+},
+async (conn, mek, m, { from, q, reply, prefix }) => {
+try {
 
-        // --- Stylish Caption ---
-        const caption = `
-╭━━━━━━━〔 𝐘𝐓 𝐌𝐏𝟑 𝐃𝐋 〕━━━━━━━┈⊷
-┃
-┃ 🎵 *𝗧𝗶𝘁𝗹𝗲:* ${metadata.title}
-┃ 🕒 *𝗗𝘂𝗿𝗮𝘁𝗶𝗼𝗻:* ${metadata.duration} seconds
-┃ 🔗 *𝗧𝘆𝗽𝗲:* ${metadata.type}
-┃
-╰━━━━━━━━━━━━━━━━━━━━━━━━┈⊷
-⚡ *Audio sedang dikirim...*
+if (!q) return reply(`❓ *Usage:* \`${prefix}dl <song name / link>\``);
 
-> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`;
+await conn.sendMessage(from, { react: { text: "🔎", key: mek.key } });
 
-        // Step 1: Send Info Caption
-        await conn.sendMessage(from, { 
-            image: { url: 'https://i.ibb.co/video-placeholder.png' }, // Placeholder if thumb missing
-            caption: caption 
-        }, { quoted: mek });
+// Step 1: Search Video
+let ytdata;
+const url = normalizeYouTubeUrl(q);
 
-        // Step 2: Send Audio File
-        await conn.sendMessage(from, {
-            audio: { url: downloadUrl },
-            mimetype: "audio/mpeg",
-            fileName: `${metadata.title}.mp3`,
-            ptt: false
-        }, { quoted: mek });
+if (url) {
+const results = await yts({ videoId: url.split('v=')[1] });
+ytdata = results;
+} else {
+const search = await yts(q);
+if (!search.videos.length) return reply("❌ *No results found!*");
+ytdata = search.videos[0];
+}
 
-        await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+// Stylish Caption
+const caption = `
+╔═══════〔 🎵 𝚈𝚃  𝙰𝚄𝙳𝙸𝙾  𝙳𝙻 〕═══════╗
 
-    } catch (err) {
-        console.error("YTMP3 Error:", err);
-        reply("❌ *Error:* Connection timed out or invalid API response.");
-    }
-});
+🎼 *Title:* ${ytdata.title}
+⏱️ *Duration:* ${ytdata.timestamp}
+👀 *Views:* ${ytdata.views.toLocaleString()}
+🔗 *URL:* ${ytdata.url}
+
+╚══════════════════════════╝
+⏳ *Please wait… Preparing high quality MP3*
+
+> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ KAMRAN-MD
+`;
+
+await conn.sendMessage(
+from,
+{ image: { url: ytdata.thumbnail || ytdata.image }, caption },
+{ quoted: mek }
+);
+
+// Step 2: Fetch & Send Audio
+const audioUrl = await fetchAudioData(ytdata.url);
+if (!audioUrl) return reply("❌ *Audio download failed!*");
+
+await conn.sendMessage(
+from,
+{
+audio: { url: audioUrl },
+mimetype: "audio/mpeg",
+ptt: false
+},
+{ quoted: mek }
+);
+
+await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+
+} catch (e) {
+console.error(e);
+reply("⚠️ *Error occurred while processing!*");
+}
+}
+);
