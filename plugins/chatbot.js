@@ -1,8 +1,8 @@
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// Group memory to keep track of AI status
-const autoAiStatus = {}; 
+// Status memory
+if (!global.autoAiStatus) global.autoAiStatus = {}; 
 
 cmd({
     pattern: "autoai",
@@ -10,37 +10,32 @@ cmd({
     category: "ai",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply, isAdmins, isOwner }) => {
-    // Permission check
-    if (!isAdmins && !isOwner) return reply("❌ This command is for Admins only.");
-
+    if (!isAdmins && !isOwner) return reply("❌ Admins only.");
     if (!q) return reply("❓ Use: *.autoai on* or *.autoai off*");
 
     if (q.toLowerCase() === 'on') {
-        autoAiStatus[from] = true;
-        return reply("✅ *Auto AI:* Enabled. Bot will now reply to all messages.");
+        global.autoAiStatus[from] = true;
+        return reply("✅ *Auto AI:* Enabled. Ab bot sirf users ko jawab dega.");
     } else if (q.toLowerCase() === 'off') {
-        autoAiStatus[from] = false;
-        return reply("❌ *Auto AI:* Disabled for this chat.");
-    } else {
-        return reply("❓ Use: *.autoai on* or *.autoai off*");
+        global.autoAiStatus[from] = false;
+        return reply("❌ *Auto AI:* Disabled.");
     }
 });
 
-// Listener for automatic replies
+// Listener: Fixed to ignore self-messages
 cmd({
     on: "body"
-}, async (conn, mek, m, { from, body, isBot, isGroup }) => {
-    // 1. Check if AI is turned ON for this chat
-    if (!autoAiStatus[from]) return;
-    
-    // 2. Don't reply to other bots or empty messages
-    if (isBot || !body) return;
+}, async (conn, mek, m, { from, body, isBot }) => {
+    // 1. Agar AI off hai toh ruk jao
+    if (!global.autoAiStatus || !global.autoAiStatus[from]) return;
 
-    // 3. Don't reply to bot commands (starting with . or /)
-    if (body.startsWith('.') || body.startsWith('/')) return;
+    // 2. STOP LOOP: Agar message bot ne khud bheja hai (fromMe), toh ignore karo
+    if (m.key.fromMe || isBot) return;
+
+    // 3. Khali message ya command ignore karo
+    if (!body || body.startsWith('.') || body.startsWith('/')) return;
 
     try {
-        // Show "typing..." for realism
         await conn.sendPresenceUpdate('composing', from);
 
         const apiUrl = `https://api.ryuu-dev.offc.my.id/ai/mahiru-ai?text=${encodeURIComponent(body)}`;
@@ -49,14 +44,14 @@ cmd({
         if (res.data && res.data.output) {
             const replyText = res.data.output.trim();
             
-            // Artificial delay based on text length
-            const delay = Math.min(5000, 1000 + replyText.length * 20);
+            // Real delay simulation
+            const delayTime = Math.min(4000, 1000 + replyText.length * 20);
             
             setTimeout(async () => {
                 await conn.sendMessage(from, { text: replyText }, { quoted: mek });
-            }, delay);
+            }, delayTime);
         }
     } catch (e) {
-        console.error("AutoAI Error:", e.message);
+        console.error("AutoAI Loop Fix Error:", e.message);
     }
 });
