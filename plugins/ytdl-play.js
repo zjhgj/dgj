@@ -1,9 +1,10 @@
-const { cmd } = require('../command');
+const { cmd } = require("../command");
 const fetch = require("node-fetch");
 const yts = require("yt-search");
 const axios = require("axios");
+const { fakevCard } = require('../lib/video-utils');
 
-cmd({
+arslan({
 pattern: "song",
 alias: ["ytmp3", "play"],
 react: "🎵",
@@ -58,7 +59,7 @@ fileName: `${meta.title || "song"}.mp3`,
 caption:
 `🎵 *${meta.title || "Unknown Title"}*\n` +
 `🎚️ Quality: ${quality}\n\n` +
-`> © KAMRAN-MD`,
+`> © kamran-MD`,
 contextInfo: {
 externalAdReply: {
 title: meta.title
