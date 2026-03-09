@@ -1,124 +1,64 @@
-const { cmd } = require('../command');
-const axios = require('axios');
-const yts = require('yt-search');
+const { cmd } = require("../command");
+const axios = require("axios");
 
-const CONFIG = {
-    audio: { ext: ["mp3", "m4a", "wav", "opus", "flac"], q: ["best", "320k", "128k"] },
-    video: { ext: ["mp4"], q: ["144p", "240p", "360p", "480p", "720p", "1080p"] }
-};
-
-const headers = {
-    accept: "application/json",
-    "content-type": "application/json",
-    "user-agent": "Mozilla/5.0 (Android)",
-    referer: "https://ytmp3.gg/"
-};
-
-// ---------- POLLING ----------
-const poll = async (url) => {
-    const { data } = await axios.get(url, { headers });
-    if (data.status === "completed") return data;
-    if (data.status === "failed") throw "Convert failed";
-    await new Promise(r => setTimeout(r, 1500));
-    return poll(url);
-};
-
-// ---------- YT CONVERT ----------
-async function ytdl(url, format, quality) {
-    const type = Object.keys(CONFIG).find(k => CONFIG[k].ext.includes(format));
-
-    const { data: meta } = await axios.get("https://www.youtube.com/oembed", {
-        params: { url, format: "json" }
-    });
-
-    const payload = {
-        url,
-        os: "android",
-        output: { type, format, ...(type === "video" && { quality }) },
-        ...(type === "audio" && { audio: { bitrate: quality } })
-    };
-
-    const req = u => axios.post(`https://${u}.ytconvert.org/api/download`, payload, { headers });
-    const { data } = await req("hub").catch(() => req("api"));
-
-    const result = await poll(data.statusUrl);
-
-    return {
-        title: meta.title,
-        author: meta.author_name,
-        thumbnail: meta.thumbnail_url,
-        downloadUrl: result.downloadUrl
-    };
-}
-
-// ================= MP3 COMMAND =================
 cmd({
-    pattern: "song",
-    desc: "Download YouTube audio",
+    pattern: "ytmp3",
+    alias: ["audio3", "song"],
+    react: "🎶",
+    desc: "Download YouTube Audio via Skyzopedia API.",
     category: "download",
     filename: __filename
-},
-async (conn, mek, m, { q, reply }) => {
+}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        if (!q) return reply("*Example:* .mp3 faded");
+        if (!q || !q.includes("http")) {
+            return reply(`❓ *Example:* \n${prefix + command} https://youtu.be/xxx`);
+        }
 
-        reply("⏳ Processing...");
+        const url = q.trim();
+        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+        reply("🔄 *KAMRAN-MD:* Sedang memproses audio, mohon tunggu...");
 
-        const search = await yts(q);
-        const video = search.videos[0];
-        if (!video) return reply("No result");
+        // Fetching data from Skyzopedia API
+        const apiResponse = await axios.get(`https://api.skyzopedia.web.id/download/ytdl-mp3?apikey=skyy&url=${url}`);
+        const data = apiResponse.data;
 
-        const data = await ytdl(video.url, "mp3", "128k");
+        if (!data || !data.result || !data.result.download) {
+            return reply("❌ *Error:* Data audio tidak ditemukan atau API Key expired.");
+        }
 
-        const buffer = await axios.get(data.downloadUrl, {
-            responseType: "arraybuffer"
-        }).then(res => Buffer.from(res.data));
+        const { title, thumb, duration, download } = data.result;
 
-        await conn.sendMessage(m.chat, {
-            image: { url: data.thumbnail },
-            caption: `🎵 *${data.title}*\n👤 ${data.author}\n\n> Sending Audio`
+        // --- Stylish Caption ---
+        const caption = `
+╭━━━━━━━〔 𝐘𝐓 𝐌𝐏𝟑 𝐃𝐋 〕━━━━━━━┈⊷
+┃
+┃ 🎵 *𝗧𝗶𝘁𝗹𝗲:* ${title || 'YouTube Audio'}
+┃ 🕒 *𝗗𝘂𝗿𝗮𝘁𝗶𝗼𝗻:* ${duration || 'N/A'}
+┃ 🔗 *𝗨𝗥𝗟:* ${url}
+┃
+╰━━━━━━━━━━━━━━━━━━━━━━━━┈⊷
+⚡ *Audio sedang dikirim...*
+
+> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`;
+
+        // Step 1: Send Thumbnail with Info
+        await conn.sendMessage(from, { 
+            image: { url: thumb || 'https://i.ibb.co/video-placeholder.png' }, 
+            caption: caption 
         }, { quoted: mek });
 
-        await conn.sendMessage(m.chat, {
-            audio: buffer,
-            mimetype: "audio/mpeg"
+        // Step 2: Send Audio File
+        await conn.sendMessage(from, {
+            audio: { url: download },
+            mimetype: "audio/mpeg",
+            fileName: `${title}.mp3`,
+            ptt: false
         }, { quoted: mek });
 
-    } catch (e) {
-        reply("Error: " + e);
-    }
-});
+        await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
 
-// ================= MP4 COMMAND =================
-cmd({
-    pattern: "ytmp4",
-    desc: "Download YouTube video",
-    category: "download",
-    filename: __filename
-},
-async (conn, mek, m, { q, reply }) => {
-    try {
-        if (!q) return reply("*Example:* .mp4 faded");
-
-        reply("⏳ Processing...");
-
-        const search = await yts(q);
-        const video = search.videos[0];
-        if (!video) return reply("No result");
-
-        const data = await ytdl(video.url, "mp4", "720p");
-
-        const buffer = await axios.get(data.downloadUrl, {
-            responseType: "arraybuffer"
-        }).then(res => Buffer.from(res.data));
-
-        await conn.sendMessage(m.chat, {
-            video: buffer,
-            mimetype: "video/mp4",
-            caption: `🎬 *${data.title}*\n👤 ${data.author}`
-        }, { quoted: mek });
-
-    } catch (e) {
-        reply("Error: " + e);
+    } catch (err) {
+        console.error("YTMP3 Error:", err);
+        reply("❌ *Error:* Terjadi kesalahan saat mengambil audio. Pastikan URL benar.");
     }
 });
