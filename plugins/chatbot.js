@@ -1,41 +1,44 @@
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// Status memory
+// Global Status Memory
 if (!global.autoAiStatus) global.autoAiStatus = {}; 
 
 cmd({
     pattern: "autoai",
-    desc: "Enable/Disable Auto AI in groups.",
+    desc: "Enable or Disable Auto AI in the group.",
     category: "ai",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply, isAdmins, isOwner }) => {
-    if (!isAdmins && !isOwner) return reply("❌ Admins only.");
-    if (!q) return reply("❓ Use: *.autoai on* or *.autoai off*");
+    // Permission check: Admins or Owner only
+    if (!isAdmins && !isOwner) return reply("❌ This command is restricted to Admins only.");
+    
+    if (!q) return reply("❓ *Usage:* \n.autoai on\n.autoai off");
 
     if (q.toLowerCase() === 'on') {
         global.autoAiStatus[from] = true;
-        return reply("✅ *Auto AI:* Enabled. Ab bot sirf users ko jawab dega.");
+        return reply("✅ *Auto AI:* Enabled. The bot will now reply to user messages.");
     } else if (q.toLowerCase() === 'off') {
         global.autoAiStatus[from] = false;
-        return reply("❌ *Auto AI:* Disabled.");
+        return reply("❌ *Auto AI:* Disabled for this chat.");
     }
 });
 
-// Listener: Fixed to ignore self-messages
+// Listener: Responds only to group members/users
 cmd({
     on: "body"
 }, async (conn, mek, m, { from, body, isBot }) => {
-    // 1. Agar AI off hai toh ruk jao
+    // 1. Exit if AI is turned OFF for this specific chat
     if (!global.autoAiStatus || !global.autoAiStatus[from]) return;
 
-    // 2. STOP LOOP: Agar message bot ne khud bheja hai (fromMe), toh ignore karo
+    // 2. STOP INFINITE LOOP: Ignore if the message is from the bot itself or other bots
     if (m.key.fromMe || isBot) return;
 
-    // 3. Khali message ya command ignore karo
+    // 3. Ignore empty messages or commands (starting with . or /)
     if (!body || body.startsWith('.') || body.startsWith('/')) return;
 
     try {
+        // Show "typing..." status for realism
         await conn.sendPresenceUpdate('composing', from);
 
         const apiUrl = `https://api.ryuu-dev.offc.my.id/ai/mahiru-ai?text=${encodeURIComponent(body)}`;
@@ -44,7 +47,7 @@ cmd({
         if (res.data && res.data.output) {
             const replyText = res.data.output.trim();
             
-            // Real delay simulation
+            // Artificial typing delay based on response length
             const delayTime = Math.min(4000, 1000 + replyText.length * 20);
             
             setTimeout(async () => {
@@ -52,6 +55,6 @@ cmd({
             }, delayTime);
         }
     } catch (e) {
-        console.error("AutoAI Loop Fix Error:", e.message);
+        console.error("AutoAI Error:", e.message);
     }
 });
