@@ -1,140 +1,53 @@
-const { cmd } = require("../command");
-const config = require("../config");
-const axios = require("axios");
+const { cmd } = require('../command');
+const axios = require('axios');
 
-// === AI Chatbot Event Handler ===
-cmd({ on: "body" }, async (client, message, chat, { from, body, isGroup, isCmd }) => {
-  try {
-    // 1. LID & Identity Support
-    const botId = client.user?.id || '';
-    const botLid = client.user?.lid || '';
-    
-    const senderId = message.key.participant || message.key.remoteJid || (message.key.fromMe ? botId : null);
+const aiStatus = {}; // Group-wise status memory
 
-    // Identify if message is from the bot itself (Check both PN and LID)
-    const isFromMe = message.key.fromMe || 
-                     (botId && senderId === botId) || 
-                     (botLid && senderId.split('@')[0] === botLid.split('@')[0]);
+// Main Command: Turn ON/OFF
+cmd({
+    pattern: "autoai",
+    alias: ["aion", "aioff"],
+    desc: "Enable or Disable Auto AI in groups.",
+    category: "ai",
+    filename: __filename
+}, async (conn, mek, m, { from, command, reply, isGroup, isAdmins, isOwner }) => {
+    if (isGroup && !isAdmins && !isOwner) return reply("❌ Admins only.");
 
-    // 2. SMART FILTERS: Only reply if AI is ON, it's NOT a command, NOT a group, and NOT from the bot itself
-    if (config.AUTO_AI === "true" && !isCmd && !isGroup && !isFromMe && body) {
-      
-      // 3. Realistic "typing..." presence
-      await client.sendPresenceUpdate('composing', from);
-
-      // 4. Fetch response from David Cyril API (Using axios for better handling)
-      const apiKey = ""; // Add your apikey here if required
-      const apiUrl = `https://apis.davidcyriltech.my.id/ai/chatbot?query=${encodeURIComponent(body)}&apikey=${apiKey}`;
-      
-      const res = await axios.get(apiUrl);
-      const data = res.data;
-
-      if (data.status === 200 || data.success) {
-        const aiReply = data.result;
-
-        // 5. Send the smart reply with your brand styling
-        await client.sendMessage(from, {
-          text: `${aiReply}\n\n> © ᴋᴀᴍʀᴀɴ ᴍᴅ ᴀɪ 🤖`,
-          contextInfo: {
-            forwardingScore: 999,
-            isForwarded: true,
-            forwardedNewsletterMessageInfo: {
-              newsletterJid: '120363418144382782@newsletter',
-              newsletterName: '𝙆𝘼𝙈𝙍𝘼𝙉 𝙈𝘿',
-              serverMessageId: 1700
-            }
-          }
-        }, { quoted: message });
-      }
+    if (command === 'aion') {
+        aiStatus[from] = true;
+        return reply("✅ *Auto AI:* Enabled for this chat.");
     }
-  } catch (error) {
-    console.error("❌ Chatbot Error:", error);
-  }
+    
+    if (command === 'aioff') {
+        aiStatus[from] = false;
+        return reply("❌ *Auto AI:* Disabled for this chat.");
+    }
 });
 
-// === Chatbot Toggle Command ===
+// Listener: Auto-response logic
+// Note: Isse bot.js ke message event mein integrate karna behtar hota hai
 cmd({
-  pattern: "chatbot",
-  alias: ["autoi", "aichat"],
-  desc: "Toggle Auto AI Chatbot feature",
-  category: "owner",
-  react: "🤖",
-  filename: __filename,
-  fromMe: true
-},
-async (client, message, m, { isOwner, from, sender, args }) => {
-  try {
-    if (!isOwner) {
-      return client.sendMessage(from, {
-        text: "🚫 *Owner-only command!*",
-        mentions: [sender]
-      }, { quoted: message });
+    on: "text" 
+}, async (conn, mek, m, { from, body, isBot }) => {
+    if (isBot || !body || !aiStatus[from]) return;
+    if (body.startsWith('.') || body.startsWith('/')) return; // Ignore commands
+
+    try {
+        await conn.sendPresenceUpdate('composing', from);
+
+        const url = `https://api.ryuu-dev.offc.my.id/ai/mahiru-ai?text=${encodeURIComponent(body)}`;
+        const res = await axios.get(url, { timeout: 10000 });
+        const json = res.data;
+
+        if (json && json.output) {
+            const answer = json.output.trim();
+            // Typing simulation for realism
+            const typingDelay = Math.min(4000, 1000 + answer.length * 20);
+            setTimeout(async () => {
+                await conn.sendMessage(from, { text: answer }, { quoted: mek });
+            }, typingDelay);
+        }
+    } catch (err) {
+        console.error("AI Error:", err.message);
     }
-
-    const action = args[0]?.toLowerCase() || 'status';
-    let statusText, reaction = "🤖", additionalInfo = "";
-
-    switch (action) {
-      case 'on':
-        if (config.AUTO_AI === "true") {
-          statusText = "📌 AI Chatbot is already *ENABLED*!";
-          reaction = "ℹ️";
-        } else {
-          config.AUTO_AI = "true";
-          statusText = "✅ AI Chatbot has been *ENABLED*!";
-          reaction = "✅";
-          additionalInfo = "I will now reply to all private messages 💬";
-        }
-        break;
-
-      case 'off':
-        if (config.AUTO_AI === "false") {
-          statusText = "📌 AI Chatbot is already *DISABLED*!";
-          reaction = "ℹ️";
-        } else {
-          config.AUTO_AI = "false";
-          statusText = "❌ AI Chatbot has been *DISABLED*!";
-          reaction = "❌";
-          additionalInfo = "Auto-replies are now turned off 🔇";
-        }
-        break;
-
-      default:
-        statusText = `📌 Chatbot Status: ${config.AUTO_AI === "true" ? "✅ *ENABLED*" : "❌ *DISABLED*"}`;
-        additionalInfo = config.AUTO_AI === "true" ? "Ready to chat 🤖" : "Standing by 💤";
-        break;
-    }
-
-    // Send combined image + newsletter style message
-    await client.sendMessage(from, {
-      image: { url: "https://files.catbox.moe/tt88qy.jpg" },
-      caption: `
-${statusText}
-${additionalInfo}
-
-_𝙆𝘼𝙈𝙍𝘼𝙉 𝙈𝘿🌟_
-      `,
-      contextInfo: {
-        mentionedJid: [sender],
-        forwardingScore: 999,
-        isForwarded: true,
-        forwardedNewsletterMessageInfo: {
-            newsletterJid: '120363418144382782@newsletter',
-            newsletterName: 'KAMRAN-MD',
-            serverMessageId: 143
-        }
-      }
-    }, { quoted: message });
-
-    await client.sendMessage(from, {
-      react: { text: reaction, key: message.key }
-    });
-
-  } catch (error) {
-    console.error("❌ Chatbot command error:", error);
-    await client.sendMessage(from, {
-      text: `⚠️ Error: ${error.message}`,
-      mentions: [sender]
-    }, { quoted: message });
-  }
 });
