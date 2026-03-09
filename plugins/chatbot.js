@@ -1,60 +1,48 @@
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// Global Status Memory
+// Initialize memory safely
 if (!global.autoAiStatus) global.autoAiStatus = {}; 
 
 cmd({
     pattern: "autoai",
-    desc: "Enable or Disable Auto AI in the group.",
+    desc: "Enable/Disable Auto AI for this chat.",
     category: "ai",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply, isAdmins, isOwner }) => {
-    // Permission check: Admins or Owner only
-    if (!isAdmins && !isOwner) return reply("❌ This command is restricted to Admins only.");
+    if (!isAdmins && !isOwner) return reply("❌ Admins only.");
     
-    if (!q) return reply("❓ *Usage:* \n.autoai on\n.autoai off");
+    if (!q) return reply("❓ *Usage:* .autoai on / off");
 
     if (q.toLowerCase() === 'on') {
         global.autoAiStatus[from] = true;
-        return reply("✅ *Auto AI:* Enabled. The bot will now reply to user messages.");
-    } else if (q.toLowerCase() === 'off') {
+        return reply("✅ *Auto AI is now ON.* I will reply to users.");
+    } else {
         global.autoAiStatus[from] = false;
-        return reply("❌ *Auto AI:* Disabled for this chat.");
+        return reply("❌ *Auto AI is now OFF.*");
     }
 });
 
-// Listener: Responds only to group members/users
+// Listener that only acts when the AI is ON
 cmd({
     on: "body"
 }, async (conn, mek, m, { from, body, isBot }) => {
-    // 1. Exit if AI is turned OFF for this specific chat
+    // Basic gatekeepers to prevent crashes
     if (!global.autoAiStatus || !global.autoAiStatus[from]) return;
-
-    // 2. STOP INFINITE LOOP: Ignore if the message is from the bot itself or other bots
-    if (m.key.fromMe || isBot) return;
-
-    // 3. Ignore empty messages or commands (starting with . or /)
-    if (!body || body.startsWith('.') || body.startsWith('/')) return;
+    if (m.key.fromMe || isBot || !body) return; // Ignore self and other bots
+    if (body.startsWith('.') || body.startsWith('/')) return; // Ignore commands
 
     try {
-        // Show "typing..." status for realism
         await conn.sendPresenceUpdate('composing', from);
 
-        const apiUrl = `https://api.ryuu-dev.offc.my.id/ai/mahiru-ai?text=${encodeURIComponent(body)}`;
-        const res = await axios.get(apiUrl, { timeout: 10000 });
+        // Added 10-second timeout to prevent the bot from hanging
+        const res = await axios.get(`https://api.ryuu-dev.offc.my.id/ai/mahiru-ai?text=${encodeURIComponent(body)}`, { timeout: 10000 });
         
         if (res.data && res.data.output) {
-            const replyText = res.data.output.trim();
-            
-            // Artificial typing delay based on response length
-            const delayTime = Math.min(4000, 1000 + replyText.length * 20);
-            
-            setTimeout(async () => {
-                await conn.sendMessage(from, { text: replyText }, { quoted: mek });
-            }, delayTime);
+            await conn.sendMessage(from, { text: res.data.output.trim() }, { quoted: mek });
         }
     } catch (e) {
-        console.error("AutoAI Error:", e.message);
+        console.error("AI Error:", e.message);
+        // We don't reply with error to avoid spamming the chat
     }
 });
