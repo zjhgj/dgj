@@ -73,9 +73,8 @@ const express = require("express");
 const app = express();
 const port = process.env.PORT || 9090;
   
-//===================SESSION-AUTH============================
-// FIX: Using path.resolve to prevent the recursive directory (.cache) error
-const sessionDir = path.resolve(__dirname, 'sessions');
+  //===================SESSION-AUTH============================
+const sessionDir = path.join(__dirname, 'sessions');
 const credsPath = path.join(sessionDir, 'creds.json');
 
 // Create session directory if it doesn't exist
@@ -93,9 +92,9 @@ async function loadSession() {
         console.log('[⏳] Downloading creds data...');
         console.log('[🔰] Downloading MEGA.nz session...');
         
-        // FIX: Removed hardcoded "IK~" to handle any prefix before the "~"
-        const megaFileId = config.SESSION_ID.includes('IK~') 
-            ? config.SESSION_ID.split('IK~')[1] 
+        // Remove "IK~" prefix if present, otherwise use full SESSION_ID
+        const megaFileId = config.SESSION_ID.startsWith('IK~') 
+            ? config.SESSION_ID.replace("IK~", "") 
             : config.SESSION_ID;
 
         const filer = File.fromURL(`https://mega.nz/file/${megaFileId}`);
@@ -125,16 +124,15 @@ async function connectToWA() {
     // Load session if available
     const creds = await loadSession();
     
-    // FIX: Using the absolute sessionDir path
-    const { state, saveCreds } = await useMultiFileAuthState(sessionDir, {
-        creds: creds || undefined 
+    const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, 'sessions'), {
+        creds: creds || undefined // Pass loaded creds if available
     });
     
     const { version } = await fetchLatestBaileysVersion();
     
     const conn = makeWASocket({
         logger: P({ level: 'silent' }),
-        printQRInTerminal: !creds, 
+        printQRInTerminal: !creds, // Only show QR if no session loaded
         browser: Browsers.macOS("Firefox"),
         syncFullHistory: true,
         auth: state,
@@ -142,8 +140,7 @@ async function connectToWA() {
         getMessage: async () => ({})
     });
 
-    // Save creds update
-    conn.ev.on('creds.update', saveCreds);
+    // ... rest of your connection code
 
     conn.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
@@ -172,9 +169,9 @@ async function connectToWA() {
                 // Send connection message
 try {
     const username = config.REPO.split('/').slice(3, 4)[0] || 'KAMRAN-SMD';
-    const prefix = config.PREFIX || '.'; // Ensure prefix is defined
+                const prefix = config.PREFIX || '.'; // Ensure prefix is defined
 
-    const upMessage = `╭─〔 *🤖KAMRAN-MD BOT* 〕  
+                const upMessage = `╭─〔 *🤖KAMRAN-MD BOT* 〕  
 ├─▸ *Ultra Super Fast Powerfull ⚠️*
 │   *World Best BOT KAMRAN-MD* ╰─➤ *Your Smart WhatsApp Bot is Ready To use 🍁!*
 
@@ -184,27 +181,26 @@ try {
 ├─ 🌟 *Star the Repo:* │    https://github.com/KAMRAN-SMD/KAMRAN-MD  
 ╰─🚀 *Powered by DR KAMRAN*`;
 
-    // --- NEW BOT IDENTIFIER ADDED HERE ---
-    const BOT = conn.user.id.split(':')[0] + '@s.whatsapp.net';
+const BOT = conn.user.id.split(':')[0] + '@s.whatsapp.net';
+                // --- 100% SECURE INBOX PATH FOR BAILEYS ---
+                const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
 
-    // Connection stable hone ke liye 5 second ka wait
-    setTimeout(async () => {
-        try {
-            // Sabse pehle 'BOT' path par message bhejne ki koshish
-            await conn.sendMessage(BOT, { 
-                image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
-                caption: upMessage 
-            });
-            console.log('[✅] Connection message sent to BOT ID successfully.');
-        } catch (innerError) {
-            // Fallback: Agar BOT fail ho toh original conn.user.id use karein
-            console.log('[⚠️] BOT ID failed, trying original user ID...');
-            await conn.sendMessage(conn.user.id, { 
-                image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
-                caption: upMessage 
-            });
-        }
-    }, 5000); 
+                // Connection stable hone ke liye 5 second ka wait
+                setTimeout(async () => {
+                    try {
+                        await conn.sendMessage(inboxPath, { 
+                            image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
+                            caption: upMessage 
+                        });
+                        console.log('[✅] Connection message sent to IB successfully.');
+                    } catch (innerError) {
+                        // Fallback: Agar inboxPath fail ho toh original conn.user.id use karein
+                        await conn.sendMessage(conn.user.id, { 
+                            image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
+                            caption: upMessage 
+                        });
+                    }
+                }, 5000); 
 
             } catch (sendError) {
                 console.error('[🔰] Error sending messages to IB:', sendError);
@@ -269,92 +265,88 @@ BotActivityFilter(conn);
   conn.ev.on('messages.upsert', async(mek) => {
     mek = mek.messages[0]
     if (!mek.message) return
-    
-    // Safely get content type
-    const type = getContentType(mek.message)
-    mek.message = (type === 'ephemeralMessage') 
-        ? mek.message.ephemeralMessage.message 
-        : mek.message;
-
-    if (config.READ_MESSAGE === 'true') {
-        await conn.readMessages([mek.key]).catch(e => {});
-    }
-
-    // ViewOnce handling
-    if (mek.message?.viewOnceMessageV2) {
-        mek.message = mek.message.viewOnceMessageV2.message;
-    }
-
+    mek.message = (getContentType(mek.message) === 'ephemeralMessage') 
+    ? mek.message.ephemeralMessage.message 
+    : mek.message;
+    //console.log("New Message Detected:", JSON.stringify(mek, null, 2));
+  if (config.READ_MESSAGE === 'true') {
+    await conn.readMessages([mek.key]);  // Mark message as read
+    console.log(`Marked message from ${mek.key.remoteJid} as read.`);
+  }
+    if(mek.message.viewOnceMessageV2)
+    mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
     if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_SEEN === "true"){
-        await conn.readMessages([mek.key]).catch(e => {});
+      await conn.readMessages([mek.key])
     }
 
-    // Newsletter handling
-    const newsletterJids = ["120363418144382782@newsletter"];
-    const emojis = ["❤️", "👍", "😮", "😎", "💀"];
+  const newsletterJids = [
+  "120363418144382782@newsletter",
+  "120363418144382782@newsletter",	  
+  "120363418144382782@newsletter",	  
+  "120363418144382782@newsletter"
+];
+  const emojis = ["❤️", "👍", "😮", "😎", "💀"];
 
-    if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
-        try {
-            const serverId = mek.newsletterServerId;
-            if (serverId) {
-                const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-                await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
+  if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
+    try {
+      const serverId = mek.newsletterServerId;
+      if (serverId) {
+      const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+        await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
+      }
+    } catch (e) {
+    
+    }
+  }	  
+	  
+  if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_REACT === "true"){
+    const jawadlike = await conn.decodeJid(conn.user.id);
+    const emojis =  ['❤️', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊️', '🌷', '⛅', '🌟', '🗿', '🇵🇰', '💜', '💙', '🌝', '🖤', '💚'];
+    const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+    await conn.sendMessage(mek.key.remoteJid, {
+      react: {
+        text: randomEmoji,
+        key: mek.key,
+      } 
+    }, { statusJidList: [mek.key.participant, jawadlike] });
+  }                       
+  if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_REPLY === "true"){
+  const user = mek.key.participant
+  const text = `${config.AUTO_STATUS_MSG}`
+  await conn.sendMessage(user, { text: text, react: { text: '💜', key: mek.key } }, { quoted: mek })
             }
-        } catch (e) {}
-    }      
-
-    // Auto Status Reaction/Reply
-    if (mek.key && mek.key.remoteJid === 'status@broadcast') {
-        if (config.AUTO_STATUS_REACT === "true") {
-            const jawadlike = await conn.decodeJid(conn.user.id);
-            const reactEmojis = ['❤️', '🔥', '💯', '😎'];
-            await conn.sendMessage(mek.key.remoteJid, {
-                react: { text: reactEmojis[Math.floor(Math.random() * reactEmojis.length)], key: mek.key } 
-            }, { statusJidList: [mek.key.participant, jawadlike] }).catch(e => {});
-        }
-        if (config.AUTO_STATUS_REPLY === "true") {
-            await conn.sendMessage(mek.key.participant, { text: config.AUTO_STATUS_MSG }, { quoted: mek }).catch(e => {});
-        }
-    }
-
-    await saveMessage(mek).catch(e => {});
-
-    const m = sms(conn, mek);
-    const from = mek.key.remoteJid;
-    const isGroup = from.endsWith('@g.us');
-    
-    // Safely parse body
-    const body = (type === 'conversation') ? mek.message.conversation : 
-                 (type === 'extendedTextMessage') ? mek.message.extendedTextMessage?.text : 
-                 (type === 'imageMessage') ? mek.message.imageMessage?.caption : 
-                 (type === 'videoMessage') ? mek.message.videoMessage?.caption : '';
-
-    const isCmd = body?.startsWith(prefix);
-    const command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : '';
-    const args = body?.trim().split(/ +/).slice(1) || [];
-    
-    const sender = mek.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net') : (mek.key.participant || mek.key.remoteJid);
-    const botNumber2 = await jidNormalizedUser(conn.user.id);
-    
-    // SAFE METADATA FETCHING (Adding try-catch to prevent rate-overlimit crash)
-    let groupMetadata = {};
-    let groupName = "";
-    let groupAdmins = [];
-    let isBotAdmins = false;
-    let isAdmins = false;
-
-    if (isGroup) {
-        groupMetadata = await conn.groupMetadata(from).catch(e => null);
-        if (groupMetadata) {
-            groupName = groupMetadata.subject || "";
-            const participants = groupMetadata.participants || [];
-            groupAdmins = await getGroupAdmins(participants);
-            isBotAdmins = groupAdmins.includes(botNumber2);
-            isAdmins = groupAdmins.includes(sender);
-        }
-    }
-
-    const reply = (teks) => conn.sendMessage(from, { text: teks }, { quoted: mek })
+            await Promise.all([
+              saveMessage(mek),
+            ]);
+  const m = sms(conn, mek)
+  const type = getContentType(mek.message)
+  const content = JSON.stringify(mek.message)
+  const from = mek.key.remoteJid
+  const quoted = type == 'extendedTextMessage' && mek.message.extendedTextMessage.contextInfo != null ? mek.message.extendedTextMessage.contextInfo.quotedMessage || [] : []
+  const body = (type === 'conversation') ? mek.message.conversation : (type === 'extendedTextMessage') ? mek.message.extendedTextMessage.text : (type == 'imageMessage') && mek.message.imageMessage.caption ? mek.message.imageMessage.caption : (type == 'videoMessage') && mek.message.videoMessage.caption ? mek.message.videoMessage.caption : ''
+  const isCmd = body.startsWith(prefix)
+  var budy = typeof mek.text == 'string' ? mek.text : false;
+  const command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : ''
+  const args = body.trim().split(/ +/).slice(1)
+  const q = args.join(' ')
+  const text = args.join(' ')
+  const isGroup = from.endsWith('@g.us')
+  const sender = mek.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net' || conn.user.id) : (mek.key.participant || mek.key.remoteJid)
+  const senderNumber = sender.split('@')[0]
+  const botNumber = conn.user.id.split(':')[0]
+  const pushname = mek.pushName || 'Sin Nombre'
+  const isMe = botNumber.includes(senderNumber)
+  const isOwner = ownerNumber.includes(senderNumber) || isMe
+  const botNumber2 = await jidNormalizedUser(conn.user.id);
+  const groupMetadata = isGroup ? await conn.groupMetadata(from).catch(e => {}) : ''
+  const groupName = isGroup ? groupMetadata.subject : ''
+  const participants = isGroup ? await groupMetadata.participants : ''
+  const groupAdmins = isGroup ? await getGroupAdmins(participants) : ''
+  const isBotAdmins = isGroup ? groupAdmins.includes(botNumber2) : false
+  const isAdmins = isGroup ? groupAdmins.includes(sender) : false
+  const isReact = m.message.reactionMessage ? true : false
+  const reply = (teks) => {
+  conn.sendMessage(from, { text: teks }, { quoted: mek })
   }
   
   const udp = botNumber.split('@')[0];
