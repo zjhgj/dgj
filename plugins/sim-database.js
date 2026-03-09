@@ -1,45 +1,56 @@
 const { cmd } = require("../command");
-const axios = require("axios");
+const { chromium } = require("playwright"); // Playwright use karenge bypass ke liye
 
 cmd({
     pattern: "sim",
     react: "🔎",
-    desc: "Search SIM database with debug mode.",
+    desc: "Bypass security and fetch SIM database.",
     category: "tools",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
-        if (!q) return reply(`❓ *Example:* ${prefix + command} 03001234567`);
+        if (!q) return reply(`❓ *Example:* ${prefix + command} 03157169725`);
 
         const accessKey = "AHMAD-786";
         const apiUrl = `https://mhcloud.kesug.com/view.php?site=ahmad-sim-database&i=1&query=${q}&key=${accessKey}`;
 
         await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+        reply("🛡️ *KAMRAN-MD:* Bypassing Anti-Bot Protection... Please wait.");
 
-        const response = await axios.get(apiUrl, { timeout: 15000 });
-        const data = response.data;
+        // Launching a stealth browser
+        const browser = await chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
+        });
+        const page = await context.newPage();
 
-        // Logging for you to check in terminal
-        console.log("SIM API RAW DATA:", data);
+        // Navigate to API and wait for JS to set the cookie
+        await page.goto(apiUrl, { waitUntil: 'networkidle' });
 
-        // Check if data is valid
-        if (data && typeof data === 'object' && (data.name || data.cnic)) {
-            let result = `👤 *SIM DETAILS FOUND*\n\n`;
-            result += `📝 *Name:* ${data.name || 'N/A'}\n`;
-            result += `🆔 *CNIC:* ${data.cnic || 'N/A'}\n`;
-            result += `📱 *Number:* ${data.number || q}\n`;
-            result += `🏠 *Address:* ${data.address || 'N/A'}\n\n`;
-            result += `> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`;
-            return reply(result);
-        } 
-        
-        // If API returns string error or empty object
-        const errorMsg = typeof data === 'string' ? data : "Record not found in database.";
-        reply(`❌ *Database Error:* ${errorMsg}\n\n*Note:* Try another number or check if the API link is still active.`);
+        // Extracting text content (Assuming it returns JSON after JS redirect)
+        const content = await page.textContent('body');
+        await browser.close();
+
+        try {
+            const data = JSON.parse(content);
+            if (data && (data.name || data.cnic)) {
+                let result = `👤 *SIM DETAILS FOUND*\n\n`;
+                result += `📝 *Name:* ${data.name}\n`;
+                result += `🆔 *CNIC:* ${data.cnic}\n`;
+                result += `📱 *Number:* ${data.number || q}\n`;
+                result += `🏠 *Address:* ${data.address}\n\n`;
+                result += `> © ᴋᴀᴍʀᴀɴ-ᴍᴅ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ`;
+                return reply(result);
+            }
+        } catch (parseError) {
+            // Agar JSON nahi hai toh raw text dikhao
+            if (content.length > 5) return reply(`📄 *Result:* ${content.trim()}`);
+        }
+
+        reply("❌ *Record not found* in this database.");
 
     } catch (e) {
-        console.error("API ERROR:", e.message);
-        reply(`❌ *Network Error:* API is unreachable or taking too long to respond.`);
+        console.error("BYPASS ERROR:", e);
+        reply(`❌ *Bypass Failed:* Hosting protection is too strong for simple requests.`);
     }
 });
-
