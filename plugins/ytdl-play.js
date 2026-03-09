@@ -1,5 +1,6 @@
 const { cmd } = require("../command");
 const axios = require("axios");
+const yts = require('yt-search');
 
 cmd({
     pattern: "ytmp3",
