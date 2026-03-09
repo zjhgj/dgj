@@ -17,7 +17,7 @@ async (arslan, mek, m, { from, args, reply }) => {
             return reply("❌ Please provide a valid WhatsApp Channel link!");
         }
 
-        await arslan.sendMessage(from, { react: { text: "⏳", key: m.key } });
+        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
 
         const apiUrl = `https://api.fikprojects.web.id/cekidch?apikey=FreeKeys&url=${url}`;
         const res = await axios.get(apiUrl);
@@ -42,7 +42,7 @@ async (arslan, mek, m, { from, args, reply }) => {
             caption: caption
         }, { quoted: m });
 
-        await arslan.sendMessage(from, { react: { text: "✅", key: m.key } });
+        await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
 
     } catch (err) {
         console.error("CHANNEL ERROR:", err);
