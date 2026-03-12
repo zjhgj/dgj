@@ -5,38 +5,35 @@ cmd({
     on: "body"
 }, async (conn, m, store, { from, body, sender, isGroup, isAdmins, isBotAdmins }) => {
     try {
-        // 1. Basic checks (Config check)
-        if (!isGroup || config.ANTI_LINK === 'false' || !body) return;
+        // 1. Sirf Group mein hi check karein
+        if (!isGroup) return;
+        
+        // 2. Anti-link enabled hona chahiye
+        if (config.ANTI_LINK === 'false') return;
 
-        // 2. Filter: Only WhatsApp Group & Channel Links
-        const waLinkRegex = /(chat\.whatsapp\.com\/[a-zA-Z0-9]{20,}|whatsapp\.com\/channel\/[a-zA-Z0-9]{20,})/gi;
+        // 3. Link Detection (WhatsApp Group & Channel)
+        const waLinkRegex = /(chat\.whatsapp\.com\/|whatsapp\.com\/channel\/)/gi;
         if (!waLinkRegex.test(body)) return;
 
-        // 3. Permission logic
-        // Admin link bhej sakta hai
+        // 4. Admin ignore karein
         if (isAdmins) return;
 
-        // Bot admin hona zaroori hai action lene ke liye
-        if (!isBotAdmins) return;
-
-        // 4. Action: Delete and Kick
-        try {
-            // Pehle message delete karo
-            await conn.sendMessage(from, { delete: m.key });
-
-            // Phir user ko remove karo
-            await conn.groupParticipantsUpdate(from, [sender], "remove");
-
-            // Notification send karo
-            await conn.sendMessage(from, { 
-                text: `🚫 *Anti-Link Action* \n\n@${sender.split('@')[0]} was kicked for sending prohibited links.`, 
-                mentions: [sender] 
-            });
-        } catch (actionError) {
-            console.error("Action Error (Kick/Delete):", actionError.message);
+        // 5. Bot Admin hona zaroori hai
+        if (!isBotAdmins) {
+            console.log("Anti-link: Bot is not admin, cannot kick.");
+            return;
         }
 
+        // 6. Action
+        await conn.sendMessage(from, { delete: m.key });
+        await conn.groupParticipantsUpdate(from, [sender], "remove");
+        await conn.sendMessage(from, { 
+            text: `🚫 *Link Detected!* @${sender.split('@')[0]} has been removed.`, 
+            mentions: [sender] 
+        });
+
     } catch (err) {
-        console.error("Anti-Link Global Error:", err.message);
+        console.error("Anti-link Error:", err.message);
     }
 });
+
