@@ -1,69 +1,105 @@
-Const { cmd } = require('../command');
+const { cmd } = require('../command');
 const config = require('../config');
 
-// Metadata Cache: Baar baar WhatsApp server par load na pare
-const groupCache = new Map();
-
-// Optimized Metadata Fetcher
-async function getCachedMetadata(conn, chatId) {
-    if (groupCache.has(chatId)) {
-        const cached = groupCache.get(chatId);
-        // 5 minute tak cache rakhen
-        if (Date.now() - cached.time < 300000) return cached.data;
-    }
-    
+// --- Helper: Check if user is admin (LID Support) ---
+async function isUserAdmin(conn, chatId, userId) {
     try {
         const metadata = await conn.groupMetadata(chatId);
-        groupCache.set(chatId, { data: metadata, time: Date.now() });
-        return metadata;
-    } catch (e) {
-        return null;
-    }
+        const participants = metadata.participants || [];
+        const normalizeId = (id) => id ? id.replace(/:[0-9]+/g, '').replace(/@(lid|s\.whatsapp\.net|c\.us|g\.us)/g, '').replace(/[^\d]/g, '') : '';
+        const normalizedUserId = normalizeId(userId);
+        
+        for (let p of participants) {
+            const participantIds = [p.id, p.lid, p.phoneNumber].filter(Boolean);
+            for (let pid of participantIds) {
+                if (normalizeId(pid) === normalizedUserId) {
+                    return p.admin === "admin" || p.admin === "superadmin";
+                }
+            }
+        }
+        return false;
+    } catch { return false; }
 }
 
-// Helper: Admin Check
-async function isUserAdmin(conn, chatId, userId) {
-    const metadata = await getCachedMetadata(conn, chatId);
-    if (!metadata) return false;
-    
-    const participant = metadata.participants.find(p => 
-        (p.id === userId || p.lid === userId || p.jid === userId)
-    );
-    return participant ? (participant.admin === "admin" || participant.admin === "superadmin") : false;
-}
-
-// Main Logic
-cmd({ 'on': "body" }, async (conn, m, store, { from, body, sender, isGroup }) => {
+// --- Helper: Check if bot is admin (LID Support) ---
+async function isBotAdmin(conn, chatId) {
     try {
-        if (!isGroup || config.ANTI_LINK === 'false') return;
+        const metadata = await conn.groupMetadata(chatId);
+        const participants = metadata.participants || [];
+        const botId = conn.user?.id || '';
+        const botLid = conn.user?.lid || '';
+        const normalizeId = (id) => id ? id.replace(/:[0-9]+/g, '').replace(/@(lid|s\.whatsapp\.net|c\.us|g\.us)/g, '').replace(/[^\d]/g, '') : '';
+        const nBotId = normalizeId(botId);
+        const nBotLid = normalizeId(botLid);
+
+        for (let p of participants) {
+            if (p.admin === "admin" || p.admin === "superadmin") {
+                const pIds = [p.id, p.lid, p.phoneNumber].filter(Boolean);
+                for (let pid of pIds) {
+                    const nPid = normalizeId(pid);
+                    if (nPid === nBotId || nPid === nBotLid) return true;
+                }
+            }
+        }
+        return false;
+    } catch { return false; }
+}
+
+// --- Main Anti-Link Handler ---
+cmd({
+    on: "body"
+}, async (conn, m, store, { from, body, sender, isGroup, reply }) => {
+    try {
+        // Condition: Config check (Skip if false or empty)
+        const antiLinkMode = config.ANTI_LINK ? config.ANTI_LINK.toLowerCase() : 'false';
+        if (antiLinkMode === 'false' || !isGroup) return;
 
         // URL Detection Regex
-        const urlRegex = /(https?:\/\/[^\s]+|wa\.me\/[^\s]+|whatsapp\.com\/channel\/[^\s]+)/gi;
-        if (!urlRegex.test(body)) return;
+        const urlRegex = /(https?:\/\/)?(www\.)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(\/[^\s]*)?|chat\.whatsapp\.com\/|wa\.me\//gi;
+        const containsLink = urlRegex.test(body);
 
-        // Admin check (Lazy evaluation: pehle link check, phir admin check)
-        if (await isUserAdmin(conn, from, sender)) return;
+        if (containsLink) {
+            // Check Admins
+            const senderIsAdmin = await isUserAdmin(conn, from, sender);
+            if (senderIsAdmin) return;
 
-        // Bot Admin check
-        const metadata = await getCachedMetadata(conn, from);
-        const botId = conn.user?.id?.split(':')[0];
-        const isBotAdmin = metadata?.participants.find(p => p.id.includes(botId))?.admin;
+            const botIsAdmin = await isBotAdmin(conn, from);
+            if (!botIsAdmin) return;
 
-        if (!isBotAdmin) return;
+            const userNumber = sender.split('@')[0];
 
-        // Action: Delete and Kick
-        try {
-            await conn.sendMessage(from, { delete: m.key });
-            await conn.groupParticipantsUpdate(from, [sender], "remove");
-            await conn.sendMessage(from, { 
-                text: `🚫 *Link detected!* @${sender.split('@')[0]} kicked for sending links.`, 
-                mentions: [sender] 
-            });
-        } catch (e) {
-            console.error("Anti-link action failed:", e.message);
+            // --- CASE 1: antilink delete on ---
+            if (antiLinkMode === 'delete') {
+                await conn.sendMessage(from, { delete: m.key });
+                return await conn.sendMessage(from, { 
+                    text: `🚫 *ANTI-LINK (Delete Only)*\n\n@${userNumber}, links are not allowed here. Your message has been deleted.`,
+                    mentions: [sender]
+                });
+            }
+
+            // --- CASE 2: antilink kick on ---
+            if (antiLinkMode === 'kick') {
+                await conn.sendMessage(from, { 
+                    text: `🚫 *ANTI-LINK (Kick Only)*\n\n@${userNumber} is being removed for sending links.`,
+                    mentions: [sender]
+                });
+                return await conn.groupParticipantsUpdate(from, [sender], "remove");
+            }
+
+            // --- CASE 3: antilink delete kick on (or true) ---
+            if (antiLinkMode === 'all' || antiLinkMode === 'true') {
+                // Delete First
+                await conn.sendMessage(from, { delete: m.key });
+                // Notify & Kick
+                await conn.sendMessage(from, { 
+                    text: `🚫 *ANTI-LINK (Full Protection)*\n\n@${userNumber} has been kicked and their link was removed.`,
+                    mentions: [sender]
+                });
+                return await conn.groupParticipantsUpdate(from, [sender], "remove");
+            }
         }
-    } catch (err) {
-        // Silently fail to prevent crashes
+    } catch (error) {
+        console.error("Anti-link Error:", error);
     }
 });
 
