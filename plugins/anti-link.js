@@ -1,40 +1,52 @@
 const { cmd } = require('../command');
 const config = require('../config');
 
-// Metadata Cache (Memory load kam karne ke liye)
-const groupCache = new Map();
+// Helper: Admin Check (Direct from participants to avoid ID mismatch)
+const checkAdmin = (participants, user) => {
+    const p = participants.find(p => p.id === user || p.id.replace(':3', '') === user.replace(':3', ''));
+    return p ? (p.admin === "admin" || p.admin === "superadmin") : false;
+};
 
-cmd({ 'on': "body" }, async (conn, m, store, { from, body, sender, isGroup, isAdmins, isBotAdmins }) => {
+cmd({ 
+    on: "body" 
+}, async (conn, m, store, { from, body, sender, isGroup, isAdmins, isBotAdmins }) => {
     try {
-        // 1. Basic Checks (Fastest Exit)
-        if (!isGroup || config.ANTI_LINK !== 'true' || !body) return;
+        // 1. Basic Safety Checks
+        if (!isGroup || config.ANTI_LINK === 'false' || !body) return;
 
-        // 2. URL Detection (Regex optimized for WhatsApp links)
-        const urlRegex = /(https?:\/\/|www\.|wa\.me\/|chat\.whatsapp\.com\/|whatsapp\.com\/channel\/)/gi;
-        if (!urlRegex.test(body)) return;
+        // 2. Strict Filter: Sirf WhatsApp Group aur Channel Links detect honge
+        const waLinkRegex = /(chat\.whatsapp\.com\/[a-zA-Z0-9]{20,}|whatsapp\.com\/channel\/[a-zA-Z0-9]{20,})/gi;
+        if (!waLinkRegex.test(body)) return;
 
-        // 3. Permission Checks
-        // Agar sender admin hai toh ignore karein (Ye 'isAdmins' plugin ke default context se aata hai jo fast hai)
-        if (isAdmins) return;
+        // 3. Admin & Bot Admin Check
+        // Agar main context se admins mil rahe hain toh woh use karein, warna fetch karein
+        let groupMetadata = await conn.groupMetadata(from);
+        let participants = groupMetadata.participants;
 
-        // Agar Bot admin nahi hai toh action nahi le sakta
-        if (!isBotAdmins) return;
+        const isAdmin = checkAdmin(participants, sender);
+        const isBotAdmin = checkAdmin(participants, conn.user.id.split(':')[0] + '@s.whatsapp.net') || checkAdmin(participants, conn.user.id);
 
-        // 4. Instant Action (Delete first, then remove)
-        // Pehle message delete karein taaki link gayab ho jaye
+        // Agar sender admin hai toh chor do
+        if (isAdmin) return;
+        
+        // Agar bot admin nahi hai toh kuch nahi kar sakta
+        if (!isBotAdmin) return;
+
+        // 4. Action: Delete and Remove
+        // Pehle delete karein taaki link gayab ho jaye
         await conn.sendMessage(from, { delete: m.key });
 
         // User ko remove karein
         await conn.groupParticipantsUpdate(from, [sender], "remove");
 
-        // Confirmation message
+        // Warning/Notification
         await conn.sendMessage(from, { 
-            text: `🚫 *Anti-Link System*\n\n@${sender.split('@')[0]} ko link bhejne ki wajah se remove kar diya gaya hai.`, 
+            text: `🚫 *Link Detected!* \n@${sender.split('@')[0]} has been removed for sharing WhatsApp Group/Channel links.`, 
             mentions: [sender] 
         });
 
     } catch (err) {
-        console.error("Anti-link Error:", err);
+        console.error("Anti-link Error:", err.message);
     }
 });
 
