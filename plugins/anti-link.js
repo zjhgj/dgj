@@ -5,33 +5,30 @@ cmd({
     on: "body"
 }, async (conn, m, store, { from, body, sender, isGroup, isAdmins, isBotAdmins }) => {
     try {
-        // 1. Sirf Group mein hi check karein
-        if (!isGroup) return;
-        
-        // 2. Anti-link enabled hona chahiye
-        if (config.ANTI_LINK === 'false') return;
+        // 1. Sirf Group mein aur agar ANTI_LINK ON ho
+        if (!isGroup || config.ANTI_LINK === 'false' || !body) return;
 
-        // 3. Link Detection (WhatsApp Group & Channel)
+        // 2. Link Detection (WhatsApp Group & Channel)
         const waLinkRegex = /(chat\.whatsapp\.com\/|whatsapp\.com\/channel\/)/gi;
         if (!waLinkRegex.test(body)) return;
 
-        // 4. Admin ignore karein
+        // 3. Admin Check (IGNORE ADMINS)
         if (isAdmins) return;
 
-        // 5. Bot Admin hona zaroori hai
-        if (!isBotAdmins) {
-            console.log("Anti-link: Bot is not admin, cannot kick.");
-            return;
+        // 4. Bot Admin Check
+        if (!isBotAdmins) return;
+
+        // 5. ACTION: Delete and Remove
+        try {
+            await conn.sendMessage(from, { delete: m.key });
+            await conn.groupParticipantsUpdate(from, [sender], "remove");
+            await conn.sendMessage(from, { 
+                text: `🚫 *Link detected!* @${sender.split('@')[0]} removed for sending a link.`, 
+                mentions: [sender] 
+            });
+        } catch (e) {
+            console.error("Action Failed:", e.message);
         }
-
-        // 6. Action
-        await conn.sendMessage(from, { delete: m.key });
-        await conn.groupParticipantsUpdate(from, [sender], "remove");
-        await conn.sendMessage(from, { 
-            text: `🚫 *Link Detected!* @${sender.split('@')[0]} has been removed.`, 
-            mentions: [sender] 
-        });
-
     } catch (err) {
         console.error("Anti-link Error:", err.message);
     }
