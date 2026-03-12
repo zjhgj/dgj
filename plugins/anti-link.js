@@ -66,3 +66,4 @@ cmd({ 'on': "body" }, async (conn, m, store, { from, body, sender, isGroup }) =>
         // Silently fail to prevent crashes
     }
 });
+
