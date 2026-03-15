@@ -1,132 +1,88 @@
 const { cmd } = require('../command');
+const fetch = require("node-fetch");
 const yts = require("yt-search");
-const { ytmp3 } = require("yt-downld");
+const axios = require("axios");
 
-// Configuration
-const key = "kyzo_e16fdb825ad20547";
-const apiurl = "https://kyzorohan.web.id";
-
-// --- Helper Functions ---
-function fetchBuffer(url) {
-    return new Promise((resolve, reject) => {
-        const proto = url.startsWith("https") ? https : http;
-        proto.get(url, (res) => {
-            if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                return fetchBuffer(res.headers.location).then(resolve).catch(reject);
-            }
-            const chunks = [];
-            res.on("data", (c) => chunks.push(c));
-            res.on("end", () => resolve(Buffer.concat(chunks)));
-            res.on("error", reject);
-        }).on("error", reject);
-    });
-}
-
-async function fetchLyrics(title) {
-    try {
-        const q = encodeURIComponent(title);
-        const buf = await fetchBuffer(`${apiurl}/api/lyrics?key=${key}&judul=${q}`);
-        const res = JSON.parse(buf.toString());
-        if (!res.status || !res.data?.length) return null;
-        const entry = res.data.find(d => !d.instrumental) ?? res.data[0];
-        return entry.lyrics ?? null;
-    } catch { return null; }
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-}
-
-async function generateYTCard({ thumbnailUrl, title, duration, channelName, views, uploadDate = "baru saja" }) {
-    const W = 720, H = 200, THUMB_W = 240, THUMB_H = 135, PAD = 16;
-    const canvas = createCanvas(W, H);
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#0f0f0f";
-    ctx.fillRect(0, 0, W, H);
-
-    try {
-        const buf = await fetchBuffer(thumbnailUrl);
-        const img = await loadImage(buf);
-        ctx.save();
-        roundRect(ctx, PAD, PAD, THUMB_W, THUMB_H, 8);
-        ctx.clip();
-        ctx.drawImage(img, PAD, PAD, THUMB_W, THUMB_H);
-        ctx.restore();
-    } catch {
-        ctx.fillStyle = "#3a3a3a";
-        roundRect(ctx, PAD, PAD, THUMB_W, THUMB_H, 8);
-        ctx.fill();
-    }
-
-    // Text & Info logic... (keeping your styling)
-    ctx.font = "bold 15px Arial"; ctx.fillStyle = "#f1f1f1";
-    ctx.fillText(title.slice(0, 45) + (title.length > 45 ? "..." : ""), THUMB_W + 40, PAD + 20);
-    ctx.font = "13px Arial"; ctx.fillStyle = "#aaa";
-    ctx.fillText(`${channelName} • ${views} views`, THUMB_W + 40, PAD + 50);
-    
-    return canvas.toBuffer("image/png");
-}
-
-// --- Bot Command ---
 cmd({
-    pattern: "play",
-    alias: ["song"],
-    desc: "Advanced Play with Lyrics and Card",
-    category: "download",
-    filename: __filename
+pattern: "song",
+alias: ["ytmp3", "play"],
+react: "🎵",
+desc: "YouTube search & MP3 play",
+category: "download",
+use: ".play ",
+filename: __filename
 },
-async (conn, mek, m, { from, q, reply }) => {
-    try {
-        if (!q) return reply("❌ Masukkan judul lagu!");
+async conn, mek, m, { from, args, reply }) => {
 
-        await conn.sendMessage(from, { react: { text: "🔎", key: m.key } });
-        const search = await yts(q);
-        const video = search.videos[0];
-        if (!video) return reply("❌ Video tidak ditemukan");
+try {
 
-        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+const query = args.join(" ");
+if (!query) return reply("❌ Please Provide Me A song Query or Link");
 
-        const [data, cardBuffer, lyrics] = await Promise.all([
-            ytmp3(video.url),
-            generateYTCard({
-                thumbnailUrl: video.thumbnail,
-                title: video.title,
-                duration: video.timestamp,
-                channelName: video.author?.name ?? "Unknown",
-                views: video.views.toLocaleString(),
-                uploadDate: video.ago
-            }),
-            fetchLyrics(video.title),
-        ]);
+await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
 
-        if (!data?.download) throw new Error("Link download tidak tersedia");
+/* 🔍 YouTube Search */
+const search = await yts(query);
 
-        const caption = lyrics ? `🎶 *Lyrics Found:*\n\n${lyrics.slice(0, 1000)}...` : `✅ *Downloaded:* ${video.title}\n\n> © KAMRAN-MD`;
+if (!search.videos || !search.videos.length) {
+return reply("❌ No result Found");
+}
 
-        // Send Card Image
-        await conn.sendMessage(from, { image: cardBuffer, caption }, { quoted: m });
+const video = search.videos[0];
 
-        // Send Audio
-        await conn.sendMessage(from, { 
-            audio: { url: data.download }, 
-            mimetype: "audio/mpeg",
-            fileName: `${video.title}.mp3`
-        }, { quoted: m });
+/* 🎧 MP3 API */
+const apiUrl = `https://arslan-apis.vercel.app/download/ytmp3?url=${video.url}`;
 
-        await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+const res = await axios.get(apiUrl, { timeout: 60000 });
 
-    } catch (e) {
-        console.error(e);
-        reply(`❌ Error: ${e.message}`);
-    }
+if (
+ !res.data ||
+ !res.data.status ||
+ !res.data.result ||
+ !res.data.result.download ||
+ !res.data.result.download.url
+) {
+ return reply("❌ Audio Not Generated");
+}
+
+const dlUrl = res.data.result.download.url;
+const meta = res.data.result.metadata;
+const quality = res.data.result.download.quality || "128kbps";
+
+/* 🎵 SEND AUDIO */
+await conn.sendMessage(from, {
+audio: { url: dlUrl },
+mimetype: "audio/mpeg",
+ptt: false,
+fileName: `${meta.title || "song"}.mp3`,
+caption:
+`🎵 *${meta.title || "Unknown Title"}*\n` +
+`🎚️ Quality: ${quality}\n\n` +
+`> © KAMRAN-MD`,
+contextInfo: {
+externalAdReply: {
+title: meta.title
+? meta.title.substring(0, 40)
+: "YouTube Song",
+body: "YouTube MP3",
+thumbnailUrl: video.thumbnail,
+sourceUrl: video.url,
+mediaType: 1,
+renderLargerThumbnail: true
+}
+}
+}, { quoted: mek });
+
+await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+
+} catch (err) {
+
+console.error("PLAY ERROR:", err);
+
+reply("❌ Error Found Please Try Later");
+
+await conn.sendMessage(from, { react: { text: "❌", key: m.key } });
+
+}
+
 });
