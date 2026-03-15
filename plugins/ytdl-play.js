@@ -79,7 +79,7 @@ await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
 
 console.error("PLAY ERROR:", err);
 
-reply("*KAMRAN-MD PLAY");
+reply("*KAMRAN-MD PLAY*");
 
 await conn.sendMessage(from, { react: { text: "❌", key: m.key } });
 
