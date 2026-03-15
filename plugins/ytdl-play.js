@@ -12,14 +12,14 @@ category: "download",
 use: ".play ",
 filename: __filename
 },
-async conn, mek, m, { from, args, reply }) => {
+async (arslan, mek, m, { from, args, reply }) => {
 
 try {
 
 const query = args.join(" ");
 if (!query) return reply("❌ Please Provide Me A song Query or Link");
 
-await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+await arslan.sendMessage(from, { react: { text: "⏳", key: m.key } });
 
 /* 🔍 YouTube Search */
 const search = await yts(query);
@@ -50,7 +50,7 @@ const meta = res.data.result.metadata;
 const quality = res.data.result.download.quality || "128kbps";
 
 /* 🎵 SEND AUDIO */
-await conn.sendMessage(from, {
+await arslan.sendMessage(from, {
 audio: { url: dlUrl },
 mimetype: "audio/mpeg",
 ptt: false,
@@ -86,3 +86,4 @@ await conn.sendMessage(from, { react: { text: "❌", key: m.key } });
 }
 
 });
+
