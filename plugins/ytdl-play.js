@@ -1,9 +1,6 @@
 const { cmd } = require('../command');
 const yts = require("yt-search");
 const { ytmp3 } = require("yt-downld");
-const { createCanvas, loadImage } = require("@napi-rs/canvas");
-const https = require("https");
-const http = require("http");
 
 // Configuration
 const key = "kyzo_e16fdb825ad20547";
