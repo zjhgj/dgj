@@ -1,33 +1,36 @@
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// Numeric extraction helper for LID/JID
-const getNum = (id) => (id || '').split('@')[0].split(':')[0];
-
-// Newsletter JID from your screenshots
+// Settings
 const TARGET_JID = "120363425374615077@newsletter"; 
 const API_URL = "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/ts?type=sms";
+const MY_NUMBER = "923325914867"; // Aapka number
 
 let otpTimer = null;
 let lastMsg = "";
 
 cmd({
     pattern: "startotp",
-    desc: "LID Fixed OTP Monitoring",
+    desc: "Force-Allowed OTP Monitor",
     category: "owner",
     filename: __filename
 },
 async (conn, mek, m, { from, sender, isOwner, reply }) => {
     
-    // LID Fix: Manual numeric check if standard isOwner fails
-    const senderNum = getNum(sender);
-    const isKamran = isOwner || (senderNum === "923325914867") || (senderNum === "923325914867");
+    // LID/Sender ID se number extract karna
+    const senderNum = (sender || '').replace(/[^0-9]/g, '');
+    
+    // FORCE CHECK: Agar isOwner false hai, toh bhi number match karein
+    const isAuthorized = isOwner || senderNum.includes(MY_NUMBER);
 
-    if (!isKamran) return reply("❌ Access Denied.");
+    if (!isAuthorized) {
+        return reply("❌ Access Denied. Sender: " + senderNum);
+    }
+
     if (otpTimer) return reply("⚠️ Monitoring already active.");
 
     await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
-    reply("🚀 *OTP Monitor Started (LID Fixed)*\n\nChannel JID: " + TARGET_JID);
+    reply("🚀 *OTP Monitor Started!*\nStatus: Force-Authorized\nTarget: Channel");
 
     otpTimer = setInterval(async () => {
         try {
@@ -36,28 +39,15 @@ async (conn, mek, m, { from, sender, isOwner, reply }) => {
 
             if (currentOTP && currentOTP !== lastMsg) {
                 lastMsg = currentOTP;
+                const text = `🔔 *OTP RECEIVED*\n\n📩 ${currentOTP}\n\n> © KAMRAN-MD`;
 
-                const text = `🔔 *OTP RECEIVED*\n\n` +
-                             `📩 *Msg:* ${currentOTP}\n` +
-                             `⏰ *Time:* ${new Date().toLocaleTimeString()}\n\n` +
-                             `> © KAMRAN-MD`;
-
-                // Logic: Newsletter/Channel ke liye hamesha JID use karein
-                await conn.sendMessage(TARGET_JID, { text }).catch(err => {
-                    console.log("❌ Channel Send Error (Check if bot is admin):", err.message);
+                // Channel mein send karein
+                await conn.sendMessage(TARGET_JID, { text: text }).catch(e => {
+                    console.log("❌ Send Error:", e.message);
                 });
             }
         } catch (e) {
-            console.log("📡 API Connection Error...");
+            console.log("📡 API Error");
         }
     }, 10000); 
 });
-
-cmd({ pattern: "stopotp", category: "owner" }, async (conn, mek, m, { reply }) => {
-    if (otpTimer) {
-        clearInterval(otpTimer);
-        otpTimer = null;
-        reply("🛑 OTP Service Stopped.");
-    }
-});
-        
