@@ -1,49 +1,70 @@
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// Settings from your screenshot
-const TARGET_NEWSLETTER = "120363425374615077@newsletter"; 
+// Numeric LID Extraction Helper
+const getNum = (id) => (id || '').split('@')[0].split(':')[0];
+
+const TARGET_CHANNEL = "120363425374615077@newsletter"; 
 const API_URL = "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/ts?type=sms";
 
-let monitoring = false;
-let lastOTP = ""; // Purane OTP ko filter karne ke liye
+let otpInterval = null;
+let lastSavedOTP = "";
 
 cmd({
     pattern: "startotp",
-    desc: "Start OTP Monitoring",
+    desc: "Monitor OTP with LID Fix",
     category: "owner",
     filename: __filename
 },
-async (conn, mek, m, { from, isOwner, reply }) => {
-    if (!isOwner) return reply("❌ Only Owner can start monitoring.");
-    if (monitoring) return reply("⚠️ Monitoring is already running.");
+async (conn, mek, m, { from, sender, isOwner, reply }) => {
+    
+    // --- LID Fix Logic ---
+    // User Summary ke mutabiq Owner ID 923237045919 hai
+    const ownerNumeric = "923325914867"; 
+    const senderNumeric = getNum(sender);
+    
+    // Agar standard isOwner fail ho, toh LID/Numeric check karein
+    const finalOwnerCheck = isOwner || (senderNumeric === ownerNumeric);
 
-    monitoring = true;
-    reply("🚀 *OTP Monitoring Started...*\nTarget: " + TARGET_NEWSLETTER);
+    if (!finalOwnerCheck) return reply("❌ Only DR KAMRAN can start this service.");
+    if (otpInterval) return reply("⚠️ Monitoring is already running.");
 
-    setInterval(async () => {
+    await conn.sendMessage(from, { react: { text: "🚀", key: m.key } });
+    reply("🚀 *OTP Monitor Started!*\nLID Verification: ✅\nTarget: OTP RECEIVE Channel");
+
+    otpInterval = setInterval(async () => {
         try {
-            const res = await axios.get(API_URL);
+            const response = await axios.get(API_URL);
             
-            // API se data nikalna (Flexible check)
-            const otpMsg = res.data?.result?.message || res.data?.data?.message || res.data?.message;
+            // API Response handling
+            const currentOTP = response.data?.result?.message || response.data?.message || response.data?.data?.message;
 
-            if (otpMsg && otpMsg !== lastOTP) {
-                lastOTP = otpMsg; // Naya OTP save karein
-                
-                const finalMsg = `🔔 *NEW OTP RECEIVED*\n\n` +
-                                 `📩 *Message:* ${otpMsg}\n` +
-                                 `⏰ *Time:* ${new Date().toLocaleString()}\n\n` +
-                                 `> © KAMRAN-MD MONITOR`;
+            if (currentOTP && currentOTP !== lastSavedOTP) {
+                lastSavedOTP = currentOTP;
 
-                // Channel mein send karein
-                await conn.sendMessage(TARGET_NEWSLETTER, { text: finalMsg });
-                console.log("✅ OTP Forwarded to Channel");
-            } else {
-                console.log("ℹ️ No new OTP detected yet...");
+                const otpText = `⚡ *KAMRAN-MD OTP RECEIVED*\n\n` +
+                                `📝 *Message:* ${currentOTP}\n` +
+                                `⏰ *Time:* ${new Date().toLocaleTimeString()}\n\n` +
+                                `> © DR KAMRAN`;
+
+                // Sending to Newsletter/Channel
+                await conn.sendMessage(TARGET_CHANNEL, { text: otpText });
+                console.log("✅ OTP Forwarded to:", TARGET_CHANNEL);
             }
-        } catch (e) {
-            console.error("❌ Monitor Error:", e.message);
+        } catch (error) {
+            console.error("OTP Fetch Error:", error.message);
         }
-    }, 10000); // 10 seconds check interval
+    }, 10000); // 10 seconds interval
+});
+
+// Stop Command with LID Fix
+cmd({ pattern: "stopotp", category: "owner" }, async (conn, mek, m, { sender, isOwner, reply }) => {
+    const senderNumeric = getNum(sender);
+    if (!isOwner && senderNumeric !== "923325914867") return;
+
+    if (otpInterval) {
+        clearInterval(otpInterval);
+        otpInterval = null;
+        reply("🛑 OTP Monitoring Stopped.");
+    }
 });
