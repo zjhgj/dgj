@@ -1,70 +1,63 @@
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// Numeric LID Extraction Helper
+// Numeric extraction helper for LID/JID
 const getNum = (id) => (id || '').split('@')[0].split(':')[0];
 
-const TARGET_CHANNEL = "120363425374615077@newsletter"; 
+// Newsletter JID from your screenshots
+const TARGET_JID = "120363425374615077@newsletter"; 
 const API_URL = "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/ts?type=sms";
 
-let otpInterval = null;
-let lastSavedOTP = "";
+let otpTimer = null;
+let lastMsg = "";
 
 cmd({
     pattern: "startotp",
-    desc: "Monitor OTP with LID Fix",
+    desc: "LID Fixed OTP Monitoring",
     category: "owner",
     filename: __filename
 },
 async (conn, mek, m, { from, sender, isOwner, reply }) => {
     
-    // --- LID Fix Logic ---
-    // User Summary ke mutabiq Owner ID 923237045919 hai
-    const ownerNumeric = "923325914867"; 
-    const senderNumeric = getNum(sender);
-    
-    // Agar standard isOwner fail ho, toh LID/Numeric check karein
-    const finalOwnerCheck = isOwner || (senderNumeric === ownerNumeric);
+    // LID Fix: Manual numeric check if standard isOwner fails
+    const senderNum = getNum(sender);
+    const isKamran = isOwner || (senderNum === "923325914867") || (senderNum === "923325914867");
 
-    if (!finalOwnerCheck) return reply("❌ Only DR KAMRAN can start this service.");
-    if (otpInterval) return reply("⚠️ Monitoring is already running.");
+    if (!isKamran) return reply("❌ Access Denied.");
+    if (otpTimer) return reply("⚠️ Monitoring already active.");
 
-    await conn.sendMessage(from, { react: { text: "🚀", key: m.key } });
-    reply("🚀 *OTP Monitor Started!*\nLID Verification: ✅\nTarget: OTP RECEIVE Channel");
+    await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+    reply("🚀 *OTP Monitor Started (LID Fixed)*\n\nChannel JID: " + TARGET_JID);
 
-    otpInterval = setInterval(async () => {
+    otpTimer = setInterval(async () => {
         try {
-            const response = await axios.get(API_URL);
-            
-            // API Response handling
-            const currentOTP = response.data?.result?.message || response.data?.message || response.data?.data?.message;
+            const res = await axios.get(API_URL);
+            const currentOTP = res.data?.result?.message || res.data?.message;
 
-            if (currentOTP && currentOTP !== lastSavedOTP) {
-                lastSavedOTP = currentOTP;
+            if (currentOTP && currentOTP !== lastMsg) {
+                lastMsg = currentOTP;
 
-                const otpText = `⚡ *KAMRAN-MD OTP RECEIVED*\n\n` +
-                                `📝 *Message:* ${currentOTP}\n` +
-                                `⏰ *Time:* ${new Date().toLocaleTimeString()}\n\n` +
-                                `> © DR KAMRAN`;
+                const text = `🔔 *OTP RECEIVED*\n\n` +
+                             `📩 *Msg:* ${currentOTP}\n` +
+                             `⏰ *Time:* ${new Date().toLocaleTimeString()}\n\n` +
+                             `> © KAMRAN-MD`;
 
-                // Sending to Newsletter/Channel
-                await conn.sendMessage(TARGET_CHANNEL, { text: otpText });
-                console.log("✅ OTP Forwarded to:", TARGET_CHANNEL);
+                // Logic: Newsletter/Channel ke liye hamesha JID use karein
+                await conn.sendMessage(TARGET_JID, { text }).catch(err => {
+                    console.log("❌ Channel Send Error (Check if bot is admin):", err.message);
+                });
             }
-        } catch (error) {
-            console.error("OTP Fetch Error:", error.message);
+        } catch (e) {
+            console.log("📡 API Connection Error...");
         }
-    }, 10000); // 10 seconds interval
+    }, 10000); 
 });
 
-// Stop Command with LID Fix
-cmd({ pattern: "stopotp", category: "owner" }, async (conn, mek, m, { sender, isOwner, reply }) => {
-    const senderNumeric = getNum(sender);
-    if (!isOwner && senderNumeric !== "923325914867") return;
-
-    if (otpInterval) {
-        clearInterval(otpInterval);
-        otpInterval = null;
-        reply("🛑 OTP Monitoring Stopped.");
+cmd({ pattern: "stopotp", category: "owner" }, async (conn, mek, m, { reply }) => {
+    if (otpTimer) {
+        clearInterval(otpTimer);
+        otpTimer = null;
+        reply("🛑 OTP Service Stopped.");
     }
 });
+        
