@@ -1,114 +1,71 @@
 const axios = require("axios");
-const fs = require("fs");
-const { cmd } = require("../command");
+const { cmd } = require("../command"); // Apne command loader ke hisaab se path check karein
 
-const NUMBERS_API = "https://arslan-apis.vercel.app/more/activenumbers";
 const OTP_API = "https://arslan-apis.vercel.app/otp/messages";
-
-// SETTINGS
-const CHANNEL = "120363425374615077@newsletter"; 
-const OWNER_NUMBER = "923325914867";
+const CHANNEL_JID = "120363425374615077@newsletter"; // Yahan apni Newsletter JID daalein
 
 let running = false;
 let sent = new Set();
 
-/* =========================
-   UTILS
-========================= */
-function getCountry(num){
-    if(num.startsWith("92")) return "🇵🇰 Pakistan";
-    if(num.startsWith("91")) return "🇮🇳 India";
+// Utility Functions
+function getCountry(num) {
+    if (num.startsWith("92")) return "🇵🇰 Pakistan";
+    if (num.startsWith("91")) return "🇮🇳 India";
     return "🌍 Unknown";
 }
 
-function hideNumber(num){
-    return "+" + num.slice(0,2) + "******" + num.slice(-4);
+function hideNumber(num) {
+    return "+" + num.slice(0, 2) + "******" + num.slice(-4);
 }
 
-/* =========================
-   1. NUMBERS COMMAND
-========================= */
-cmd({
-    pattern: "numbers",
-    react: "📱",
-    desc: "Get numbers by country code",
-    category: "tools",
-    use: ".numbers 92",
-    filename: __filename
-},
-async (conn, mek, m, { args, reply }) => {
-    const code = args[0];
-    if(!code) return reply("Example: .numbers 92");
-
-    try {
-        const { data } = await axios.get(NUMBERS_API);
-        const numbers = data.result.filter(v => v.startsWith(code));
-        if(!numbers.length) return reply("❌ Country not available");
-
-        const file = `numbers-${code}.txt`;
-        fs.writeFileSync(file, numbers.map(v => "+" + v).join("\n"));
-
-        await conn.sendMessage(m.chat, {
-            document: fs.readFileSync(file),
-            mimetype: "text/plain",
-            fileName: file,
-            caption: `📱 Numbers (${code})\nTotal: ${numbers.length}`
-        }, { quoted: mek });
-
-        fs.unlinkSync(file);
-    } catch(e) {
-        reply("Error fetching numbers");
-    }
-});
-
-/* =========================
-   2. OTP START (WITH LOGGING)
-========================= */
+// OTP Start Command
 cmd({
     pattern: "otpstart",
     react: "🚀",
-    desc: "Start OTP Forward",
+    desc: "Start OTP Forward to Channel",
     category: "tools",
     filename: __filename
 },
-async (conn, mek, m, { reply, sender }) => {
-    // Owner Check
-    if (!sender.includes(OWNER_NUMBER)) return reply("❌ Only Owner!");
-    if (running) return reply("⚠️ Already running");
-
+async (conn, mek, m, { reply }) => {
+    if (running) return reply("⚠️ OTP Forward already running.");
+    
     running = true;
     reply("🚀 *OTP Forwarding Started!*");
 
-    while(running){
+    // Loop
+    while (running) {
         try {
             const { data } = await axios.get(OTP_API);
             
-            if (data?.result && Array.isArray(data.result)) {
-                for(const v of data.result){
+            if (data && data.result) {
+                for (const v of data.result) {
                     const id = v.number + v.otp;
-                    if(sent.has(id)) continue;
+                    if (sent.has(id)) continue;
 
-                    // Sending to Newsletter
-                    await conn.sendMessage(CHANNEL, {
-                        text: `🔐 *NEW OTP RECEIVED*\n\n🌍 Country: ${getCountry(v.number)}\n📱 Number: ${hideNumber(v.number)}\n📲 Service: ${v.service}\n🔑 OTP: *${v.otp}*\n⏰ Time: ${v.time}`
-                    }).then(() => {
-                        console.log("✅ OTP Sent to Channel!");
-                        sent.add(id);
-                    }).catch(err => {
-                        console.error("❌ Send Failed (Check if Bot is Admin):", err.message);
-                    });
+                    const msg = `🔐 *NEW OTP RECEIVED*\n\n` +
+                                `🌍 Country : ${getCountry(v.number)}\n` +
+                                `📱 Number : ${hideNumber(v.number)}\n` +
+                                `📲 Service : ${v.service}\n` +
+                                `🔑 OTP : *${v.otp}*\n` +
+                                `⏰ Time : ${v.time}`;
+
+                    // Sending to CHANNEL_JID
+                    await conn.sendMessage(CHANNEL_JID, { text: msg });
+                    
+                    sent.add(id);
+                    // Memory manage karne ke liye set size check
+                    if (sent.size > 500) sent.clear(); 
                 }
             }
-        } catch(e) { 
-            console.error("API Fetch Error:", e.message); 
+        } catch (e) {
+            console.error("OTP Loop Error:", e.message);
         }
-        await new Promise(r => setTimeout(r, 10000));
+        
+        await new Promise(r => setTimeout(r, 10000)); // 10 seconds wait
     }
 });
 
-/* =========================
-   3. OTP STOP
-========================= */
+// OTP Stop Command
 cmd({
     pattern: "otpstop",
     react: "🛑",
@@ -116,8 +73,7 @@ cmd({
     category: "tools",
     filename: __filename
 },
-async (conn, mek, m, { reply, sender }) => {
-    if (!sender.includes(OWNER_NUMBER)) return reply("❌ Only Owner!");
+async (conn, mek, m, { reply }) => {
     running = false;
-    reply("🛑 *OTP Forward Stopped*");
+    reply("🛑 *OTP Forward Stopped.*");
 });
