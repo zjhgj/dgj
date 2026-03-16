@@ -5,7 +5,7 @@ const { cmd } = require("../command")
 const NUMBERS_API = "https://arslan-apis.vercel.app/more/activenumbers"
 const OTP_API = "https://arslan-apis.vercel.app/more/liveotp"
 
-const CHANNEL = "120363425374615077@newsletter"
+const CHANNEL = "120363424268743982@newsletter"
 
 let running = false
 let sent = new Set()
