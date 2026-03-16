@@ -26,7 +26,7 @@ function hideNumber(num){
 }
 
 /* =========================
-   NUMBERS COMMAND
+   1. NUMBERS COMMAND
 ========================= */
 cmd({
     pattern: "numbers",
@@ -57,13 +57,12 @@ async (conn, mek, m, { args, reply }) => {
 
         fs.unlinkSync(file);
     } catch(e) {
-        console.log(e);
         reply("Error fetching numbers");
     }
 });
 
 /* =========================
-   OTP START & STOP
+   2. OTP START (WITH LOGGING)
 ========================= */
 cmd({
     pattern: "otpstart",
@@ -73,6 +72,7 @@ cmd({
     filename: __filename
 },
 async (conn, mek, m, { reply, sender }) => {
+    // Owner Check
     if (!sender.includes(OWNER_NUMBER)) return reply("❌ Only Owner!");
     if (running) return reply("⚠️ Already running");
 
@@ -82,22 +82,33 @@ async (conn, mek, m, { reply, sender }) => {
     while(running){
         try {
             const { data } = await axios.get(OTP_API);
-            if (data?.result) {
+            
+            if (data?.result && Array.isArray(data.result)) {
                 for(const v of data.result){
                     const id = v.number + v.otp;
                     if(sent.has(id)) continue;
 
+                    // Sending to Newsletter
                     await conn.sendMessage(CHANNEL, {
                         text: `🔐 *NEW OTP RECEIVED*\n\n🌍 Country: ${getCountry(v.number)}\n📱 Number: ${hideNumber(v.number)}\n📲 Service: ${v.service}\n🔑 OTP: *${v.otp}*\n⏰ Time: ${v.time}`
+                    }).then(() => {
+                        console.log("✅ OTP Sent to Channel!");
+                        sent.add(id);
+                    }).catch(err => {
+                        console.error("❌ Send Failed (Check if Bot is Admin):", err.message);
                     });
-                    sent.add(id);
                 }
             }
-        } catch(e) { console.log(e.message); }
+        } catch(e) { 
+            console.error("API Fetch Error:", e.message); 
+        }
         await new Promise(r => setTimeout(r, 10000));
     }
 });
 
+/* =========================
+   3. OTP STOP
+========================= */
 cmd({
     pattern: "otpstop",
     react: "🛑",
