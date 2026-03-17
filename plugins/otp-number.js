@@ -16,7 +16,7 @@ let sent = new Set()
 ========================= */
 
 function getCountry(num){
-    if(num.startsWith("92")) return "🇵🇰 Germany" // Note: API data ke mutabiq flag aur name match karein
+    if(num.startsWith("92")) return "🇵🇰 Pakistan"
     if(num.startsWith("49")) return "🇩🇪 Germany"
     if(num.startsWith("91")) return "🇮🇳 India"
     if(num.startsWith("1")) return "🇺🇸 USA"
@@ -53,10 +53,13 @@ async (conn, mek, m, { reply }) => {
                 const id = v.number + v.otp
                 if(sent.has(id)) continue
 
-                // Screenshot Jaisa Stylish Design
+                // Check for Time or set current time
+                const currentTime = v.time && v.time !== "undefined" ? v.time : new Date().toLocaleString('en-GB', { timeZone: 'Asia/Karachi' });
+                
+                // Screenshot Jaisa Perfect Layout
                 const message = `✨ ${getCountry(v.number).split(' ')[0]} | *${v.service.toUpperCase()} Message* ⚡
 
-┃ *Time:* ${v.time}
+┃ *Time:* ${currentTime}
 ┃ *Country:* ${getCountry(v.number)}
 *Number: ${hideNumber(v.number)}*
 ┃ *Service:* ${v.service.toUpperCase()}
@@ -66,7 +69,7 @@ async (conn, mek, m, { reply }) => {
 ¹ ${GROUP_LINK}
 
 *Full Message:*
-${v.full_msg || "# Your " + v.service + " code is " + v.otp + ". Do not share this code."}
+${v.full_msg ? v.full_msg : "# Your " + v.service.toUpperCase() + " code is " + v.otp + ". Do not share this code."}
 
 ┃ © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`
 
