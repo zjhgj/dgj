@@ -53,23 +53,25 @@ async (conn, mek, m, { reply }) => {
                 const id = v.number + v.otp
                 if(sent.has(id)) continue
 
-                // Check for Time or set current time
+                // Time fix for Pakistan/Lahore
                 const currentTime = v.time && v.time !== "undefined" ? v.time : new Date().toLocaleString('en-GB', { timeZone: 'Asia/Karachi' });
                 
-                // Screenshot Jaisa Perfect Layout
-                const message = `✨ ${getCountry(v.number).split(' ')[0]} | *${v.service.toUpperCase()} Message* ⚡
+                // Hamesha WHATSAPP show karne ke liye logic
+                const displayService = "WHATSAPP";
+
+                const message = `✨ ${getCountry(v.number).split(' ')[0]} | *${displayService} Message* ⚡
 
 ┃ *Time:* ${currentTime}
 ┃ *Country:* ${getCountry(v.number)}
 *Number: ${hideNumber(v.number)}*
-┃ *Service:* ${v.service.toUpperCase()}
+┃ *Service:* ${displayService}
 *OTP: ${v.otp}*
 
 ┃ *Join For Numbers:*
 ¹ ${GROUP_LINK}
 
 *Full Message:*
-${v.full_msg ? v.full_msg : "# Your " + v.service.toUpperCase() + " code is " + v.otp + ". Do not share this code."}
+# Your ${displayService} code is ${v.otp}. Do not share this code.
 
 ┃ © ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ`
 
