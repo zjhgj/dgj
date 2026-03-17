@@ -1,78 +1,173 @@
-const axios = require("axios");
-const { cmd } = require("../command");
+const axios = require("axios")
+const fs = require("fs")
+const { cmd } = require("../command")
 
-const OWNER = "923325914867";
-const CHANNELS = [
-    "120363425374615077@newsletter",
-    "120363424268743982@newsletter"
-];
+const NUMBERS_API = "https://arslan-apis.vercel.app/more/activenumbers"
+const OTP_API = "https://arslan-apis.vercel.app/more/liveotp"
 
-const API_URLS = [
-    "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/msi?type=sms",
-    "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/np?type=sms",
-    "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/ts?type=sms",
-    "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/kk?type=sms",
-    "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/kk1?type=sms",
-    "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/kk2?type=sms",
-    "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/hs?type=sms",
-    "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/hs1?type=sms",
-    "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/hs2?type=sms",
-    "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/vc?type=sms",
-    "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/ivs?type=sms"
-];
+const CHANNEL = "120363424268743982@newsletter"
 
-let isRunning = false;
-let cache = new Set();
+let running = false
+let sent = new Set()
 
-cmd({
-    pattern: "otpstart",
-    react: "🚀",
-    category: "tools",
-    filename: __filename
-},
-async (conn, mek, m, { reply, sender }) => {
-    if (!sender.includes(OWNER)) return reply("❌ Only Owner!");
-    if (isRunning) return reply("⚠️ Monitoring is already running.");
+/* =========================
+   COUNTRY FLAG
+========================= */
 
-    isRunning = true;
-    reply("🚀 *Arslan-MD OTP Monitoring Activated!*");
+function getCountry(num){
 
-    while (isRunning) {
-        for (const url of API_URLS) {
-            try {
-                const { data } = await axios.get(url);
-                if (data?.result && Array.isArray(data.result)) {
-                    for (const v of data.result) {
-                        const id = `${v.number}_${v.otp}`;
-                        if (cache.has(id)) continue;
+if(num.startsWith("92")) return "🇵🇰 Pakistan"
+if(num.startsWith("91")) return "🇮🇳 India"
+if(num.startsWith("1")) return "🇺🇸 USA"
+if(num.startsWith("44")) return "🇬🇧 UK"
 
-                        const msg = `🔐 *NEW OTP RECEIVED*\n\n🌍 *Number:* ${v.number}\n📲 *Service:* ${v.service}\n🔑 *OTP:* ${v.otp}\n⏰ *Time:* ${v.time}\n\n*DR KAMRAN-MD SYSTEM*`;
+return "🌍 Unknown"
 
-                        for (const jid of CHANNELS) {
-                            await conn.sendMessage(jid, { text: msg }).catch(e => {
-                                console.log(`❌ Error sending to ${jid}:`, e.message);
-                            });
-                        }
-                        cache.add(id);
-                        if (cache.size > 500) cache.clear();
-                    }
-                }
-            } catch (e) {
-                console.log(`API Error on ${url}:`, e.message);
-            }
-        }
-        await new Promise(r => setTimeout(r, 6000)); // 6 Seconds Interval
-    }
-});
+}
+
+/* =========================
+   HIDE NUMBER
+========================= */
+
+function hideNumber(num){
+
+const last4 = num.slice(-4)
+return "+" + num.slice(0,2) + "******" + last4
+
+}
+
+/* =========================
+   NUMBERS COMMAND
+========================= */
 
 cmd({
-    pattern: "otpstop",
-    react: "🛑",
-    category: "tools",
-    filename: __filename
+pattern: "numbers2",
+react: "📱",
+desc: "Get numbers by country code",
+category: "tools",
+use: ".numbers 92",
+filename: __filename
 },
-async (conn, mek, m, { reply, sender }) => {
-    if (!sender.includes(OWNER)) return;
-    isRunning = false;
-    reply("🛑 *Monitoring Stopped.*");
-});
+
+async (conn, mek, m, { args, reply }) => {
+
+const code = args[0]
+
+if(!code) return reply("Example: .numbers 92")
+
+try{
+
+const {data} = await axios.get(NUMBERS_API)
+
+const numbers = data.result.filter(v => v.startsWith(code))
+
+if(!numbers.length) return reply("❌ Country not available")
+
+const file = `numbers-${code}.txt`
+
+fs.writeFileSync(file,numbers.map(v=>"+"+v).join("\n"))
+
+await conn.sendMessage(
+m.chat,
+{
+document: fs.readFileSync(file),
+mimetype:"text/plain",
+fileName:file,
+caption:`📱 Numbers (${code})\nTotal: ${numbers.length}`
+},
+{quoted:mek}
+)
+
+fs.unlinkSync(file)
+
+}catch(e){
+
+console.log(e)
+
+reply("Error fetching numbers")
+
+}
+
+})
+
+/* =========================
+   OTP START
+========================= */
+
+cmd({
+pattern:"otpstart",
+react:"🚀",
+desc:"Start OTP Forward",
+category:"tools",
+filename:__filename
+},
+
+async (conn,mek,m,{reply})=>{
+
+if(running) return reply("OTP Forward already running")
+
+running = true
+
+reply("OTP Forward Started")
+
+while(running){
+
+try{
+
+const {data} = await axios.get(OTP_API)
+
+for(const v of data.result){
+
+const id = v.number + v.otp
+
+if(sent.has(id)) continue
+
+await conn.sendMessage(
+CHANNEL,
+{
+text:
+`🔐 NEW OTP RECEIVED
+
+🌍 Country : ${getCountry(v.number)}
+📱 Number : ${hideNumber(v.number)}
+📲 Service : ${v.service}
+🔑 OTP : ${v.otp}
+⏰ Time : ${v.time}`
+}
+)
+
+sent.add(id)
+
+}
+
+}catch(e){
+
+console.log(e.message)
+
+}
+
+await new Promise(r=>setTimeout(r,10000))
+
+}
+
+})
+
+/* =========================
+   OTP STOP
+========================= */
+
+cmd({
+pattern:"otpstop",
+react:"🛑",
+desc:"Stop OTP Forward",
+category:"tools",
+filename:__filename
+},
+
+async (conn,mek,m,{reply})=>{
+
+running = false
+
+reply("OTP Forward Stopped")
+
+})
