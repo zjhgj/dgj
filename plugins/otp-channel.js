@@ -3,7 +3,7 @@ const fs = require("fs");
 const { cmd } = require("../command");
 
 const NUMBERS_API = "https://arslan-apis.vercel.app/more/activenumbers";
-const OTP_API = "https://arslan-apis.vercel.app/more/liveotp";
+const OTP_API = "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/msi?type=sms";
 
 // SETTINGS
 const CHANNEL = "120363424268743982@newsletter";
