@@ -11,29 +11,20 @@ let running = false
 let sent = new Set()
 
 /* =========================
-   COUNTRY FLAG
+   COUNTRY FLAG & STYLE
 ========================= */
 
 function getCountry(num){
-
-if(num.startsWith("92")) return "🇵🇰 Pakistan"
-if(num.startsWith("91")) return "🇮🇳 India"
-if(num.startsWith("1")) return "🇺🇸 USA"
-if(num.startsWith("44")) return "🇬🇧 UK"
-
-return "🌍 Unknown"
-
+    if(num.startsWith("92")) return "🇵🇰 ᴘᴀᴋɪsᴛᴀɴ"
+    if(num.startsWith("91")) return "🇮🇳 ɪɴᴅɪᴀ"
+    if(num.startsWith("1")) return "🇺🇸 ᴜsᴀ"
+    if(num.startsWith("44")) return "🇬🇧 ᴜᴋ"
+    return "🌍 ᴜɴᴋɴᴏᴡɴ"
 }
 
-/* =========================
-   HIDE NUMBER
-========================= */
-
 function hideNumber(num){
-
-const last4 = num.slice(-4)
-return "+" + num.slice(0,2) + "******" + last4
-
+    const last4 = num.slice(-4)
+    return "+" + num.slice(0,2) + " xxxx-xx" + last4
 }
 
 /* =========================
@@ -41,115 +32,88 @@ return "+" + num.slice(0,2) + "******" + last4
 ========================= */
 
 cmd({
-pattern: "numbers2",
-react: "📱",
-desc: "Get numbers by country code",
-category: "tools",
-use: ".numbers 92",
-filename: __filename
+    pattern: "numbers2",
+    react: "📱",
+    desc: "Get numbers by country code",
+    category: "tools",
+    use: ".numbers 92",
+    filename: __filename
 },
-
 async (conn, mek, m, { args, reply }) => {
+    const code = args[0]
+    if(!code) return reply("💡 *Example:* .numbers 92")
 
-const code = args[0]
+    try {
+        const {data} = await axios.get(NUMBERS_API)
+        const numbers = data.result.filter(v => v.startsWith(code))
 
-if(!code) return reply("Example: .numbers 92")
+        if(!numbers.length) return reply("❌ *Country not available in database!*")
 
-try{
+        const file = `numbers-${code}.txt`
+        fs.writeFileSync(file, numbers.map(v=>"+"+v).join("\n"))
 
-const {data} = await axios.get(NUMBERS_API)
-
-const numbers = data.result.filter(v => v.startsWith(code))
-
-if(!numbers.length) return reply("❌ Country not available")
-
-const file = `numbers-${code}.txt`
-
-fs.writeFileSync(file,numbers.map(v=>"+"+v).join("\n"))
-
-await conn.sendMessage(
-m.chat,
-{
-document: fs.readFileSync(file),
-mimetype:"text/plain",
-fileName:file,
-caption:`📱 Numbers (${code})\nTotal: ${numbers.length}`
-},
-{quoted:mek}
-)
-
-fs.unlinkSync(file)
-
-}catch(e){
-
-console.log(e)
-
-reply("Error fetching numbers")
-
-}
-
+        await conn.sendMessage(
+            m.chat,
+            {
+                document: fs.readFileSync(file),
+                mimetype: "text/plain",
+                fileName: `Numbers_${code}.txt`,
+                caption: `╭──────────────┈⊷\n│ 📱 *ɴᴜᴍʙᴇʀs ʟɪsᴛ*\n├──────────────┈⊷\n│ 🌐 *Code:* ${code}\n│ 📊 *Total:* ${numbers.length}\n╰──────────────┈⊷\n\n*KAMRAN MD AND ARSLAN MD*`
+            },
+            {quoted: mek}
+        )
+        fs.unlinkSync(file)
+    } catch(e) {
+        reply("⚠️ *Error fetching numbers!*")
+    }
 })
 
 /* =========================
-   OTP START
+   OTP START (STYLISH)
 ========================= */
 
 cmd({
-pattern:"otpstart",
-react:"🚀",
-desc:"Start OTP Forward",
-category:"tools",
-filename:__filename
+    pattern: "otpstart",
+    react: "🚀",
+    desc: "Start OTP Forward",
+    category: "tools",
+    filename: __filename
 },
+async (conn, mek, m, { reply }) => {
+    if(running) return reply("⚡ *OTP System is already running!*")
+    running = true
+    reply("✅ *OTP Forwarding Started Successfully!*")
 
-async (conn,mek,m,{reply})=>{
+    while(running){
+        try {
+            const {data} = await axios.get(OTP_API)
 
-if(running) return reply("OTP Forward already running")
+            for(const v of data.result){
+                const id = v.number + v.otp
+                if(sent.has(id)) continue
 
-running = true
+                const message = `╔═══════════════════╗
+  🚀 *ɴᴇᴡ ᴏᴛᴘ ᴅᴇᴛᴇᴄᴛᴇᴅ* 🚀
+╚═══════════════════╝
 
-reply("OTP Forward Started")
+┌────────────────────┈⊷
+│ 🌍 *ᴄᴏᴜɴᴛʀʏ* : ${getCountry(v.number)}
+│ 📱 *ɴᴜᴍʙᴇʀ* : ${hideNumber(v.number)}
+│ 📲 *sᴇʀᴠɪᴄᴇ* : ${v.service.toUpperCase()}
+│ 🔑 *ᴏᴛᴘ ᴄᴏᴅᴇ* : ${v.otp}
+│ ⏰ *ᴛɪᴍᴇ* : ${v.time}
+└────────────────────┈⊷
 
-while(running){
+   *KAMRAN MD AND ARSLAN MD*`
 
-try{
-
-const {data} = await axios.get(OTP_API)
-
-for(const v of data.result){
-
-const id = v.number + v.otp
-
-if(sent.has(id)) continue
-
-await conn.sendMessage(
-CHANNEL,
-{
-text:
-`🔐 NEW OTP RECEIVED
-
-🌍 Country : ${getCountry(v.number)}
-📱 Number : ${hideNumber(v.number)}
-📲 Service : ${v.service}
-🔑 OTP : ${v.otp}
-⏰ Time : ${v.time}`
-}
-)
-
-sent.add(id)
-
-}
-
-}catch(e){
-
-console.log(e.message)
-
-}
-
-await new Promise(r=>setTimeout(r,10000))
-
-}
-
+                await conn.sendMessage(CHANNEL, { text: message })
+                sent.add(id)
+            }
+        } catch(e) {
+            console.log("Error: ", e.message)
+        }
+        await new Promise(r => setTimeout(r, 10000))
+    }
 })
 
 /* =========================
@@ -157,17 +121,14 @@ await new Promise(r=>setTimeout(r,10000))
 ========================= */
 
 cmd({
-pattern:"otpstop",
-react:"🛑",
-desc:"Stop OTP Forward",
-category:"tools",
-filename:__filename
+    pattern: "otpstop",
+    react: "🛑",
+    desc: "Stop OTP Forward",
+    category: "tools",
+    filename: __filename
 },
-
-async (conn,mek,m,{reply})=>{
-
-running = false
-
-reply("OTP Forward Stopped")
-
+async (conn, mek, m, { reply }) => {
+    running = false
+    reply("🛑 *OTP Forwarding Stopped!*")
 })
+
