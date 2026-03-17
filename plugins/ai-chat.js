@@ -3,7 +3,7 @@ const axios = require('axios');
 
 cmd({
     pattern: "ai",
-    alias: ["blackbox", "chatgpt", "ask"],
+    alias: ["blackbox", "chatgpt", "kamran"],
     react: "🧠",
     desc: "Ask anything from AI (Blackbox v4).",
     category: "ai",
