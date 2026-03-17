@@ -1,99 +1,99 @@
 const axios = require("axios");
-const fs = require("fs");
 const { cmd } = require("../command");
 
-const NUMBERS_API = "https://arslan-apis.vercel.app/more/activenumbers";
-const OTP_API = "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/msi?type=sms";
+// CONFIGURATION FROM YOUR JSON
+const CONFIG = {
+    OwnerNumber: "923325914867",
+    BotName: "Kamran-MD OTP Monitoring Alive Now",
+    OTPChannelIDs: [
+        "120363425374615077@newsletter",
+        "120363424268743982@newsletter"
+    ],
+    OTPAPIURLs: [
+        "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/msi?type=sms",
+        "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/np?type=sms",
+        "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/ts?type=sms",
+        "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/kk?type=sms",
+        "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/kk1?type=sms",
+        "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/kk2?type=sms",
+        "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/hs?type=sms",
+        "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/hs1?type=sms",
+        "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/hs2?type=sms",
+        "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/vc?type=sms",
+        "https://arslan-md-otp-apis-82e7b647a3c7.herokuapp.com/api/ivs?type=sms"
+    ],
+    Interval: 6000 // 6 Seconds
+};
 
-// SETTINGS
-const CHANNEL = "120363424268743982@newsletter";
-const OWNER_NUMBER = "923325914867";
+let monitoringRunning = false;
+let sentOTPs = new Set();
 
-let running = false;
-let sent = new Set();
-
-/* =========================
-   UTILS
-========================= */
-function getCountry(num){
-    if(num.startsWith("92")) return "🇵🇰 Pakistan";
-    if(num.startsWith("91")) return "🇮🇳 India";
-    if(num.startsWith("1")) return "🇺🇸 USA";
-    if(num.startsWith("44")) return "🇬🇧 UK";
-    if(num.startsWith("58")) return "🇻🇪 Venezuela";
-    return "🌍 Unknown";
-}
-
-function hideNumber(num){
-    const last4 = num.slice(-4);
-    return "+" + num.slice(0,2) + "******" + last4;
-}
-
-/* =========================
-   OTP MONITORING (FIXED LOOP)
-========================= */
+// Command to Start Monitoring
 cmd({
     pattern: "otpstart",
     react: "🚀",
-    desc: "Start non-stop OTP Monitoring",
+    desc: "Start Arslan-MD Multi-API Monitoring",
     category: "tools",
     filename: __filename
 },
 async (conn, mek, m, { reply, sender }) => {
-    if (!sender.includes(OWNER_NUMBER)) return reply("❌ Access Denied.");
-    if (running) return reply("⚠️ Monitoring is already running.");
+    if (!sender.includes(CONFIG.OwnerNumber)) return reply("❌ Only Owner can start monitoring.");
+    if (monitoringRunning) return reply("⚠️ Monitoring is already running.");
 
-    running = true;
-    reply("🚀 *OTP Monitoring Started! (Sync Fixed)*");
+    monitoringRunning = true;
+    reply(`🚀 *${CONFIG.BotName}*\n\nMonitoring started for ${CONFIG.OTPAPIURLs.length} APIs.\nInterval: 6 Seconds.`);
 
-    while(running){
-        try {
-            const { data } = await axios.get(OTP_API);
-            
-            if (data && data.result && Array.isArray(data.result)) {
-                for (const v of data.result) {
-                    // Unique ID based on Number + OTP + Time to ensure freshness
-                    const uniqueID = `${v.number}_${v.otp}_${v.time}`;
+    while (monitoringRunning) {
+        for (const url of CONFIG.OTPAPIURLs) {
+            try {
+                const response = await axios.get(url);
+                const data = response.data;
 
-                    if (!sent.has(uniqueID)) {
-                        await conn.sendMessage(CHANNEL, {
-                            text: `🔐 *NEW OTP RECEIVED*
+                if (data && data.result && Array.isArray(data.result)) {
+                    for (const otp of data.result) {
+                        const uniqueID = `${otp.number}_${otp.otp}_${otp.time}`;
 
-🌍 *Country* : ${getCountry(v.number)}
-📱 *Number* : ${hideNumber(v.number)}
-📲 *Service* : ${v.service}
-🔑 *OTP* : ${v.otp}
-⏰ *Time* : ${v.time}`
-                        });
+                        if (!sentOTPs.has(uniqueID)) {
+                            const message = `🔐 *NEW OTP RECEIVED*\n\n` +
+                                            `🌍 *Number:* ${otp.number}\n` +
+                                            `📲 *Service:* ${otp.service}\n` +
+                                            `🔑 *OTP:* ${otp.otp}\n` +
+                                            `⏰ *Time:* ${otp.time}\n\n` +
+                                            `*Powered by Arslan-MD*`;
 
-                        sent.add(uniqueID);
+                            // Forward to all configured channels
+                            for (const jid of CONFIG.OTPChannelIDs) {
+                                await conn.sendMessage(jid, { text: message }).catch(e => console.log("Send Error:", e.message));
+                            }
 
-                        // Memory clean: Purana data flush karein taaki bot heavy na ho
-                        if (sent.size > 100) {
-                            const firstValue = sent.values().next().value;
-                            sent.delete(firstValue);
+                            sentOTPs.add(uniqueID);
+                            
+                            // Memory Management
+                            if (sentOTPs.size > 500) {
+                                const firstValue = sentOTPs.values().next().value;
+                                sentOTPs.delete(firstValue);
+                            }
                         }
                     }
                 }
+            } catch (err) {
+                console.log(`Error hitting API (${url}):`, err.message);
             }
-        } catch (e) {
-            console.log("Monitoring Error: ", e.message);
         }
-        
-        // Interval ko 5-10 seconds rakhein taaki API block na ho
-        await new Promise(r => setTimeout(r, 8000));
+        await new Promise(resolve => setTimeout(resolve, CONFIG.Interval));
     }
 });
 
+// Command to Stop Monitoring
 cmd({
     pattern: "otpstop",
     react: "🛑",
+    desc: "Stop OTP Monitoring",
     category: "tools",
     filename: __filename
 },
 async (conn, mek, m, { reply, sender }) => {
-    if (!sender.includes(OWNER_NUMBER)) return;
-    running = false;
-    reply("🛑 *OTP Monitoring Stopped.*");
+    if (!sender.includes(CONFIG.OwnerNumber)) return;
+    monitoringRunning = false;
+    reply("🛑 *Monitoring Stopped Successfully.*");
 });
-   
