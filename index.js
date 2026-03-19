@@ -263,91 +263,115 @@ BotActivityFilter(conn);
 	
  /// READ STATUS       
   conn.ev.on('messages.upsert', async(mek) => {
-    mek = mek.messages[0]
-    if (!mek.message) return
-    mek.message = (getContentType(mek.message) === 'ephemeralMessage') 
-    ? mek.message.ephemeralMessage.message 
-    : mek.message;
-    //console.log("New Message Detected:", JSON.stringify(mek, null, 2));
-  if (config.READ_MESSAGE === 'true') {
-    await conn.readMessages([mek.key]);  // Mark message as read
-    console.log(`Marked message from ${mek.key.remoteJid} as read.`);
-  }
-    if(mek.message.viewOnceMessageV2)
-    mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-    if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_SEEN === "true"){
-      await conn.readMessages([mek.key])
-    }
+        mek = mek.messages[0]
+        if (!mek.message) return
+        mek.message = (getContentType(mek.message) === 'ephemeralMessage') 
+        ? mek.message.ephemeralMessage.message 
+        : mek.message;
 
-  const newsletterJids = [
-  "120363418144382782@newsletter",
-  "120363418144382782@newsletter",	  
-  "120363418144382782@newsletter",	  
-  "120363418144382782@newsletter"
-];
-  const emojis = ["❤️", "👍", "😮", "😎", "💀"];
-
-  if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
-    try {
-      const serverId = mek.newsletterServerId;
-      if (serverId) {
-      const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-        await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
-      }
-    } catch (e) {
+        if (config.READ_MESSAGE === 'true') {
+          await conn.readMessages([mek.key]);
+        }
+        
+        if(mek.message.viewOnceMessageV2)
+        mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
+        
+        // ============ STATUS AUTO SEEN - REAL FIX (WORKING 2024) ============
+if (mek.key && mek.key.remoteJid === 'status@broadcast') {
+    const statusSender = mek.key.participant;
     
-    }
-  }	  
-	  
-  if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_REACT === "true"){
-    const jawadlike = await conn.decodeJid(conn.user.id);
-    const emojis =  ['❤️', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊️', '🌷', '⛅', '🌟', '🗿', '🇵🇰', '💜', '💙', '🌝', '🖤', '💚'];
-    const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-    await conn.sendMessage(mek.key.remoteJid, {
-      react: {
-        text: randomEmoji,
-        key: mek.key,
-      } 
-    }, { statusJidList: [mek.key.participant, jawadlike] });
-  }                       
-  if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_REPLY === "true"){
-  const user = mek.key.participant
-  const text = `${config.AUTO_STATUS_MSG}`
-  await conn.sendMessage(user, { text: text, react: { text: '💜', key: mek.key } }, { quoted: mek })
+    if (statusSender && config.AUTO_STATUS_SEEN === "true") {
+        
+        (async () => {
+            try {
+                // WORKING METHOD: Correct parameter order
+                await conn.readMessages([{
+                    remoteJid: statusSender,
+                    id: mek.key.id,
+                    participant: statusSender
+                }]);
+                console.log(`[✅] Status viewed: ${statusSender.split('@')[0]}`);
+            } catch (e) {
+                console.log(`[❌] View failed: ${e.message}`);
             }
-            await Promise.all([
-              saveMessage(mek),
-            ]);
-  const m = sms(conn, mek)
-  const type = getContentType(mek.message)
-  const content = JSON.stringify(mek.message)
-  const from = mek.key.remoteJid
-  const quoted = type == 'extendedTextMessage' && mek.message.extendedTextMessage.contextInfo != null ? mek.message.extendedTextMessage.contextInfo.quotedMessage || [] : []
-  const body = (type === 'conversation') ? mek.message.conversation : (type === 'extendedTextMessage') ? mek.message.extendedTextMessage.text : (type == 'imageMessage') && mek.message.imageMessage.caption ? mek.message.imageMessage.caption : (type == 'videoMessage') && mek.message.videoMessage.caption ? mek.message.videoMessage.caption : ''
-  const isCmd = body.startsWith(prefix)
-  var budy = typeof mek.text == 'string' ? mek.text : false;
-  const command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : ''
-  const args = body.trim().split(/ +/).slice(1)
-  const q = args.join(' ')
-  const text = args.join(' ')
-  const isGroup = from.endsWith('@g.us')
-  const sender = mek.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net' || conn.user.id) : (mek.key.participant || mek.key.remoteJid)
-  const senderNumber = sender.split('@')[0]
-  const botNumber = conn.user.id.split(':')[0]
-  const pushname = mek.pushName || 'Sin Nombre'
-  const isMe = botNumber.includes(senderNumber)
-  const isOwner = ownerNumber.includes(senderNumber) || isMe
-  const botNumber2 = await jidNormalizedUser(conn.user.id);
-  const groupMetadata = isGroup ? await conn.groupMetadata(from).catch(e => {}) : ''
-  const groupName = isGroup ? groupMetadata.subject : ''
-  const participants = isGroup ? await groupMetadata.participants : ''
-  const groupAdmins = isGroup ? await getGroupAdmins(participants) : ''
-  const isBotAdmins = isGroup ? groupAdmins.includes(botNumber2) : false
-  const isAdmins = isGroup ? groupAdmins.includes(sender) : false
-  const isReact = m.message.reactionMessage ? true : false
-  const reply = (teks) => {
-  conn.sendMessage(from, { text: teks }, { quoted: mek })
-  }
+        })();
+    }
+    
+    // Auto Reply
+    if (statusSender && config.AUTO_STATUS_REPLY === "true") {
+        setTimeout(async () => {
+            try {
+                await conn.sendMessage(statusSender, { 
+                    text: config.AUTO_STATUS_MSG || '🔥' 
+                }, { quoted: mek });
+            } catch (e) {}
+        }, 2000);
+    }
+}
+
+        // ============ CHANNEL AUTO REACT (ONLY FOR SPECIFIED CHANNELS) ============
+        if (mek.key && mek.key.remoteJid && mek.key.remoteJid.endsWith('@newsletter')) {
+            // Check if this channel is in our react list
+            if (CHANNELS_TO_REACT.includes(mek.key.remoteJid)) {
+                try {
+                    const randomEmoji = CHANNEL_REACT_EMOJIS[Math.floor(Math.random() * CHANNEL_REACT_EMOJIS.length)];
+                    await conn.sendMessage(mek.key.remoteJid, {
+                        react: {
+                            text: randomEmoji,
+                            key: mek.key
+                        }
+                    });
+                    console.log(`[✅] Reacted to channel ${mek.key.remoteJid} with ${randomEmoji}`);
+                } catch (error) {
+                    console.error('[❌] Failed to react to channel:', error.message);
+                }
+            }
+        }
+                  
+        await Promise.all([
+          saveMessage(mek),
+        ]);
+        
+        const m = sms(conn, mek)
+        const type = getContentType(mek.message)
+        const content = JSON.stringify(mek.message)
+        const from = mek.key.remoteJid
+        const quoted = type == 'extendedTextMessage' && mek.message.extendedTextMessage.contextInfo != null ? mek.message.extendedTextMessage.contextInfo.quotedMessage || [] : []
+        const body = (type === 'conversation') ? mek.message.conversation : (type === 'extendedTextMessage') ? mek.message.extendedTextMessage.text : (type == 'imageMessage') && mek.message.imageMessage.caption ? mek.message.imageMessage.caption : (type == 'videoMessage') && mek.message.videoMessage.caption ? mek.message.videoMessage.caption : ''
+        
+        // ============ FIXED PREFIX HANDLING (EMOJI + TEXT SUPPORT) ============
+        const isCmd = body && body.startsWith(prefix);
+        
+        var budy = typeof mek.text == 'string' ? mek.text : false;
+        
+        // Extract command properly
+        let command = '';
+        if (isCmd) {
+            const withoutPrefix = body.slice(prefix.length).trim();
+            command = withoutPrefix.split(' ').shift().toLowerCase();
+        }
+        
+        const args = body.trim().split(/ +/).slice(1)
+        const q = args.join(' ')
+        const text = args.join(' ')
+        const isGroup = from.endsWith('@g.us')
+        const sender = mek.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net' || conn.user.id) : (mek.key.participant || mek.key.remoteJid)
+        const senderNumber = sender.split('@')[0]
+        const botNumber = conn.user.id.split(':')[0]
+        const pushname = mek.pushName || 'Sin Nombre'
+        const isMe = botNumber.includes(senderNumber)
+        const isOwner = ownerNumber.includes(senderNumber) || isMe
+        const botNumber2 = await jidNormalizedUser(conn.user.id);
+        const groupMetadata = isGroup ? await conn.groupMetadata(from).catch(e => {}) : ''
+        const groupName = isGroup ? groupMetadata.subject : ''
+        const participants = isGroup ? await groupMetadata.participants : ''
+        const groupAdmins = isGroup ? await getGroupAdmins(participants) : ''
+        const isBotAdmins = isGroup ? groupAdmins.includes(botNumber2) : false
+        const isAdmins = isGroup ? groupAdmins.includes(sender) : false
+        const isReact = m.message.reactionMessage ? true : false
+        const reply = (teks) => {
+          conn.sendMessage(from, { text: teks }, { quoted: mek })
+        }
   
   const udp = botNumber.split('@')[0];
     const kamranop = ('923147168309', '923195068309');
