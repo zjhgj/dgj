@@ -1,100 +1,62 @@
-const { cmd } = require('../command');
-const axios = require('axios');
-const cheerio = require('cheerio');
+const { cmd } = require('../command'); // Aapke bot ka standard path
+const axios = require("axios");
 
-// --- IG SCRAPER LOGIC ---
-const igDown = {
-    generateIP: () => {
-        const octet = () => Math.floor(Math.random() * 256);
-        return `${octet()}.${octet()}.${octet()}.${octet()}`;
-    },
-    download: async (url) => {
-        try {
-            const randomIP = igDown.generateIP();
-            const client = axios.create({
-                baseURL: 'https://indown.io',
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                    'x-forwarded-for': randomIP
-                }
-            });
-
-            const getHome = await client.get('/');
-            const $ = cheerio.load(getHome.data);
-            const token = $('input[name="_token"]').val();
-            const cookies = getHome.headers['set-cookie']?.join('; ');
-
-            const params = new URLSearchParams();
-            params.append('link', url);
-            params.append('_token', token);
-
-            const { data: resHtml } = await client.post('/download', params, {
-                headers: { 'Cookie': cookies, 'Content-Type': 'application/x-www-form-urlencoded' }
-            });
-
-            const $res = cheerio.load(resHtml);
-            const media = [];
-
-            // Video check
-            $res('video source').each((i, el) => {
-                const src = $(el).attr('src');
-                if (src) media.push({ type: 'video', url: src });
-            });
-
-            // Image check (if no video)
-            if (media.length === 0) {
-                $res('div.container.mt-4 img').each((i, el) => {
-                    const src = $(el).attr('src');
-                    if (src && !src.includes('logo')) media.push({ type: 'image', url: src });
-                });
-            }
-            return media;
-        } catch (e) {
-            return [];
-        }
-    }
-};
-
-// --- BOT COMMAND ---
 cmd({
     pattern: "ig",
-    alias: ["insta", "instagram", "igdl"],
+    alias: ["insta", "igdl", "instagram"],
     category: "downloader",
     react: "📸",
-    desc: "Download Instagram Reels/Posts"
+    desc: "Download Instagram Reels, Posts, and Videos"
 }, async (conn, mek, m, { q, reply, react, botFooter }) => {
-    if (!q) return reply("Bhai, Instagram link toh dein! \nExample: .ig https://www.instagram.com/reel/xxx");
-    if (!q.includes("instagram.com")) return reply("❌ Link valid nahi hai.");
+    
+    if (!q) {
+        await react("❌");
+        return reply("Bhai, Instagram link toh dein!\nExample: .ig https://www.instagram.com/reel/xxx");
+    }
+
+    if (!q.includes("instagram.com")) {
+        await react("❌");
+        return reply("❌ Ye link Instagram ka nahi lag raha.");
+    }
+
+    await react("⏳");
 
     try {
-        await react("⏳");
-        const results = await igDown.download(q);
+        // Gifted API URL
+        const apiUrl = `https://api.giftedtech.co.ke/api/download/instadl?apikey=gifted&url=${encodeURIComponent(q)}`;
 
-        if (results.length === 0) {
+        const { data } = await axios.get(apiUrl, { timeout: 45000 });
+
+        if (!data || !data.success || !data.result?.download_url) {
             await react("❌");
-            return reply("Media nahi mil saka. Shayad account private hai ya link expired.");
+            return reply("❌ Media nahi mil saka. Shayad account private hai.");
         }
 
-        await react("📥");
+        const mediaUrl = data.result.download_url;
+        
+        // Check if it's a video or image
+        const isVideo = mediaUrl.includes(".mp4") || q.includes("/reel/") || q.includes("/tv/");
 
-        for (let item of results) {
-            if (item.type === 'video') {
-                await conn.sendMessage(m.chat, { 
-                    video: { url: item.url }, 
-                    caption: `✅ *Instagram Video Downloaded*\n\n> *${botFooter}*` 
-                }, { quoted: m });
-            } else {
-                await conn.sendMessage(m.chat, { 
-                    image: { url: item.url }, 
-                    caption: `✅ *Instagram Image Downloaded*\n\n> *${botFooter}*` 
-                }, { quoted: m });
-            }
+        if (isVideo) {
+            // Send Video
+            await conn.sendMessage(m.chat, {
+                video: { url: mediaUrl },
+                mimetype: "video/mp4",
+                caption: `✅ *Instagram Video Downloaded*\n\n> *${botFooter || 'DR KAMRAN-MD'}*`
+            }, { quoted: mek });
+        } else {
+            // Send Image
+            await conn.sendMessage(m.chat, {
+                image: { url: mediaUrl },
+                caption: `✅ *Instagram Image Downloaded*\n\n> *${botFooter || 'DR KAMRAN-MD'}*`
+            }, { quoted: mek });
         }
+
         await react("✅");
 
-    } catch (err) {
-        console.error(err);
+    } catch (e) {
+        console.error("IG DL Error:", e.message);
         await react("❌");
-        reply("Acha khasa error aa gaya! Thori der baad try karein.");
+        return reply("❌ Service busy hai: " + e.message);
     }
 });
