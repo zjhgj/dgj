@@ -1,54 +1,43 @@
 const { cmd } = require('../command');
 const axios = require('axios');
-const https = require('https');
 
-const agent = new https.Agent({ keepAlive: true });
-const apiBase = "https://api.deline.my.id";
-
-// --- INSTAGRAM DOWNLOADER COMMAND ---
+// --- INSTAGRAM DOWNLOADER ---
 cmd({
     pattern: "ig",
     alias: ["instagram", "igdl"],
-    desc: "Download Instagram Media via Link.",
+    desc: "Download Instagram Media.",
     category: "download",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
     try {
-        if (!q) return reply("❓ براہ کرم انسٹاگرام کا لنک فراہم کریں۔\nمثال: *.ig https://www.instagram.com/reels/xxx/*");
-        if (!q.includes("instagram.com")) return reply("❌ یہ انسٹاگرام کا درست لنک نہیں ہے۔");
-
+        if (!q) return reply("❓ براہ کرم انسٹاگرام کا لنک دیں۔\nمثال: *.ig https://www.instagram.com/reel/xxx/*");
+        
         await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
 
-        const res = await axios.get(`${apiBase}/downloader/ig`, {
-            params: { url: q },
-            httpsAgent: agent,
-            headers: { "User-Agent": "Mozilla/5.0" }
-        });
-
-        if (!res.data.status) throw new Error("API Error");
-
-        const result = res.data.result;
-        const media = result.media || {};
-        const caption = `📸 *Instagram Downloader*\n\n👤 *User:* ${result.author?.username || "-"}\n📝 *Title:* ${result.title || "-"}\n\n*Downloaded by Knight Bot*`;
-
-        // Send Videos
-        if (media.videos && media.videos.length > 0) {
-            for (const vid of media.videos) {
-                await conn.sendMessage(from, {
-                    video: { url: vid },
-                    caption: caption,
-                    mimetype: "video/mp4"
-                }, { quoted: m });
+        // Using a more reliable API for Instagram
+        const response = await axios.get(`https://api.giftedtech.my.id/api/download/instagram?url=${encodeURIComponent(q)}`);
+        
+        if (!response.data || response.data.status !== 200) {
+            // Fallback API if the first one fails
+            const fbRes = await axios.get(`https://bk9.fun/download/ig?url=${q}`);
+            const data = fbRes.data.BK9;
+            
+            if (data && data.length > 0) {
+                for (let item of data) {
+                    await conn.sendMessage(from, { video: { url: item.url }, caption: "✅ *Instagram Video Downloaded*" }, { quoted: m });
+                }
+                return await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
             }
+            throw new Error("Failed");
         }
 
-        // Send Images
-        if (media.images && media.images.length > 0) {
-            for (const img of media.images) {
-                await conn.sendMessage(from, {
-                    image: { url: img },
-                    caption: caption
-                }, { quoted: m });
+        const result = response.data.result;
+        // Gifted API returns an array of media
+        for (let media of result) {
+            if (media.wm.includes("video") || media.url.includes(".mp4")) {
+                await conn.sendMessage(from, { video: { url: media.url }, caption: "✅ *Success*" }, { quoted: m });
+            } else {
+                await conn.sendMessage(from, { image: { url: media.url } }, { quoted: m });
             }
         }
 
@@ -57,61 +46,39 @@ cmd({
     } catch (e) {
         console.error(e);
         await conn.sendMessage(from, { react: { text: "❌", key: m.key } });
-        reply("❌ ڈاؤن لوڈ کرنے میں دشواری ہوئی یا لنک درست نہیں ہے۔");
+        reply("❌ ڈاؤن لوڈ کرنے میں دشواری ہوئی۔ لنک شاید پرائیویٹ ہے یا API ڈاؤن ہے۔");
     }
 });
 
-// --- TIKTOK DOWNLOADER COMMAND ---
+// --- TIKTOK DOWNLOADER ---
 cmd({
     pattern: "tiktok2",
     alias: ["tt2", "ttdl2"],
-    desc: "Download TikTok Video via Link.",
+    desc: "Download TikTok Video.",
     category: "download",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
     try {
-        if (!q) return reply("❓ براہ کرم ٹک ٹاک کا لنک فراہم کریں۔\nمثال: *.tiktok https://vt.tiktok.com/xxx/*");
-        if (!q.includes("tiktok.com")) return reply("❌ یہ ٹک ٹاک کا درست لنک نہیں ہے۔");
-
+        if (!q) return reply("❓ ٹک ٹاک لنک فراہم کریں۔");
+        
         await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
 
-        const res = await axios.get(`${apiBase}/downloader/tiktok`, {
-            params: { url: q },
-            httpsAgent: agent,
-            headers: { "User-Agent": "Mozilla/5.0" }
-        });
-
-        if (!res.data.status) throw new Error("API Error");
-
-        const r = res.data.result;
-        const caption = `🎬 *TikTok Downloader*\n\n📝 *Title:* ${r.title || "-"}\n👤 *Author:* ${r.author?.nickname || "-"}\n\n*Downloaded by Knight Bot*`;
-
-        if (r.type === "video") {
-            await conn.sendMessage(from, {
-                video: { url: r.download },
-                caption: caption,
-                mimetype: "video/mp4"
+        const res = await axios.get(`https://api.giftedtech.my.id/api/download/tiktokdl?url=${encodeURIComponent(q)}`);
+        
+        if (res.data.status === 200) {
+            const data = res.data.result;
+            await conn.sendMessage(from, { 
+                video: { url: data.video_no_watermark }, 
+                caption: `🎬 *${data.title}*\n\n*Knight Bot*` 
             }, { quoted: m });
-        } else if (r.type === "image") {
-            for (let img of r.download) {
-                await conn.sendMessage(from, { image: { url: img } }, { quoted: m });
-            }
+            
+            await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
+        } else {
+            throw new Error("API Error");
         }
-
-        // Optional Audio
-        if (r.music?.play_url) {
-            await conn.sendMessage(from, {
-                audio: { url: r.music.play_url },
-                mimetype: "audio/mpeg",
-                ptt: false
-            }, { quoted: m });
-        }
-
-        await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
 
     } catch (e) {
-        console.error(e);
         await conn.sendMessage(from, { react: { text: "❌", key: m.key } });
-        reply("❌ ٹک ٹاک ویڈیو ڈاؤن لوڈ نہیں ہو سکی۔");
+        reply("❌ ٹک ٹاک ویڈیو نہیں مل سکی۔");
     }
 });
