@@ -1,76 +1,102 @@
-const { cmd } = require('../command'); // Aapke bot ka standard path
+const { cmd } = require('../command');
 const axios = require('axios');
 
-cmd({
-    pattern: "wainfo",
-    alias: ["searchwa", "profileinfo"],
-    category: "tools",
-    react: "👤",
-    desc: "Get WhatsApp Name and Profile Picture using number"
-}, async (conn, mek, m, { q, reply, react, botFooter }) => {
-    
-    if (!q) {
-        await react("❌");
-        return reply("Bhai, number toh dein! (With country code)\nExample: .wainfo 923325914867");
-    }
-
-    // Number clean karna (sirf digits)
-    const number = q.replace(/[^0-9]/g, '');
-    await react("⏳");
-
+/**
+ * Scrapes WhatsApp Profile Public Info
+ * @param {string} number - Phone number with country code
+ */
+async function WhatsAppProfile(number) {
     try {
         const url = `https://api.whatsapp.com/send/?phone=${number}&text&type=phone_number&app_absent=0&wame_ctl=1`;
         
-        // Axios use kar rahe hain fetch ki jagah jo Baileys bots mein common hai
-        const { data: html } = await axios.get(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+        // Using axios instead of fetch for compatibility with most bot bases
+        const { data: datana } = await axios.get(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
         });
 
-        // Name Extract karna
-        const nameMatch = html.match(/<meta property="og:title" content="(.*?)" \/>/);
-        let waName = nameMatch ? nameMatch[1] : null;
+        const waLink = `https://wa.me/${number}`;
+        
+        // Extract Name from Meta Title
+        const nameMatch = datana.match(/<meta property="og:title" content="(.*?)" \/>/);
+        let profileName = nameMatch ? nameMatch[1] : null;
 
-        if (waName) {
-            // HTML Entities decode karna
-            waName = waName
+        if (profileName) {
+            profileName = profileName
                 .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
                 .replace(/&#([0-9]+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
                 .replace(/&amp;/g, '&');
         }
 
-        // Profile Picture Extract karna
-        const ppMatch = html.match(/<meta property="og:image" content="(.*?)" \/>/);
-        const ppUrl = ppMatch ? ppMatch[1].replace(/&amp;/g, '&') : null;
-        
-        // Check agar profile exist karti hai
-        if (!waName || waName === "Bagikan di WhatsApp" || waName === "Share on WhatsApp") {
-            await react("❌");
-            return reply("❌ Is number par WhatsApp profile nahi mili.");
+        // Extract Profile Image
+        const imageMatch = datana.match(/<meta property="og:image" content="(.*?)" \/>/);
+        let profileImage = imageMatch ? imageMatch[1].replace(/&amp;/g, '&') : null;
+
+        // Validation
+        if (!profileName || profileName === "Bagikan di WhatsApp" || profileName === "Share on WhatsApp") {
+            return { status: false, message: "Profile not found or Private." };
         }
 
-        const info = `
-👤 *WHATSAPP PROFILE INFO*
+        const finalImage = (profileImage && profileImage.includes('pps.whatsapp.net')) ? profileImage : null;
 
-📝 *Name:* ${waName}
-📱 *Number:* ${number}
-🔗 *Link:* https://wa.me/${number}
+        return {
+            status: true,
+            data: {
+                number: number,
+                link: waLink,
+                name: profileName,
+                profile: finalImage || "No public profile picture"
+            }
+        };
+    } catch (error) {
+        return { status: false, message: error.message };
+    }
+}
 
-> *${botFooter || 'DR KAMRAN-MD'}*`.trim();
+// --- BOT COMMAND ---
+cmd({
+    pattern: "wainfo",
+    alias: ["whois", "wauser"],
+    desc: "Get public WhatsApp profile info of a number.",
+    category: "tools",
+    use: ".wainfo 923001234567",
+    filename: __filename
+}, async (conn, mek, m, { from, q, reply }) => {
+    try {
+        if (!q) return reply("❓ *Please provide a number with country code.*\nExample: `.wainfo 923001234567` (No + or spaces)");
 
-        if (ppUrl && ppUrl.includes('pps.whatsapp.net')) {
-            await conn.sendMessage(m.chat, { 
-                image: { url: ppUrl }, 
-                caption: info 
-            }, { quoted: mek });
+        const targetNumber = q.replace(/[^0-9]/g, '');
+        if (targetNumber.length < 10) return reply("❌ *Invalid number format.*");
+
+        await conn.sendMessage(from, { react: { text: "🔍", key: m.key } });
+
+        const result = await WhatsAppProfile(targetNumber);
+
+        if (!result.status) {
+            return reply(`❌ ${result.message}`);
+        }
+
+        const info = result.data;
+        let responseMsg = `👤 *WHATSAPP PROFILE INFO*\n\n`;
+        responseMsg += `📝 *Name:* ${info.name}\n`;
+        responseMsg += `📞 *Number:* ${info.number}\n`;
+        responseMsg += `🔗 *Link:* ${info.link}\n\n`;
+        responseMsg += `*Powered by Knight Bot*`;
+
+        if (info.profile && info.profile.startsWith('http')) {
+            await conn.sendMessage(from, { 
+                image: { url: info.profile }, 
+                caption: responseMsg 
+            }, { quoted: m });
         } else {
-            await reply(info + "\n🖼️ *DP:* Private ya nahi mili.");
+            reply(responseMsg + `\n🖼️ *Photo:* Not available publicly.`);
         }
 
-        await react("✅");
+        await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
 
     } catch (e) {
-        console.error("WA Info Error:", e.message);
-        await react("❌");
-        reply("❌ Error: Service temporarily unavailable.");
+        console.error(e);
+        reply("❌ An error occurred while fetching profile.");
     }
 });
