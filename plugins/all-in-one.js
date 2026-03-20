@@ -1,56 +1,75 @@
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// --- DATABASE SIMULATION ---
-// Note: Real world scenarios use JSON or MongoDB. For now, we use a simple variable.
 let autoDlStatus = true; 
 
-// Regex to detect various links
-const anyVideoRegex = /https?:\/\/(www\.)?(tiktok\.com|vt\.tiktok\.com|instagram\.com|facebook\.com|fb\.watch|youtube\.com|youtu\.be)\/[^\s]+/i;
+// Behtar Regex jo handle karega sab platforms
+const anyVideoRegex = /https?:\/\/(www\.)?(tiktok\.com|vt\.tiktok\.com|instagram\.com|facebook\.com|fb\.watch|youtube\.com|youtu\.be|reels)\/[^\s]+/i;
 
 /**
- * Main Downloader Logic
- * You can also trigger this manually via .dl <link>
+ * Enhanced Downloader Logic
  */
 async function downloadMedia(url) {
-    // Using a reliable multi-downloader API
-    const apiUrl = `https://jawad-tech.vercel.app/downloader?url=${encodeURIComponent(url)}`;
-    const response = await axios.get(apiUrl);
-    let media = response.data.result || response.data.data || response.data;
-    
-    if (!media || (Array.isArray(media) && media.length === 0)) {
-        // Fallback to Gifted API if Jawad-Tech fails
-        const fallback = await axios.get(`https://api.giftedtech.my.id/api/download/all?url=${url}`);
+    try {
+        // Primary API: Jawad-Tech
+        const apiUrl = `https://jawad-tech.vercel.app/downloader?url=${encodeURIComponent(url)}`;
+        const response = await axios.get(apiUrl);
+        
+        // TikTok aur YouTube ke liye data extract karne ka sahi tareeqa
+        let res = response.data;
+        let result = res.result || res.data || res;
+
+        // Agar array hai (aksar TikTok/YT mein hota hai), pehla valid link uthayen
+        if (Array.isArray(result)) return result[0];
+        return result;
+    } catch (error) {
+        console.log("Primary API Error, switching to fallback...");
+        // Fallback: Gifted API (Jo YT/TikTok ke liye zyada stable hai)
+        const fallback = await axios.get(`https://api.giftedtech.my.id/api/download/all?url=${encodeURIComponent(url)}`);
         return fallback.data.result;
     }
-    return media;
 }
 
-// --- COMMAND: AUTO DL TOGGLE ---
-cmd({
-    pattern: "autodl",
-    desc: "Turn Auto Downloader On or Off.",
-    category: "config",
-    filename: __filename
-}, async (conn, mek, m, { q, reply }) => {
-    if (!q) return reply(`🤖 *Current Status:* ${autoDlStatus ? "ON ✅" : "OFF ❌"}\n\nUse: *.autodl on* or *.autodl off*`);
+/**
+ * Smart Result Sender
+ */
+async function sendResult(conn, m, from, media) {
+    // Media se direct URL nikalne ki koshish
+    let downloadUrl = "";
     
-    if (q.toLowerCase() === "on") {
-        autoDlStatus = true;
-        reply("✅ *Auto Downloader has been enabled.*");
-    } else if (q.toLowerCase() === "off") {
-        autoDlStatus = false;
-        reply("❌ *Auto Downloader has been disabled.*");
-    } else {
-        reply("❓ Use 'on' or 'off'.");
+    if (typeof media === 'string') {
+        downloadUrl = media;
+    } else if (media) {
+        // Platforms like TikTok/YT often use these keys
+        downloadUrl = media.video || media.hd || media.url || media.downloadUrl || media.link || (media.mp4 ? media.mp4 : null);
     }
-});
 
-// --- COMMAND: MANUAL DOWNLOAD ---
+    if (!downloadUrl || typeof downloadUrl !== 'string') {
+        throw new Error("No downloadable link found");
+    }
+
+    // WhatsApp par video ya image bhejna
+    const isVideo = downloadUrl.includes(".mp4") || downloadUrl.includes("googlevideo") || downloadUrl.includes("video") || downloadUrl.includes("fbcdn");
+
+    if (isVideo) {
+        await conn.sendMessage(from, { 
+            video: { url: downloadUrl }, 
+            caption: "✅ *Downloaded Successfully*",
+            mimetype: 'video/mp4'
+        }, { quoted: m });
+    } else {
+        await conn.sendMessage(from, { 
+            image: { url: downloadUrl },
+            caption: "✅ *Media Downloaded*"
+        }, { quoted: m });
+    }
+}
+
+// --- COMMANDS --- (Same as your previous logic)
 cmd({
     pattern: "dl",
     alias: ["download"],
-    desc: "Download any video via link.",
+    desc: "Download video.",
     category: "download",
     filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
@@ -62,46 +81,18 @@ cmd({
         await sendResult(conn, m, from, media);
         await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
     } catch (e) {
-        reply("❌ Download failed.");
+        console.error(e);
+        reply("❌ Download failed. Link expired ho sakta hai ya API down hai.");
     }
 });
 
-/**
- * Function to send the final result to WhatsApp
- */
-async function sendResult(conn, m, from, media) {
-    const results = Array.isArray(media) ? media : [media];
-    for (let item of results) {
-        let downloadUrl = typeof item === 'string' ? item : (item.url || item.downloadUrl || item.link);
-        if (!downloadUrl) continue;
-
-        if (downloadUrl.includes(".mp4") || downloadUrl.includes("video") || downloadUrl.includes("googlevideo")) {
-            await conn.sendMessage(from, { 
-                video: { url: downloadUrl }, 
-                caption: "✅ *Downloaded Successfully*",
-                mimetype: 'video/mp4'
-            }, { quoted: m });
-        } else {
-            await conn.sendMessage(from, { 
-                image: { url: downloadUrl },
-                caption: "✅ *Media Downloaded*"
-            }, { quoted: m });
-        }
-    }
-}
-
-/**
- * AUTO-DL LISTENER
- * This needs to be called in your main message handler (index.js)
- */
+// Auto-DL logic ko export karein
 async function handleAutoDL(conn, m) {
     if (!autoDlStatus || !m.text || m.key.fromMe) return;
-
     const match = m.text.match(anyVideoRegex);
     if (match) {
         const url = match[0];
-        const from = conn.decodeJid(m.chat);
-        
+        const from = m.chat;
         try {
             await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
             const media = await downloadMedia(url);
