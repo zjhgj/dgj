@@ -1,77 +1,122 @@
 const { cmd } = require('../command');
 const axios = require('axios');
+const crypto = require('crypto');
 
-class AllInOneDownloader {
-  constructor() {
-    this.baseURL = 'https://allinonedownloader.com';
-    this.endpoint = '/system/3c829fbbcf0387c.php';
-  }
-
-  async download(url) {
-    const headers = {
-      'accept': '*/*',
-      'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-      'referer': `${this.baseURL}/`,
-      'user-agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36',
-      'x-requested-with': 'XMLHttpRequest'
-    };
-
-    const payload = new URLSearchParams({
-      url: url,
-      // Note: Ye tokens expire ho sakte hain, agar error aaye to website se naya token nikalna hoga
-      token: 'ac98e0708b18806a7e0aedaf8bfd135b9605ce9e617aebbdf3118d402ae6f15f',
-      urlhash: '/EW6oWxKREb5Ji1lQRgY2f4FkImCr6gbFo1HX4VAUuiJrN+7veIcnrr+ZrfMg0Jyo46ABKmFUhf2LpwuIxiFJZZObl9tfJG7E9EMVNIbkNyiqCIdpc61WKeMmmbMW+n6'
-    });
-
-    const response = await axios.post(`${this.baseURL}${this.endpoint}`, payload.toString(), { headers });
-    return response.data;
-  }
-}
-
-cmd({
-    pattern: "dl",
-    alias: ["video", "allinone"],
-    desc: "Download from TikTok, IG, FB, etc.",
-    category: "download",
-    filename: __filename
-}, async (conn, mek, m, { from, q, reply }) => {
+/**
+ * NanoBanana AI Image Editing Logic
+ */
+async function nanobanana(prompt, imageBuffer) {
     try {
-        if (!q) return reply("❓ *Link dein (TikTok/IG/FB/YT).*");
-        
-        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
-        
-        const downloader = new AllInOneDownloader();
-        const result = await downloader.download(q);
+        const inst = axios.create({
+            baseURL: 'https://nanobananas.pro/api',
+            headers: {
+                'origin': 'https://nanobananas.pro',
+                'referer': 'https://nanobananas.pro/editor',
+                'user-agent': 'Mozilla/5.0 (Linux; Android 15; SM-F958) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.86 Mobile Safari/537.36'
+            }
+        });
 
-        // Result parsing logic (adjust based on actual JSON response)
-        // Usually, the response contains a 'medias' array or 'links'
-        if (!result || result.error) {
-            return reply("❌ *Download fail hogaya.* Link check karein ya API token expire ho chuka hai.");
+        // 1. Get Presigned URL for Upload
+        const up = await inst.post('/upload/presigned', {
+            filename: `${Date.now()}_ai.jpg`,
+            contentType: 'image/jpeg'
+        });
+
+        if (!up.data?.data?.uploadUrl) throw new Error('Failed to get upload URL.');
+
+        // 2. Upload the Buffer to the provided URL
+        await axios.put(up.data.data.uploadUrl, imageBuffer, {
+            headers: { 'Content-Type': 'image/jpeg' }
+        });
+
+        // 3. Bypass Cloudflare Turnstile
+        const cf = await axios.post('https://api.nekolabs.web.id/tools/bypass/cf-turnstile', {
+            url: 'https://nanobananas.pro/editor',
+            siteKey: '0x4AAAAAAB8ClzQTJhVDd_pU'
+        });
+
+        if (!cf.data?.result) throw new Error('Failed to bypass Turnstile.');
+
+        // 4. Create Edit Task
+        const task = await inst.post('/edit', {
+            prompt,
+            image_urls: [up.data.data.fileUrl],
+            image_size: 'auto',
+            turnstileToken: cf.data.result,
+            uploadIds: [up.data.data.uploadId],
+            userUUID: crypto.randomUUID(),
+            imageHash: crypto.createHash('sha256').update(imageBuffer).digest('hex').substring(0, 64)
+        });
+
+        if (!task.data?.data?.taskId) throw new Error('Task ID generation failed.');
+
+        // 5. Poll Task Status until Completed
+        const taskId = task.data.data.taskId;
+        while (true) {
+            const r = await inst.get(`/task/${taskId}`);
+            if (r.data?.data?.status === 'completed') {
+                return r.data.data.result; // This is usually an array of URLs
+            }
+            if (r.data?.data?.status === 'failed') {
+                throw new Error('AI processing failed.');
+            }
+            // Wait for 2 seconds before checking again
+            await new Promise(resolve => setTimeout(resolve, 2000));
         }
-
-        // Search for highest quality video link
-        let downloadLink = "";
-        let title = result.title || "Downloaded Media";
-
-        if (result.medias && result.medias.length > 0) {
-            // Filter for video or first available link
-            downloadLink = result.medias.find(m => m.extension === 'mp4' || m.type === 'video')?.url || result.medias[0].url;
-        }
-
-        if (!downloadLink) throw new Error("No download link found");
-
-        // Sending the media
-        await conn.sendMessage(from, { 
-            video: { url: downloadLink }, 
-            caption: `✅ *Success: ${title}*\n\nPowered by AllInOne`,
-            mimetype: 'video/mp4'
-        }, { quoted: m });
-
-        await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
 
     } catch (e) {
-        console.error(e);
-        reply("❌ *Error:* " + e.message);
-        await conn.sendMessage(from, { react: { text: "❌", key: m.key } });
+        throw new Error(e.message);
+    }
+}
+
+// --- BOT COMMAND ---
+cmd({
+    pattern: "editimg2",
+    alias: ["reimage", "nanobanana"],
+    desc: "Edit image using NanoBanana AI.",
+    category: "ai",
+    use: ".editimg <prompt>",
+    filename: __filename
+}, async (conn, mek, m, { q, reply }) => {
+    try {
+        const quoted = m.quoted ? m.quoted : m;
+        const mime = (quoted.msg || quoted).mimetype || '';
+
+        if (!mime.startsWith('image/')) return reply("🖼️ *براہ کرم کسی تصویر کو کوٹ (Quote) کریں یا تصویر بھیج کر یہ کمانڈ لکھیں۔*");
+        if (!q) return reply("📝 *براہ کرم بتائیں کہ تصویر میں کیا تبدیل کرنا ہے؟*\nمثال: `.editimg change background to beach` ");
+
+        await conn.sendMessage(m.chat, { react: { text: "⏳", key: m.key } });
+        reply("🚀 *AI تصویر پر کام کر رہا ہے، براہ کرم تھوڑا انتظار کریں...*");
+
+        // Download the media
+        const imageBuffer = await quoted.download();
+
+        // Process via NanoBanana
+        const resultUrls = await nanobanana(q, imageBuffer);
+
+        if (resultUrls && resultUrls.length > 0) {
+            await conn.sendMessage(m.chat, { 
+                image: { url: resultUrls[0] }, 
+                caption: `✅ *AI Transformation Completed!*\n\n*Prompt:* ${q}\n*Powered by Knight Bot*`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: "NanoBanana AI Editor",
+                        body: "Image edited successfully",
+                        mediaType: 1,
+                        thumbnail: imageBuffer
+                    }
+                }
+            }, { quoted: m });
+
+            await conn.sendMessage(m.chat, { react: { text: "🎨", key: m.key } });
+        } else {
+            throw new Error("No output generated from AI.");
+        }
+
+    } catch (e) {
+        console.error("EditImg Error:", e);
+        await conn.sendMessage(m.chat, { react: { text: "❌", key: m.key } });
+        reply(`❌ *Error:* ${e.message}`);
     }
 });
+
