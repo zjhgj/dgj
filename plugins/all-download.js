@@ -1,96 +1,88 @@
-const { cmd } = require('../command');
+const { cmd } = require('../command'); // Aapke bot ka standard path
 const axios = require('axios');
-const cheerio = require('cheerio');
 
-/**
- * Scraper function for Pinterest via SavePin
- */
-async function pindl(url) {
+// --- DOWNLOADER CLASS LOGIC ---
+class AllInOneDownloader {
+  constructor() {
+    this.baseURL = 'https://allinonedownloader.com';
+    this.endpoint = '/system/3c829fbbcf0387c.php';
+  }
+
+  async fetchMedia(url) {
+    const headers = {
+      'accept': '*/*',
+      'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'user-agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+      'x-requested-with': 'XMLHttpRequest',
+      'referer': `${this.baseURL}/`
+    };
+
+    const payload = new URLSearchParams({
+      url: url,
+      token: 'ac98e0708b18806a7e0aedaf8bfd135b9605ce9e617aebbdf3118d402ae6f15f', //
+      urlhash: '/EW6oWxKREb5Ji1lQRgY2f4FkImCr6gbFo1HX4VAUuiJrN+7veIcnrr+ZrfMg0Jyo46ABKmFUhf2LpwuIxiFJZZObl9tfJG7E9EMVNIbkNyiqCIdpc61WKeMmmbMW+n6' //
+    });
+
     try {
-        const endpoint = `https://www.savepin.app/pinterest/download.php?url=${encodeURIComponent(url)}&lang=en&type=redirect`;
-
-        const { data } = await axios.get(endpoint, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-                "Referer": "https://www.savepin.app/pinterest/en"
-            }
-        });
-
-        const $ = cheerio.load(data);
-        const results = new Set();
-
-        $("a[href], img[src]").each((_, e) => {
-            let u = $(e).attr("href") || $(e).attr("src");
-            if (!u) return;
-
-            // Handle forced download redirects
-            if (u.startsWith("force-save.php")) {
-                const parsedUrl = new URL("https://www.savepin.app/" + u).searchParams.get("url");
-                if (parsedUrl) results.add(decodeURIComponent(parsedUrl));
-            }
-
-            // Direct Pinimg or Pin-video links
-            if (u.includes("i.pinimg.com") || u.includes("v.pinimg.com") || u.includes("video-downloads")) {
-                results.add(u);
-            }
-        });
-
-        const dataArray = [...results];
-        
-        return dataArray.length > 0 
-            ? { status: true, code: 200, data: dataArray }
-            : { status: false, statusCode: 404, message: "No media found" };
-
-    } catch (err) {
-        return { status: false, statusCode: 500, message: err.message };
+      const { data } = await axios.post(`${this.baseURL}${this.endpoint}`, payload.toString(), { headers });
+      return data;
+    } catch (e) {
+      return null;
     }
+  }
 }
 
-// WhatsApp Command Registration
+const downloader = new AllInOneDownloader();
+
+// --- BOT COMMAND ---
 cmd({
-    pattern: "pinterest2",
-    alias: ["pindl2", "pin"],
-    desc: "Download media from Pinterest.",
-    category: "download",
-    use: ".pinterest <url>",
-    filename: __filename,
-}, async (conn, mek, m, { from, args, reply, prefix, command }) => {
+    pattern: "dl",
+    alias: ["alldl", "down"],
+    category: "downloader",
+    react: "📥",
+    desc: "Download video from TikTok, FB, IG, etc."
+}, async (conn, mek, m, { q, reply, react, botFooter }) => {
+    
+    if (!q) {
+        await react("❌");
+        return reply("Bhai, kisi bhi video ka link dein!\nExample: .dl https://www.tiktok.com/xxx");
+    }
+
+    await react("⏳");
+
     try {
-        if (!args[0]) return reply(`⚠️ Please provide a Pinterest URL.\n\nExample: \`${prefix + command} https://pin.it/...\``);
+        const result = await downloader.fetchMedia(q);
 
-        const url = args[0];
-        if (!/pinterest\.com|pin\.it/.test(url)) return reply("❌ Invalid Pinterest URL.");
-
-        await conn.sendMessage(from, { react: { text: "📥", key: mek.key } });
-
-        const res = await pindl(url);
-
-        if (!res.status) {
-            return reply(`❌ Error: ${res.message || "Failed to fetch media."}`);
+        if (!result || !result.links || result.links.length === 0) {
+            await react("❌");
+            return reply("❌ Media link nahi mil saka. Shayad link expired hai.");
         }
 
-        // Identify the best quality link (usually first high-res image or video)
-        const mediaUrl = res.data[0];
-        const isVideo = mediaUrl.includes(".mp4") || mediaUrl.includes("v.pinimg.com");
+        // Sabse pehla high quality link uthana
+        const downloadUrl = result.links[0].url;
+        const title = result.title || "All-In-One Downloader";
+
+        // Check if it's a video or image based on link or type
+        const isVideo = downloadUrl.includes(".mp4") || q.includes("tiktok") || q.includes("reel");
 
         if (isVideo) {
-            await conn.sendMessage(from, {
-                video: { url: mediaUrl },
-                caption: `✅ *Pinterest Video Downloaded*\n\n*🚀 KAMRAN-MD*`,
-                quoted: mek
-            });
+            await conn.sendMessage(m.chat, {
+                video: { url: downloadUrl },
+                caption: `🎬 *Title:* ${title}\n\n> *${botFooter || 'DR KAMRAN-MD'}*`,
+                mimetype: "video/mp4"
+            }, { quoted: mek });
         } else {
-            await conn.sendMessage(from, {
-                image: { url: mediaUrl },
-                caption: `✅ *Pinterest Image Downloaded*\n\n*🚀 KAMRAN-MD*`,
-                quoted: mek
-            });
+            await conn.sendMessage(m.chat, {
+                image: { url: downloadUrl },
+                caption: `🖼️ *Title:* ${title}\n\n> *${botFooter || 'DR KAMRAN-MD'}*`
+            }, { quoted: mek });
         }
 
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+        await react("✅");
 
     } catch (e) {
-        console.error(e);
-        reply(`❌ *An error occurred:* ${e.message}`);
+        console.error("DL Error:", e.message);
+        await react("❌");
+        reply("❌ Error: " + e.message);
     }
 });
