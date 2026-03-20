@@ -1,103 +1,73 @@
 const { cmd } = require('../command');
 const axios = require('axios');
 
-// --- Global Variable for Auto-DL State ---
-// Default is ON. You can change to false to keep it off by default.
+// Auto-DL status set to true by default
 let autoDlStatus = true; 
 
-// Supported Links Detection Regex
-const dlRegex = /https?:\/\/(www\.)?(instagram\.com|tiktok\.com|facebook\.com|fb\.watch|youtu\.be|youtube\.com)\/[^\s]+/gi;
+// Updated Regex for better detection
+const dlRegex = /https?:\/\/(www\.)?(instagram\.com|tiktok\.com|facebook\.com|fb\.watch|youtu\.be|youtube\.com|fb\.com)\/[^\s]+/gi;
 
 /**
- * AUTO DOWNLOAD LOGIC (LISTENER)
- * This part monitors every message for links
+ * AUTO DOWNLOADER
+ * Fixed to trigger on any message containing a link
  */
 cmd({
-    on: "text" // This makes it listen to every incoming text message
-}, async (conn, mek, m, { from, body, isGroup, isAdmins, isBotAdmins, reply }) => {
+    on: "body" // Changed from 'text' to 'body' to catch everything reliably
+}, async (conn, mek, m, { from, body, isGroup, reply }) => {
     try {
-        // Skip if Auto-DL is OFF or message is from the bot itself
+        // Validation: Check if status is ON and it's not the bot's own message
         if (!autoDlStatus || !body || m.key.fromMe) return;
 
+        // Link search
         const links = body.match(dlRegex);
-        if (!links) return; // No supported link found
+        if (!links) return;
 
         const url = links[0];
         
-        // Visual feedback that bot is working
-        await conn.sendMessage(from, { react: { text: "📥", key: m.key } });
+        // Show user the bot is processing
+        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
 
-        // API Call to fetch media
-        const apiUrl = `https://jawad-tech.vercel.app/downloader?url=${encodeURIComponent(url)}`;
+        // Using a reliable download API
+        const apiUrl = `https://api.giftedtech.my.id/api/download/dl?url=${encodeURIComponent(url)}`;
         const response = await axios.get(apiUrl);
         
-        let media = response.data.result || response.data.data || response.data;
-        if (!media) return;
+        const data = response.data.result;
+        if (!data) return;
 
-        const results = Array.isArray(media) ? media : [media];
+        // Handle different platforms
+        let downloadUrl = data.download_url || data.video_url || data.url || data.hd;
+        let caption = "✨ *Auto Downloaded*";
 
-        for (let item of results) {
-            let downloadUrl = typeof item === 'string' ? item : (item.url || item.downloadUrl || item.link);
-            if (!downloadUrl) continue;
-
-            // Detect if it's a video or image based on URL extension or API data
-            if (downloadUrl.includes(".mp4") || downloadUrl.includes("video") || downloadUrl.includes("googlevideo")) {
-                await conn.sendMessage(from, { 
-                    video: { url: downloadUrl }, 
-                    caption: "✨ *Auto Downloaded*",
-                    mimetype: 'video/mp4'
-                }, { quoted: m });
-            } else {
-                await conn.sendMessage(from, { 
-                    image: { url: downloadUrl },
-                    caption: "✨ *Auto Downloaded*"
-                }, { quoted: m });
-            }
+        if (downloadUrl) {
+            await conn.sendMessage(from, { 
+                video: { url: downloadUrl }, 
+                caption: caption,
+                mimetype: 'video/mp4'
+            }, { quoted: m });
+            
+            await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
         }
-        
-        await conn.sendMessage(from, { react: { text: "✅", key: m.key } });
 
     } catch (e) {
-        // Silent error for auto-dl to avoid spamming chat if API fails
-        console.error("AutoDL Error:", e.message);
+        console.log("AutoDL Error:", e.message);
+        // No reply here to avoid spamming chat if a link is just a normal text
     }
 });
 
-// --- COMMAND: TOGGLE AUTO-DL ---
+// Settings Command
 cmd({
     pattern: "autodl",
-    desc: "Turn Auto Downloader ON or OFF.",
+    desc: "Turn Auto Downloader ON/OFF",
     category: "config",
     filename: __filename
 }, async (conn, mek, m, { q, reply }) => {
-    if (!q) return reply(`🤖 *Auto-DL Status:* ${autoDlStatus ? "ON ✅" : "OFF ❌"}\n\n*Usage:* .autodl on / .autodl off`);
+    if (!q) return reply(`⚙️ *Auto-DL:* ${autoDlStatus ? "ON ✅" : "OFF ❌"}\nUse: .autodl on/off`);
     
     if (q.toLowerCase() === "on") {
         autoDlStatus = true;
-        reply("✅ *Auto Downloader Enabled.* Now I will download links automatically.");
+        reply("✅ *Auto Downloader Enabled.*");
     } else if (q.toLowerCase() === "off") {
         autoDlStatus = false;
         reply("❌ *Auto Downloader Disabled.*");
-    } else {
-        reply("❓ Please use 'on' or 'off'.");
-    }
-});
-
-// --- COMMAND: MANUAL DL (Backup) ---
-cmd({
-    pattern: "dl",
-    alias: ["get"],
-    desc: "Manual downloader in case auto-dl is off.",
-    category: "download",
-    filename: __filename
-}, async (conn, mek, m, { from, q, reply }) => {
-    if (!q) return reply("❓ Link share karen.");
-    try {
-        const response = await axios.get(`https://jawad-tech.vercel.app/downloader?url=${encodeURIComponent(q)}`);
-        const media = response.data.result || response.data.data;
-        // logic for manual sending...
-        reply("Downloading...");
-    } catch (e) {
-        reply("❌ Error!");
     }
 });
