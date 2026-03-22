@@ -1,8 +1,7 @@
-const { cmd } = require('../command'); // Aapke bot ka standard path
+const { cmd } = require('../command');
 const axios = require('axios');
 const crypto = require('crypto');
 
-// --- AI EDITING FUNCTION ---
 async function nanobanana(prompt, imageBuffer) {
     try {
         const inst = axios.create({
@@ -13,28 +12,20 @@ async function nanobanana(prompt, imageBuffer) {
             }
         });
 
-        // 1. Get Presigned Upload URL
         const up = await inst.post('/upload/presigned', {
             filename: `${Date.now()}_ai.jpg`,
             contentType: 'image/jpeg'
         });
 
-        if (!up.data?.data?.uploadUrl) throw new Error('Upload URL not found.');
-        
-        // 2. Upload Image Buffer
         await axios.put(up.data.data.uploadUrl, imageBuffer, {
             headers: { 'Content-Type': 'image/jpeg' }
         });
 
-        // 3. Bypass Cloudflare Turnstile (Using NekoLabs API)
         const cf = await axios.post('https://api.nekolabs.web.id/tools/bypass/cf-turnstile', {
             url: 'https://nanobananas.pro/editor',
             siteKey: '0x4AAAAAAB8ClzQTJhVDd_pU'
         });
-        
-        if (!cf.data?.result) throw new Error('Cloudflare bypass failed.');
 
-        // 4. Create Editing Task
         const task = await inst.post('/edit', {
             prompt,
             image_urls: [up.data.data.fileUrl],
@@ -45,9 +36,6 @@ async function nanobanana(prompt, imageBuffer) {
             imageHash: crypto.createHash('sha256').update(imageBuffer).digest('hex')
         });
 
-        if (!task.data?.data?.taskId) throw new Error('Task ID not found.');
-
-        // 5. Polling for Completion
         while (true) {
             const r = await inst.get(`/task/${task.data.data.taskId}`);
             if (r.data?.data?.status === 'completed') return r.data.data.result;
@@ -59,25 +47,30 @@ async function nanobanana(prompt, imageBuffer) {
     }
 }
 
-// --- BOT COMMAND ---
 cmd({
-    pattern: "editimg2",
-    alias: ["editai2", "nanobanana2"],
+    pattern: "nanobanana2",
+    alias: ["editai2", "imagechange"],
     category: "ai",
     react: "🪄",
     desc: "Edit image using AI prompts"
 }, async (conn, mek, m, { q, reply, react, botFooter }) => {
     try {
-        const isQuotedImage = m.quoted && (m.quoted.type === 'imageMessage' || (m.quoted.msg && m.quoted.msg.mimetype && m.quoted.msg.mimetype.startsWith('image/')));
-        const isImage = m.type === 'imageMessage';
+        // --- Stronger Image Detection ---
+        const quoted = m.quoted ? m.quoted : m;
+        const mime = (quoted.msg || quoted).mimetype || '';
+        
+        // Agar reply wali cheez image nahi hai
+        if (!/image/.test(mime)) {
+            await react("❓");
+            return reply("Bhai, kisi image ko mention (reply) karein!");
+        }
 
-        if (!isImage && !isQuotedImage) return reply("Bhai, kisi image ko mention karein ya reply karein!");
-        if (!q) return reply("Bhai, prompt toh dein ke image mein kya change karna hai?");
+        if (!q) return reply("Bhai, prompt toh dein (e.g. .nanobanana2 change name to KAMRAN)");
 
         await react("⏳");
         
-        // Download Image
-        const imageBuffer = await (m.quoted ? m.quoted.download() : m.download());
+        // Download Image Buffer
+        const imageBuffer = await quoted.download();
         
         const result = await nanobanana(q, imageBuffer);
 
@@ -87,8 +80,6 @@ cmd({
                 caption: `✅ *AI Edit Complete*\n✨ *Prompt:* ${q}\n\n> *${botFooter}*` 
             }, { quoted: mek });
             await react("✅");
-        } else {
-            throw new Error("No result from AI.");
         }
 
     } catch (e) {
@@ -97,3 +88,4 @@ cmd({
         reply(`❌ Error: ${e.message}`);
     }
 });
+        
