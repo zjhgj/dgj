@@ -1,6 +1,5 @@
 const { cmd } = require('../command');
 const crypto = require('crypto');
-const CryptoJS = require('crypto-js');
 const axios = require('axios');
 
 // --- ENCRYPTION CONFIG ---
