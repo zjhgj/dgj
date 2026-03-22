@@ -1,111 +1,158 @@
+//---------------------------------------------------------------------------
+//           KAMRAN-MD - HAIRSTYLE AI (LIVE3D)
+//---------------------------------------------------------------------------
+//  🚀 CHANGE HAIR STYLES USING AI PROCESSING
+//---------------------------------------------------------------------------
+
 const { cmd } = require('../command');
-const axios = require('axios');
-const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
-const crypto = require('crypto');
+const fetch = require('node-fetch');
+const FormData = require('form-data');
 
-// --- MAIN API LOGIC (NANOBANANA PRO) ---
-async function nanobanana(prompt, imageBuffer) {
-    try {
-        const inst = axios.create({
-            baseURL: 'https://nanobananas.pro/api',
-            headers: {
-                'origin': 'https://nanobananas.pro',
-                'referer': 'https://nanobananas.pro/editor',
-                'user-agent': 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36'
-            }
-        });
+const CONFIG = {
+  baseUrl: 'https://app.live3d.io/aitools',
+  resultUrl: 'https://temp.live3d.io',
+  origin: 'https://live3d.io',
+  originFrom: '5b3e78451640893a',
+  fnName: 'demo-change-hair',
+  requestFrom: 9
+};
 
-        // 1. Get Presigned Upload URL
-        const up = await inst.post('/upload/presigned', {
-            filename: `${Date.now()}_ai.jpg`,
-            contentType: 'image/jpeg'
-        });
-
-        if (!up.data?.data?.uploadUrl) throw new Error('Upload URL not found.');
-        
-        // 2. Upload Image to S3/Cloud Storage
-        await axios.put(up.data.data.uploadUrl, imageBuffer, {
-            headers: { 'Content-Type': 'image/jpeg' }
-        });
-
-        // 3. Cloudflare Turnstile Bypass (Using NekoLabs API)
-        const cf = await axios.post('https://api.nekolabs.web.id/tools/bypass/cf-turnstile', {
-            url: 'https://nanobananas.pro/editor',
-            siteKey: '0x4AAAAAAB8ClzQTJhVDd_pU'
-        });
-        
-        if (!cf.data?.result) throw new Error('Cloudflare bypass failed.');
-
-        // 4. Create AI Editing Task
-        const task = await inst.post('/edit', {
-            prompt,
-            image_urls: [up.data.data.fileUrl],
-            image_size: 'auto',
-            turnstileToken: cf.data.result,
-            uploadIds: [up.data.data.uploadId],
-            userUUID: crypto.randomUUID(),
-            imageHash: crypto.createHash('sha256').update(imageBuffer).digest('hex').substring(0, 64)
-        });
-
-        if (!task.data?.data?.taskId) throw new Error('Task ID not found.');
-
-        // 5. Polling (Check Status)
-        let attempts = 0;
-        while (attempts < 30) {
-            const r = await inst.get(`/task/${task.data.data.taskId}`);
-            if (r.data?.data?.status === 'completed') return r.data.data.result;
-            if (r.data?.data?.status === 'failed') throw new Error('AI processing failed.');
-            
-            await new Promise(a => setTimeout(a, 2000)); // 2 sec wait
-            attempts++;
-        }
-        throw new Error('Task timeout.');
-    } catch (e) {
-        throw new Error(e.message);
-    }
+/**
+ * Generate specific headers required by Live3D API
+ */
+function generateHeaders() {
+  return {
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'fp': '20cebea9c9d06e3b020503f67762edf3',
+    'fp1': 'VYuryLPUfU5QZLF53k96BkHdB7IYyJ8VXkNwwNHDooU+n3SlBumb/UiX+PyrVRJv',
+    'x-code': Date.now().toString(),
+    'x-guide': 'PFu2MqGSK5Wgg3jFZ9VX/LCzTI03jSf6rvUSw8ydSHolxrgCsQrbpZtyycWD/+c4ttuBDSKIYhxAPt4zhxZ4qqyEwjwk6oXmK9Nc04LlwAar9K5Hw2f781SnnuKT/CU0l5PfwaeIIqxXCn3OxyJHKLpPNp6OdkBH952BZ40GETY=',
+    'theme-version': '83EmcUoQTUv50LhNx0VrdcK8rcGexcP35FcZDcpgWsAXEyO4xqL5shCY6sFIWB2Q',
+    'origin': CONFIG.origin,
+    'referer': `${CONFIG.origin}/`
+  };
 }
 
-// --- BOT COMMAND ---
+/**
+ * Upload image buffer to Live3D
+ */
+async function uploadImage(buffer) {
+  const form = new FormData();
+  form.append('file', buffer, { filename: 'image.jpg', contentType: 'image/jpeg' });
+  form.append('fn_name', CONFIG.fnName);
+  form.append('request_from', String(CONFIG.requestFrom));
+  form.append('origin_from', CONFIG.originFrom);
+
+  const res = await fetch(`${CONFIG.baseUrl}/upload-img`, {
+    method: 'POST',
+    headers: { ...generateHeaders(), ...form.getHeaders() },
+    body: form
+  });
+  return await res.json();
+}
+
+/**
+ * Create the AI task
+ */
+async function createTask(imagePath, prompt) {
+  const res = await fetch(`${CONFIG.baseUrl}/of/create`, {
+    method: 'POST',
+    headers: { ...generateHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fn_name: CONFIG.fnName,
+      call_type: 3,
+      input: { prompt, source_image: imagePath, request_from: CONFIG.requestFrom },
+      request_from: CONFIG.requestFrom,
+      origin_from: CONFIG.originFrom
+    })
+  });
+  return await res.json();
+}
+
+/**
+ * Check task progress
+ */
+async function checkStatus(taskId) {
+  const res = await fetch(`${CONFIG.baseUrl}/of/check-status`, {
+    method: 'POST',
+    headers: { ...generateHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      task_id: taskId,
+      fn_name: CONFIG.fnName,
+      call_type: 3,
+      request_from: CONFIG.requestFrom,
+      origin_from: CONFIG.originFrom
+    })
+  });
+  return await res.json();
+}
+
+/**
+ * Polling for result
+ */
+async function waitForResult(taskId, max = 30) {
+  for (let i = 0; i < max; i++) {
+    const res = await checkStatus(taskId);
+    if (res.code === 200 && res.data?.status === 2 && res.data?.result_image) {
+      return res.data.result_image;
+    }
+    if (res.data?.status === -1) throw 'AI Processing failed.';
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  throw 'Processing Timeout.';
+}
+
+// --- COMMAND: HAIRSTYLE / EDITHAIR ---
+
 cmd({
-    pattern: "nanobanana2",
-    alias: ["editai2", "nb2"],
+    pattern: "reimage2",
+    alias: ["edithair", "hairai"],
+    desc: "Change in an image using AI.",
     category: "ai",
-    react: "🪄",
-    desc: "AI Image Editor (Full API Integrated)"
-}, async (conn, mek, m, { q, reply, react, botFooter }) => {
+    use: ".hairstyle <prompt>",
+    filename: __filename,
+}, async (conn, mek, m, { from, q, reply, prefix, command }) => {
     try {
         const quoted = m.quoted ? m.quoted : m;
         const mime = (quoted.msg || quoted).mimetype || '';
 
-        // Check if it's an image
-        if (!/image/.test(mime)) {
-            await react("❓");
-            return reply("Bhai, kisi image ko reply (quote) karke command likhein!");
+        if (!mime.startsWith('image/')) {
+            return reply(`📸 *Editing AI*\n\nPlease reply to an image with a prompt.\n\n*Example:* \`${prefix + command} blonde long hair\``);
         }
 
-        if (!q) return reply("Bhai, prompt toh dein! Example: .nanobanana2 change background to red");
+        if (!q) return reply("❌ Please provide a hairstyle description (prompt).");
 
-        await react("⏳");
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+        reply("_🤖 Processing editing... This may take a few seconds._");
 
-        // Download the image buffer from WhatsApp
+        // Download image from WhatsApp
         const buffer = await quoted.download();
-        
-        // Call the API function
-        const result = await nanobanana(q, buffer);
+        if (!buffer) throw 'Could not download image.';
 
-        if (result && result.length > 0) {
-            await conn.sendMessage(m.chat, { 
-                image: { url: result[0] }, 
-                caption: `✅ *AI Edit Successful*\n✨ *Prompt:* ${q}\n\n> *${botFooter}*` 
-            }, { quoted: mek });
-            await react("✅");
-        } else {
-            reply("❌ AI ne koi image generate nahi ki.");
-        }
+        // Upload to Live3D
+        const up = await uploadImage(buffer);
+        if (up.code !== 200) throw 'Upload to AI server failed.';
+
+        // Create Task
+        const task = await createTask(up.data.path, q);
+        if (task.code !== 200) throw 'Failed to start AI task.';
+
+        // Wait for Result
+        const result = await waitForResult(task.data.task_id);
+        const url = `${CONFIG.resultUrl}/${result}`;
+
+        // Send Result
+        await conn.sendMessage(from, { 
+            image: { url: url }, 
+            caption: `✅ *Editing Changed Successfully!*\n🎨 *Prompt:* ${q}\n\n*🚀 Powered by KAMRAN-MD*` 
+        }, { quoted: mek });
+
+        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error("NB2 Error:", e);
-        await react("❌");
-        reply(`❌ Error: ${e.message}`);
+        console.error("Hairstyle AI Error:", e);
+        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+        reply(`❌ *Error:* ${typeof e === 'string' ? e : "Something went wrong during processing."}`);
     }
 });
