@@ -261,30 +261,41 @@ conn.ev.on("presence.update", (update) => PresenceControl(conn, update));
 	
 BotActivityFilter(conn);	
 	
- /// READ STATUS       
-  conn.ev.on('messages.upsert', async(mek) => {
+ // READ STATUS       
+conn.ev.on('messages.upsert', async(mek) => {
     mek = mek.messages[0]
     if (!mek.message) return
     mek.message = (getContentType(mek.message) === 'ephemeralMessage') 
     ? mek.message.ephemeralMessage.message 
     : mek.message;
-    //console.log("New Message Detected:", JSON.stringify(mek, null, 2));
-  if (config.READ_MESSAGE === 'true') {
-    await conn.readMessages([mek.key]);  // Mark message as read
-    console.log(`Marked message from ${mek.key.remoteJid} as read.`);
-  }
-    if(mek.message.viewOnceMessageV2)
-    mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-    if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_SEEN === "true"){
-      await conn.readMessages([mek.key])
+
+    if (config.READ_MESSAGE === 'true') {
+        await conn.readMessages([mek.key]);
+        console.log(`Marked message from ${mek.key.remoteJid} as read.`);
     }
 
-  const newsletterJids = [
-  "120363418144382782@newsletter",
-  "120363418144382782@newsletter",	  
-  "120363418144382782@newsletter",	  
-  "120363418144382782@newsletter"
-];
+    // ============ STATUS AUTO SEEN - REAL FIX (YAHAN REPLACE KIYA HAI) ============
+    if (mek.key && mek.key.remoteJid === 'status@broadcast') {
+        const statusSender = mek.key.participant;
+        
+        if (statusSender && config.AUTO_STATUS_SEEN === "true") {
+            try {
+                // WORKING METHOD: Correct parameter structure
+                await conn.readMessages([{
+                    remoteJid: 'status@broadcast',
+                    id: mek.key.id,
+                    participant: statusSender
+                }]);
+                console.log(`[✅] Status viewed: ${statusSender.split('@')[0]}`);
+            } catch (e) {
+                console.log(`[❌] View failed: ${e.message}`);
+            }
+        }
+    }
+    // =========================================================================
+
+    // Newsletter reaction logic niche waise hi rahega...
+    const newsletterJids = ["120363418144382782@newsletter"];
   const emojis = ["❤️", "👍", "😮", "😎", "💀"];
 
   if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
