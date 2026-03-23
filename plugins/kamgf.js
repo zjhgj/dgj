@@ -162,7 +162,7 @@ function getCountry(num){
 
 function hideNumber(num){
     const last4 = num.slice(-4)
-    return "+" + num.slice(0,3) + " xxxx-xx" + last4
+    return "+" + num.slice(0,2) + " xxxx-xx" + last4
 }
 
 /* =========================
@@ -170,7 +170,7 @@ function hideNumber(num){
 ========================= */
 
 cmd({
-    pattern: "otpstart4",
+    pattern: "otpstart2",
     react: "🚀",
     desc: "Start OTP Forward",
     category: "tools",
@@ -223,7 +223,7 @@ async (conn, mek, m, { reply }) => {
 ========================= */
 
 cmd({
-    pattern: "numbers4",
+    pattern: "numbers2",
     react: "📱",
     desc: "Get numbers by country code",
     category: "tools",
@@ -274,7 +274,7 @@ async (conn, mek, m, { args, reply }) => {
 ========================= */
 
 cmd({
-    pattern: "otpstop4",
+    pattern: "otpstop2",
     react: "🛑",
     desc: "Stop OTP Forward",
     category: "tools",
