@@ -1,64 +1,92 @@
-const axios = require("axios");
-const fs = require("fs");
-const { cmd } = require("../command"); // Apne bot ka path check karein
+const axios = require("axios")
+const fs = require("fs")
+const { cmd } = require("../command")
 
-// API URL
-const NUMBERS_API = "https://arslan-api-site.vercel.app/more/activenumbers01";
+// Teeno APIs ki list
+const API_SOURCES = [
+    "https://arslan-api-site.vercel.app/more/activenumbers01",
+    "https://arslan-api-site.vercel.app/more/activenumbers02",
+    "https://arslan-api-site.vercel.app/more/activenumbers03"
+]
+
+const CHANNEL_LINK = "https://whatsapp.com/channel/0029Vb7QIUD5kg7FngcRYY1N"
+
+/* =========================
+   NUMBERS COMMAND (3 APIs)
+========================= */
 
 cmd({
-    pattern: "numbers",
+    pattern: "numbers2",
     alias: ["getnum", "activenum"],
     react: "📱",
-    desc: "Get active numbers by country code from API",
+    desc: "Get numbers from 3 APIs by country code",
     category: "tools",
-    use: ".numbers 92",
+    use: ".numbers2 92",
     filename: __filename
 },
 async (conn, mek, m, { args, reply }) => {
+    const code = args[0]
+    if(!code) return reply("💡 *Usage:* .numbers2 92")
+
     try {
-        const code = args[0];
+        reply(`⏳ *Fetching active numbers from 3 sources for code ${code}...*`)
+
+        // Teeno APIs se ek saath data mangwana
+        const results = await Promise.allSettled(
+            API_SOURCES.map(url => axios.get(url, { timeout: 15000 }))
+        )
+
+        let allNumbers = []
+        let activeSources = 0
+
+        results.forEach((res, index) => {
+            if (res.status === 'fulfilled' && res.value.data && Array.isArray(res.value.data.result)) {
+                allNumbers = allNumbers.concat(res.value.data.result)
+                activeSources++
+            } else {
+                console.log(`⚠️ Source ${index + 1} failed or timeout.`)
+            }
+        })
+
+        // Duplicates khatam karna aur filter karna
+        const uniqueNumbers = [...new Set(allNumbers)]
+        const filteredNumbers = uniqueNumbers.filter(v => v.startsWith(code))
+
+        if(!filteredNumbers.length) {
+            return reply(`❌ *No numbers found for code ${code}.*\n📡 Sources Active: ${activeSources}/3`)
+        }
+
+        const file = `Numbers_${code}.txt`
+        fs.writeFileSync(file, filteredNumbers.map(v => "+" + v).join("\n"))
+
+        const caption = `╭──────────────┈⊷
+│ 📱 *ɴᴜᴍʙᴇʀs ᴅᴀᴛᴀʙᴀsᴇ*
+├──────────────┈⊷
+│ 🌐 *Code:* ${code}
+│ 📊 *Total Unique:* ${filteredNumbers.length}
+│ 📡 *Sources:* ${activeSources}/3 Active
+╰──────────────┈⊷
+*ᴊᴏɪɴ: ${CHANNEL_LINK}*
+
+> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ ᴍᴅ*`
+
+        await conn.sendMessage(
+            m.chat,
+            {
+                document: fs.readFileSync(file),
+                mimetype: "text/plain",
+                fileName: `Numbers_${code}.txt`,
+                caption: caption
+            },
+            {quoted: mek}
+        )
         
-        // Agar code nahi diya toh error message
-        if (!code) {
-            return reply("❌ Please provide a country code.\nExample: *.numbers 92*");
-        }
+        // File delete karna storage se
+        if (fs.existsSync(file)) fs.unlinkSync(file)
 
-        reply(`⏳ *Fetching active numbers for code ${code}...*`);
-
-        // API se data mangwana
-        const { data } = await axios.get(NUMBERS_API);
-
-        // Check agar data sahi format mein hai
-        if (!data || !data.result || !Array.isArray(data.result)) {
-            return reply("❌ API response error. Try again later.");
-        }
-
-        // Sirf wahi numbers filter karna jo user ke code se shuru ho rahe hain
-        const filteredNumbers = data.result.filter(num => num.startsWith(code));
-
-        if (filteredNumbers.length === 0) {
-            return reply(`❌ Code *${code}* ke liye koi active numbers nahi mile.`);
-        }
-
-        // Text file banana
-        const fileName = `Active_Numbers_${code}.txt`;
-        const txtContent = filteredNumbers.map(v => "+" + v).join("\n");
-        
-        fs.writeFileSync(fileName, txtContent);
-
-        // WhatsApp par file send karna
-        await conn.sendMessage(m.chat, {
-            document: fs.readFileSync(fileName),
-            mimetype: "text/plain",
-            fileName: fileName,
-            caption: `✅ *Numbers Found Success*\n\n🌍 *Country Code:* ${code}\n📊 *Total Numbers:* ${filteredNumbers.length}\n\n*DR KAMRAN-MD UTILS*`
-        }, { quoted: mek });
-
-        // File send karne ke baad storage se delete karna
-        fs.unlinkSync(fileName);
-
-    } catch (e) {
-        console.error("Numbers Error:", e);
-        reply("❌ Error fetching data. Make sure API is online.");
+    } catch(e) {
+        console.error(e)
+        reply("⚠️ *Server Error! Please try again later.*")
     }
-});
+})
+
