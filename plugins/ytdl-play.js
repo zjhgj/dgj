@@ -31,7 +31,7 @@ return reply("❌ No result Found");
 const video = search.videos[0];
 
 /* 🎧 MP3 API */
-const apiUrl = `https://arslan-apis.vercel.app/download/ytmp3?url=${video.url}`;
+const apiUrl = `https://arslan-api-site.vercel.app/download/ytmp3?url=${video.url}`;
 
 const res = await axios.get(apiUrl, { timeout: 60000 });
 
