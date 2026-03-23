@@ -17,7 +17,7 @@ cmd({
 
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        const apiUrl = `https://arslan-apis.vercel.app/more/database?number=${num}`;
+        const apiUrl = `https://arslan-api-site.vercel.app/more/database?number=${num}`;
         const res = await axios.get(apiUrl);
 
         // Check if data is found in the result array
