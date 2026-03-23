@@ -284,5 +284,3 @@ async (conn, mek, m, { reply }) => {
     running = false
     reply("🛑 *OTP System Disabled!*")
 })
-
-In mein add Karen sirf number wale teenon
