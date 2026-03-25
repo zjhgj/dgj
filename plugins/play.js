@@ -16,7 +16,7 @@ const CHANNEL_LINK = "https://whatsapp.com/channel/0029Vb7QIUD5kg7FngcRYY1N"
 ========================= */
 
 cmd({
-    pattern: "numbers2",
+    pattern: "numbers",
     alias: ["getnum", "activenum"],
     react: "📱",
     desc: "Get numbers from 3 APIs by country code",
