@@ -1,68 +1,70 @@
-const { cmd } = require('../command');
+const { cmd } = require('../command'); // Aapke bot ka standard command handler
 const axios = require('axios');
 const yts = require("yt-search");
 
 cmd({
-    pattern: "song6",
-    alias: ["video6", "yt7", "play7"],
+    pattern: "play7",
+    alias: ["ytplay", "song7"],
     category: "downloader",
-    react: "📥",
-    desc: "Search and download YouTube audio/video"
+    react: "🎶",
+    desc: "Search and download YouTube audio"
 }, async (conn, mek, m, { q, reply, react, botFooter }) => {
-
-    if (!q) return reply("Bhai, kisi gaane ka naam ya link toh dein!");
+    
+    if (!q) return reply("Bhai, kisi gaane ka naam ya link toh dein! \nExample: .play tamm tamm");
 
     await react("⏳");
 
     try {
-        // 1. Search Logic using yt-search
-        const search = await yts(q);
-        const data = search.videos[0];
-
-        if (!data) {
+        // 1. YouTube Search
+        let search = await yts(q);
+        let vid = search.videos[0];
+        if (!vid) {
             await react("❌");
-            return reply("❌ Maaf kijiyega, koi result nahi mila.");
+            return reply("❌ Maaf, gaana nahi mila.");
         }
 
-        const url = data.url;
-        const infoMsg = `*🎬 KAMRAN-MD YT DOWNLOADER*\n\n` +
-            `📝 *Title:* ${data.title}\n` +
-            `⌚ *Duration:* ${data.timestamp}\n` +
-            `👁️ *Views:* ${data.views}\n` +
-            `🔗 *Link:* ${url}\n\n` +
-            `> *${botFooter}*`;
+        let url = vid.url;
 
-        // Pehle info aur thumbnail bhejein
-        await conn.sendMessage(m.chat, { image: { url: data.thumbnail }, caption: infoMsg }, { quoted: mek });
+        // 2. Fetch Audio via NeoAPI
+        let api = `https://www.neoapis.xyz/api/downloader/ytdl?url=${encodeURIComponent(url)}&type=mp3`;
+        let { data } = await axios.get(api);
 
-        // 2. Download Logic using axios & NeoAPI
-        // Audio Download
-        const audioRes = await axios.get(`https://www.neoapis.xyz/api/downloader/ytdl?url=${encodeURIComponent(url)}&type=mp3`);
-        
-        if (audioRes.data && audioRes.data.result) {
-            await conn.sendMessage(m.chat, { 
-                audio: { url: audioRes.data.result.url }, 
-                mimetype: 'audio/mpeg',
-                fileName: `${data.title}.mp3`
-            }, { quoted: mek });
+        // API Response check
+        if (!data || !data.result) {
+            await react("❌");
+            return reply("❌ Audio link fetch karne mein masla aa raha hai.");
         }
 
-        // Video Download
-        const videoRes = await axios.get(`https://www.neoapis.xyz/api/downloader/ytdl?url=${encodeURIComponent(url)}&type=mp4`);
-        
-        if (videoRes.data && videoRes.data.result) {
-            await conn.sendMessage(m.chat, { 
-                video: { url: videoRes.data.result.url }, 
-                caption: `✅ *${data.title}*\n\n> *${botFooter}*`,
-                mimetype: 'video/mp4'
-            }, { quoted: mek });
-        }
+        let res = data.result;
+
+        let caption = `*🎵 KAMRAN-MD PLAY*
+
+*📌 Title:* ${vid.title}
+*⌚ Duration:* ${vid.timestamp}
+*👁️ Views:* ${vid.views}
+*👤 Channel:* ${vid.author.name}
+*🔗 URL:* ${url}
+
+> *${botFooter || 'DR KAMRAN-MD'}*`.trim();
+
+        // 3. Send Thumbnail + Info
+        await conn.sendMessage(m.chat, {
+            image: { url: vid.thumbnail },
+            caption: caption
+        }, { quoted: mek });
+
+        // 4. Send Audio File
+        await conn.sendMessage(m.chat, {
+            audio: { url: res.url }, // NeoAPI usually gives result.url
+            mimetype: "audio/mpeg",
+            fileName: `${vid.title}.mp3`
+        }, { quoted: mek });
 
         await react("✅");
 
     } catch (e) {
-        console.error(e);
+        console.error("Play Error:", e);
         await react("❌");
-        reply("❌ Masla aa gaya: " + e.message);
+        reply("❌ Error: " + e.message);
     }
 });
