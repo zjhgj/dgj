@@ -1,70 +1,70 @@
-const { cmd } = require('../command'); // Aapke bot ka standard command handler
+const { cmd } = require('../command');
 const axios = require('axios');
 const yts = require("yt-search");
 
 cmd({
     pattern: "play7",
-    alias: ["ytplay", "song7"],
+    alias: ["song7", "ytplay7"],
     category: "downloader",
     react: "🎶",
     desc: "Search and download YouTube audio"
 }, async (conn, mek, m, { q, reply, react, botFooter }) => {
     
-    if (!q) return reply("Bhai, kisi gaane ka naam ya link toh dein! \nExample: .play tamm tamm");
+    if (!q) return reply("Bhai, gaane ka naam toh likhein!");
 
     await react("⏳");
 
     try {
-        // 1. YouTube Search
-        let search = await yts(q);
-        let vid = search.videos[0];
+        // 1. Search Logic
+        const search = await yts(q);
+        const vid = search.videos[0];
         if (!vid) {
             await react("❌");
-            return reply("❌ Maaf, gaana nahi mila.");
+            return reply("❌ Gaana nahi mila!");
         }
 
-        let url = vid.url;
+        // 2. Updated API URL (Fixed Path)
+        // Note: 'mp3' ko 'type' parameter mein rakha hai
+        const apiUrl = `https://www.neoapis.xyz/api/downloader/ytdl?url=${encodeURIComponent(vid.url)}&type=mp3`;
+        
+        const { data } = await axios.get(apiUrl, { timeout: 30000 });
 
-        // 2. Fetch Audio via NeoAPI
-        let api = `https://www.neoapis.xyz/api/downloader/ytdl?url=${encodeURIComponent(url)}&type=mp3`;
-        let { data } = await axios.get(api);
-
-        // API Response check
-        if (!data || !data.result) {
+        // Check if data is coming
+        if (!data || !data.result || !data.result.url) {
             await react("❌");
-            return reply("❌ Audio link fetch karne mein masla aa raha hai.");
+            return reply("❌ API se link nahi mil saka. Shayad server down hai.");
         }
 
-        let res = data.result;
+        const audioUrl = data.result.url;
 
-        let caption = `*🎵 KAMRAN-MD PLAY*
+        // 3. Sending Info + Thumbnail
+        let caption = `*🎵 PLAY MUSIC*
 
 *📌 Title:* ${vid.title}
 *⌚ Duration:* ${vid.timestamp}
-*👁️ Views:* ${vid.views}
 *👤 Channel:* ${vid.author.name}
-*🔗 URL:* ${url}
+*🔗 URL:* ${vid.url}
 
-> *${botFooter || 'DR KAMRAN-MD'}*`.trim();
+> *${botFooter || 'DR KAMRAN-MD'}*`;
 
-        // 3. Send Thumbnail + Info
-        await conn.sendMessage(m.chat, {
-            image: { url: vid.thumbnail },
-            caption: caption
+        await conn.sendMessage(m.chat, { 
+            image: { url: vid.thumbnail }, 
+            caption: caption 
         }, { quoted: mek });
 
-        // 4. Send Audio File
-        await conn.sendMessage(m.chat, {
-            audio: { url: res.url }, // NeoAPI usually gives result.url
-            mimetype: "audio/mpeg",
+        // 4. Sending Audio
+        await conn.sendMessage(m.chat, { 
+            audio: { url: audioUrl }, 
+            mimetype: 'audio/mpeg',
             fileName: `${vid.title}.mp3`
         }, { quoted: mek });
 
         await react("✅");
 
     } catch (e) {
-        console.error("Play Error:", e);
+        console.error("Play Error:", e.message);
         await react("❌");
-        reply("❌ Error: " + e.message);
+        // User ko error dikhana taaki pata chale kya masla hai
+        reply(`❌ Masla: API timeout ya network error.`);
     }
 });
