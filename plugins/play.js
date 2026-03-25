@@ -1,92 +1,68 @@
-const axios = require("axios")
-const fs = require("fs")
-const { cmd } = require("../command")
-
-// Teeno APIs ki list
-const API_SOURCES = [
-    "https://arslan-api-site.vercel.app/more/activenumbers01",
-    "https://arslan-api-site.vercel.app/more/activenumbers02",
-    "https://arslan-api-site.vercel.app/more/activenumbers03"
-]
-
-const CHANNEL_LINK = "https://whatsapp.com/channel/0029Vb7QIUD5kg7FngcRYY1N"
-
-/* =========================
-   NUMBERS COMMAND (3 APIs)
-========================= */
+const { cmd } = require('../command');
+const axios = require('axios');
+const yts = require("yt-search");
 
 cmd({
-    pattern: "numbers",
-    alias: ["getnum", "activenum"],
-    react: "📱",
-    desc: "Get numbers from 3 APIs by country code",
-    category: "tools",
-    use: ".numbers2 92",
-    filename: __filename
-},
-async (conn, mek, m, { args, reply }) => {
-    const code = args[0]
-    if(!code) return reply("💡 *Usage:* .numbers2 92")
+    pattern: "song6",
+    alias: ["video6", "yt7", "play7"],
+    category: "downloader",
+    react: "📥",
+    desc: "Search and download YouTube audio/video"
+}, async (conn, mek, m, { q, reply, react, botFooter }) => {
+
+    if (!q) return reply("Bhai, kisi gaane ka naam ya link toh dein!");
+
+    await react("⏳");
 
     try {
-        reply(`⏳ *Fetching active numbers from 3 sources for code ${code}...*`)
+        // 1. Search Logic using yt-search
+        const search = await yts(q);
+        const data = search.videos[0];
 
-        // Teeno APIs se ek saath data mangwana
-        const results = await Promise.allSettled(
-            API_SOURCES.map(url => axios.get(url, { timeout: 15000 }))
-        )
-
-        let allNumbers = []
-        let activeSources = 0
-
-        results.forEach((res, index) => {
-            if (res.status === 'fulfilled' && res.value.data && Array.isArray(res.value.data.result)) {
-                allNumbers = allNumbers.concat(res.value.data.result)
-                activeSources++
-            } else {
-                console.log(`⚠️ Source ${index + 1} failed or timeout.`)
-            }
-        })
-
-        // Duplicates khatam karna aur filter karna
-        const uniqueNumbers = [...new Set(allNumbers)]
-        const filteredNumbers = uniqueNumbers.filter(v => v.startsWith(code))
-
-        if(!filteredNumbers.length) {
-            return reply(`❌ *No numbers found for code ${code}.*\n📡 Sources Active: ${activeSources}/3`)
+        if (!data) {
+            await react("❌");
+            return reply("❌ Maaf kijiyega, koi result nahi mila.");
         }
 
-        const file = `Numbers_${code}.txt`
-        fs.writeFileSync(file, filteredNumbers.map(v => "+" + v).join("\n"))
+        const url = data.url;
+        const infoMsg = `*🎬 KAMRAN-MD YT DOWNLOADER*\n\n` +
+            `📝 *Title:* ${data.title}\n` +
+            `⌚ *Duration:* ${data.timestamp}\n` +
+            `👁️ *Views:* ${data.views}\n` +
+            `🔗 *Link:* ${url}\n\n` +
+            `> *${botFooter}*`;
 
-        const caption = `╭──────────────┈⊷
-│ 📱 *ɴᴜᴍʙᴇʀs ᴅᴀᴛᴀʙᴀsᴇ*
-├──────────────┈⊷
-│ 🌐 *Code:* ${code}
-│ 📊 *Total Unique:* ${filteredNumbers.length}
-│ 📡 *Sources:* ${activeSources}/3 Active
-╰──────────────┈⊷
-*ᴊᴏɪɴ: ${CHANNEL_LINK}*
+        // Pehle info aur thumbnail bhejein
+        await conn.sendMessage(m.chat, { image: { url: data.thumbnail }, caption: infoMsg }, { quoted: mek });
 
-> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ ᴍᴅ*`
-
-        await conn.sendMessage(
-            m.chat,
-            {
-                document: fs.readFileSync(file),
-                mimetype: "text/plain",
-                fileName: `Numbers_${code}.txt`,
-                caption: caption
-            },
-            {quoted: mek}
-        )
+        // 2. Download Logic using axios & NeoAPI
+        // Audio Download
+        const audioRes = await axios.get(`https://www.neoapis.xyz/api/downloader/ytdl?url=${encodeURIComponent(url)}&type=mp3`);
         
-        // File delete karna storage se
-        if (fs.existsSync(file)) fs.unlinkSync(file)
+        if (audioRes.data && audioRes.data.result) {
+            await conn.sendMessage(m.chat, { 
+                audio: { url: audioRes.data.result.url }, 
+                mimetype: 'audio/mpeg',
+                fileName: `${data.title}.mp3`
+            }, { quoted: mek });
+        }
 
-    } catch(e) {
-        console.error(e)
-        reply("⚠️ *Server Error! Please try again later.*")
+        // Video Download
+        const videoRes = await axios.get(`https://www.neoapis.xyz/api/downloader/ytdl?url=${encodeURIComponent(url)}&type=mp4`);
+        
+        if (videoRes.data && videoRes.data.result) {
+            await conn.sendMessage(m.chat, { 
+                video: { url: videoRes.data.result.url }, 
+                caption: `✅ *${data.title}*\n\n> *${botFooter}*`,
+                mimetype: 'video/mp4'
+            }, { quoted: mek });
+        }
+
+        await react("✅");
+
+    } catch (e) {
+        console.error(e);
+        await react("❌");
+        reply("❌ Masla aa gaya: " + e.message);
     }
-})
-
+});
