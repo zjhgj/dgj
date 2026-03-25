@@ -3,7 +3,7 @@ const fs = require("fs")
 const { cmd } = require("../command")
 
 const NUMBERS_API = "https://arslan-apis.vercel.app/more/activenumbers02"
-const OTP_API = "https://drkamran-api-site.vercel.app/api/search/fake01"
+const OTP_API = "https://drkamran-api-site.vercel.app/api/search/fake"
 
 // Updated variables
 const CHANNEL_ID = "120363424268743982@newsletter"
