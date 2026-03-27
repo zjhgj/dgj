@@ -82,7 +82,7 @@ commands.forEach(command => {
                     await conn.sendMessage(from, {
                         audio: ptt,
                         mimetype: 'audio/ogg; codecs=opus',
-                        ptt: true
+                        ptt: false
                     }, { quoted: mek });
 
                     // Cleanup: File delete karein taake storage full na ho
