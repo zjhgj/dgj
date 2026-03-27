@@ -13,74 +13,66 @@ commands.forEach(command => {
         filename: __filename
     }, async (conn, mek, m, { from, q, reply }) => {
         try {
-            if (!q) return reply("❌ Please provide a YouTube link or Song Name.\nExample: .audio Brown Munde")
+            if (!q) return reply("❌ Please provide a YouTube link or Song Name.\nExample: .ytmp3 song punjabi")
 
             await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } })
 
             let videoUrl = q;
             let searchResult;
 
-            // Check if input is a URL or Search Text
-            const isUrl = q.startsWith("http");
+            // Step 1: Check if input is a URL or Text
+            const isUrl = q.match(/(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/[^\s]+/);
 
             if (!isUrl) {
-                // Agar text hai to search karo
+                // Agar text hai to YouTube par search karo
                 const search = await yts(q);
-                searchResult = search.videos[0];
+                searchResult = search.videos[0]; // Pehla video uthao
+                
                 if (!searchResult) {
-                    await conn.sendMessage(from, { react: { text: "❌", key: mek.key } })
+                    await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
                     return reply("❌ No results found for your search.");
                 }
                 videoUrl = searchResult.url;
             } else {
-                // Agar URL hai to metadata fetch karo
+                // Agar URL hai to link set karo aur metadata fetch karo
+                videoUrl = isUrl[0];
                 const search = await yts(videoUrl).catch(() => null);
                 searchResult = search?.videos?.[0];
             }
 
-            // Clean URL formatting
+            // Step 2: Clean the URL
             let cleanUrl = videoUrl.split("&")[0].replace("https://youtu.be/", "https://www.youtube.com/watch?v=");
-            const videoId = cleanUrl.match(/(?:v=|youtu\.be\/)([^&\s]+)/)?.[1];
 
-            // API Call for Downloading
-            const [apiRes] = await Promise.all([
-                axios.get(
-                    `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(cleanUrl)}`,
-                    { timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0' } }
-                )
-            ]);
+            // Step 3: API Call to download MP3
+            const apiRes = await axios.get(
+                `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(cleanUrl)}`,
+                { timeout: 60000 }
+            );
 
             const result = apiRes.data?.result;
             if (!result || !result.mp3) {
                 await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-                return reply("❌ Audio fetch failed. The server might be busy.");
+                return reply("❌ Failed to download audio. Try again later.");
             }
 
-            // Metadata variables
+            // Metadata info
             const title = result.title || searchResult?.title || "Audio File";
-            const views = searchResult?.views ? searchResult.views.toLocaleString() : 'N/A';
-            const channel = searchResult?.author?.name || 'N/A';
-            const duration = searchResult?.timestamp || 'N/A';
-            const thumbnail = searchResult?.thumbnail || (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : null);
+            const thumbnail = searchResult?.thumbnail || `https://img.youtube.com/vi/${cleanUrl.split('v=')[1]}/hqdefault.jpg`;
 
-            const caption = `🎶 *${title}*
+            const caption = `🚀 *KAMRAN-MD: Processing MP3...*
 
-👤 *Channel:* ${channel}
-⏳ *Duration:* ${duration}
-👁 *Views:* ${views}
-🔗 *Link:* ${cleanUrl}
+🎵 *Title:* ${title}
+👤 *Channel:* ${searchResult?.author?.name || 'N/A'}
+⏳ *Duration:* ${searchResult?.timestamp || 'N/A'}
 
-> *⚡ ᴘᴏᴡᴇʀᴇᴅ ʙʏ DR KAMRAN ⚡*`;
+> *⚡ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ ⚡*`;
 
-            // 1. Send Thumbnail & Info
-            if (thumbnail) {
-                await conn.sendMessage(from, {
-                    image: { url: thumbnail },
-                    caption: caption
-                }, { quoted: mek });
-            }
+            // Step 4: Send Info & Audio
+            await conn.sendMessage(from, {
+                image: { url: thumbnail },
+                caption: caption
+            }, { quoted: mek });
 
-            // 2. Send Audio File
             await conn.sendMessage(from, {
                 audio: { url: result.mp3 },
                 mimetype: "audio/mpeg",
@@ -90,7 +82,7 @@ commands.forEach(command => {
             await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
         } catch (e) {
-            console.error(`${command} error:`, e.message);
+            console.error("ERROR:", e.message);
             await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
             reply("❌ Error: " + e.message);
         }
