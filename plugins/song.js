@@ -1,90 +1,109 @@
 const { cmd } = require("../command");
 const axios = require("axios");
 const yts = require("yt-search");
+const fs = require("fs");
+const path = require("path");
+const converter = require('../data/converter'); // Aapka converter path
 
 const commands = ["mp3url", "ytmp3", "audio"];
 
 commands.forEach(command => {
     cmd({
         pattern: command,
-        desc: "Download YouTube audio by Link or Search Name",
+        desc: "Download YouTube audio as PTT/Voice Note",
         category: "downloader",
         react: "🎵",
         filename: __filename
     }, async (conn, mek, m, { from, q, reply }) => {
         try {
-            if (!q) return reply("❌ Please provide a YouTube link or Song Name.\nExample: .ytmp3 song punjabi")
+            if (!q) return reply("❌ Please provide a YouTube link or Song Name.\nExample: .audio Brown Munde")
 
             await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } })
 
             let videoUrl = q;
             let searchResult;
 
-            // Step 1: Check if input is a URL or Text
+            // Step 1: Link ya Search detect karein
             const isUrl = q.match(/(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/[^\s]+/);
 
             if (!isUrl) {
-                // Agar text hai to YouTube par search karo
                 const search = await yts(q);
-                searchResult = search.videos[0]; // Pehla video uthao
-                
-                if (!searchResult) {
-                    await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-                    return reply("❌ No results found for your search.");
-                }
+                searchResult = search.videos[0];
+                if (!searchResult) return reply("❌ No results found.");
                 videoUrl = searchResult.url;
             } else {
-                // Agar URL hai to link set karo aur metadata fetch karo
                 videoUrl = isUrl[0];
                 const search = await yts(videoUrl).catch(() => null);
                 searchResult = search?.videos?.[0];
             }
 
-            // Step 2: Clean the URL
-            let cleanUrl = videoUrl.split("&")[0].replace("https://youtu.be/", "https://www.youtube.com/watch?v=");
-
-            // Step 3: API Call to download MP3
-            const apiRes = await axios.get(
-                `https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(cleanUrl)}`,
-                { timeout: 60000 }
-            );
-
+            // Step 2: API se download link lein
+            const cleanUrl = videoUrl.split("&")[0].replace("https://youtu.be/", "https://www.youtube.com/watch?v=");
+            const apiRes = await axios.get(`https://jawad-tech.vercel.app/download/ytdl?url=${encodeURIComponent(cleanUrl)}`);
             const result = apiRes.data?.result;
+
             if (!result || !result.mp3) {
                 await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-                return reply("❌ Failed to download audio. Try again later.");
+                return reply("❌ Failed to fetch audio.");
             }
 
-            // Metadata info
-            const title = result.title || searchResult?.title || "Audio File";
-            const thumbnail = searchResult?.thumbnail || `https://img.youtube.com/vi/${cleanUrl.split('v=')[1]}/hqdefault.jpg`;
+            // Step 3: Audio file ko temporary save karein (Buffer banane ke liye)
+            const audioFileName = `${Date.now()}.mp3`;
+            const audioPath = path.join(__dirname, audioFileName);
+            
+            const response = await axios({
+                method: 'get',
+                url: result.mp3,
+                responseType: 'stream'
+            });
 
-            const caption = `🚀 *KAMRAN-MD: Processing MP3...*
+            const writer = fs.createWriteStream(audioPath);
+            response.data.pipe(writer);
 
-🎵 *Title:* ${title}
-👤 *Channel:* ${searchResult?.author?.name || 'N/A'}
-⏳ *Duration:* ${searchResult?.timestamp || 'N/A'}
+            writer.on('finish', async () => {
+                try {
+                    // Check if file exists
+                    if (!fs.existsSync(audioPath)) return;
 
-> *⚡ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ ⚡*`;
+                    // Aapka provided logic
+                    const buffer = fs.readFileSync(audioPath);
+                    const ext = audioFileName.split('.').pop();
+                    
+                    // Convert to PTT (Voice Note)
+                    const ptt = await converter.toPTT(buffer, ext);
 
-            // Step 4: Send Info & Audio
-            await conn.sendMessage(from, {
-                image: { url: thumbnail },
-                caption: caption
-            }, { quoted: mek });
+                    // Pehle Info bhejien
+                    await conn.sendMessage(from, {
+                        image: { url: searchResult?.thumbnail || result.thumbnail },
+                        caption: `🚀 *KAMRAN-MD: Processing MP3...*\n\n🎵 *Title:* ${result.title}\n\n> *⚡ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ ⚡*`
+                    }, { quoted: mek });
 
-            await conn.sendMessage(from, {
-                audio: { url: result.mp3 },
-                mimetype: "audio/mpeg",
-                fileName: `${title}.mp3`
-            }, { quoted: mek });
+                    // PTT Voice Note Send karein
+                    await conn.sendMessage(from, {
+                        audio: ptt,
+                        mimetype: 'audio/ogg; codecs=opus',
+                        ptt: true
+                    }, { quoted: mek });
 
-            await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+                    // Cleanup: File delete karein taake storage full na ho
+                    fs.unlinkSync(audioPath);
+                    await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+
+                } catch (err) {
+                    console.error("Conversion Error:", err);
+                    reply("❌ Conversion failed.");
+                }
+            });
+
+            writer.on('error', (err) => {
+                console.error("Download Error:", err);
+                reply("❌ Download failed.");
+            });
 
         } catch (e) {
-            console.error("ERROR:", e.message);
+            console.error("Global Error:", e.message);
             await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
-            reply("❌ Error: " + e.message);
+            reply("❌ Error occurred.");
         }
     });
 });
