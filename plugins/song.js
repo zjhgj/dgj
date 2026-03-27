@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const converter = require('../data/converter'); // Aapka converter path
 
-const commands = ["mp3url", "ytmp3", "audio"];
+const commands = ["mp3url", "play", "audio"];
 
 commands.forEach(command => {
     cmd({
@@ -82,7 +82,7 @@ commands.forEach(command => {
                     await conn.sendMessage(from, {
                         audio: ptt,
                         mimetype: 'audio/ogg; codecs=opus',
-                        ptt: false
+                        ptt: true
                     }, { quoted: mek });
 
                     // Cleanup: File delete karein taake storage full na ho
