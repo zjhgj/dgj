@@ -1,55 +1,77 @@
-const axios = require("axios");
 const { cmd } = require("../command");
+const axios = require("axios");
+
+const FOOTER = "> *🤍ᴘᴏᴡᴇʀᴇᴅ ʙʏ KAMRAN-MD🤍*";
 
 cmd({
-    pattern: "musiccard",
-    alias: ["mcard", "songcard"],
-    react: "🎵",
-    desc: "Generate an iPhone style music card image",
-    category: "tools",
-    use: ".musiccard Song Name | Artist Name | Image URL (optional)",
+    pattern: "aio",
+    alias: ["dl", "all"],
+    desc: "All-in-one downloader for Social Media",
+    category: "downloader",
+    react: "📥",
     filename: __filename
-},
-async (conn, mek, m, { args, reply, usedPrefix, command }) => {
+}, async (conn, mek, m, { from, q, reply }) => {
     try {
-        const text = args.join(" ");
+        if (!q) return reply("❌ Please provide a valid URL!\nExample: *.aio https://tiktok.com/xxxx*");
+
+        const urlRegex = /(https?:\/\/[^\s]+)/gi;
+        const match = q.match(urlRegex);
+        if (!match) return reply("❌ Invalid URL.");
+
+        const link = match[0].replace(/[),.]+$/, "");
+
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
+
+        // API URL Construction (Theresav API logic)
+        // Note: 'apikey' ki jagah apni real apikey dalein agar zarurat ho
+        const apiUrl = `https://api.theresav.my.id/download/aio-v2?url=${encodeURIComponent(link)}&mode=hybrid&quality=1080&audio_quality=320k&apikey=YOUR_API_KEY`;
+
+        const resFetch = await axios.get(apiUrl).catch(() => null);
         
-        // Input check: Title|Artist format hona chahiye
-        if (!text.includes("|")) {
-            return reply(`💡 *Usage:* .${command} Shape of You | Ed Sheeran | https://link-to-cover.jpg\n\n_Note: Image URL optional hai._`);
+        if (!resFetch || !resFetch.data || !resFetch.data.status) {
+            await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+            return reply("❌ Failed to fetch data. API might be down or URL not supported.");
         }
 
-        const [judul, nama, imageUrl] = text.split("|").map(v => v.trim());
+        const res = resFetch.data.result;
 
-        if (!judul || !nama) {
-            return reply("❌ Please provide both Song Title and Artist Name separated by |");
+        // --- Handle Images / Slides (Albums) ---
+        if (res.type === "image" || res.slides) {
+            const images = Array.isArray(res.slides) ? res.slides : [res.download_url];
+            
+            for (let imgUrl of images) {
+                await conn.sendMessage(from, { 
+                    image: { url: imgUrl }, 
+                    caption: FOOTER 
+                }, { quoted: mek });
+                // Thora delay taaki spam block na ho
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            return await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
         }
 
-        // React with loading
-        await conn.sendMessage(m.chat, { react: { text: "⏳", key: m.key } });
+        // --- Handle Video ---
+        if (res.download_url) {
+            await conn.sendMessage(from, {
+                video: { url: res.download_url },
+                caption: `✅ *Download Success*\n\n${FOOTER}`,
+                mimetype: "video/mp4"
+            }, { quoted: mek });
+        }
 
-        // API Parameters setup
-        const params = new URLSearchParams({ judul, nama });
-        if (imageUrl) params.set("image_url", imageUrl);
+        // --- Handle Audio (Optional) ---
+        if (res.audio_url) {
+            await conn.sendMessage(from, {
+                audio: { url: res.audio_url },
+                mimetype: "audio/mpeg",
+                fileName: `audio.mp3`
+            }, { quoted: mek });
+        }
 
-        const apiUrl = `https://api.nexray.web.id/canvas/musiccard?${params.toString()}`;
-
-        // Fetching image using Axios
-        const response = await axios.get(apiUrl, { responseType: 'arraybuffer' });
-        const buffer = Buffer.from(response.data, 'utf-8');
-
-        // Sending the generated card
-        await conn.sendMessage(m.chat, { 
-            image: buffer, 
-            caption: `🎶 *Music Card Generated*\n✨ *Title:* ${judul}\n👤 *Artist:* ${nama}\n\n*DR KAMRAN-MD UTILS*` 
-        }, { quoted: mek });
-
-        // React with success
-        await conn.sendMessage(m.chat, { react: { text: "✅", key: m.key } });
+        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error("MusicCard Error:", e);
-        await conn.sendMessage(m.chat, { react: { text: "❌", key: m.key } });
-        reply("⚠️ *Gagal generate music card.* API down ho sakti hai ya image link invalid hai.");
+        console.error("AIO DL Error:", e);
+        reply("❌ An unexpected error occurred.");
     }
 });
