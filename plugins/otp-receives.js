@@ -135,7 +135,7 @@ cmd({
 > _${v.full_message}_
 
 📢 *Official Channel:* ${CHANNEL_LINK}
-> *POWERED BY PROVA-MD / KAMRAN*`;
+> *POWERED BY KAMRAN-MD*`;
 
                         await conn.sendMessage(userSession.target, { text: caption });
                         userSession.sentIds.add(uniqueId);
