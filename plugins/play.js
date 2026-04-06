@@ -8,9 +8,9 @@ const CHANNEL_LINK = "https://whatsapp.com/channel/0029Vb7QIUD5kg7FngcRYY1N";
 
 let sessions = {};
 
-/* --- 🌍 COUNTRY HELPER --- */
+// --- 🌍 ALL COUNTRY DATABASE ---
 function getCountry(num) {
-    const countryCodes = { "92": "🇵🇰 Pakistan", "91": "🇮🇳 India", "1": "🇺🇸 USA", "44": "🇬🇧 UK", "971": "🇦🇪 UAE" }; 
+    const countryCodes = { "92": "🇵🇰 Pakistan", "91": "🇮🇳 India", "1": "🇺🇸 USA", "44": "🇬🇧 UK", "971": "🇦🇪 UAE", "966": "🇸🇦 Saudi Arabia" };
     for (let i = 4; i >= 1; i--) {
         let prefix = num.substring(0, i);
         if (countryCodes[prefix]) return countryCodes[prefix];
@@ -25,7 +25,7 @@ function maskNum(num) {
 cmd({
     pattern: "otp",
     alias: ["otps", "otpstart", "otpstop"],
-    desc: "Forward ONLY NEW OTPs",
+    desc: "Fastest Multi-user OTP Forwarder",
     category: "tools",
     react: "⚡",
     filename: __filename
@@ -38,6 +38,7 @@ cmd({
     const userSession = sessions[sender];
     const subCommand = args[0] ? args[0].toLowerCase() : "";
 
+    // 1. SET TARGET
     if (subCommand === 'set') {
         const jid = args[1];
         if (!jid || !jid.includes('@')) return reply("❌ *Usage:* `.otp set JID@newsletter` ");
@@ -45,36 +46,35 @@ cmd({
         return reply(`✅ *Target Saved:* \`${userSession.target}\``);
     }
 
+    // 2. START MONITORING (Fast & Fresh)
     if (subCommand === 'start') {
-        if (!userSession.target) return reply("⚠️ *Set JID first!*");
-        if (userSession.running) return reply("⚠️ *Already running!*");
+        if (!userSession.target) return reply("⚠️ *JID Set Karein Pehle!*");
+        if (userSession.running) return reply("⚠️ *Pehle se chal raha hai!*");
 
-        // --- STEP 1: INITIAL SCAN (Purane OTPs ko ignore karne ke liye) ---
+        // --- STEP 1: Fast Initial Scan (Ignore Old Data) ---
         try {
-            const initialRes = await axios.get(OTP_API);
-            if (initialRes.data && initialRes.data.result) {
-                initialRes.data.result.forEach(v => {
-                    const oldId = `${v.number}_${v.otp}_${v.service}`.trim();
-                    userSession.sentIds.add(oldId); // Saare purane IDs database mein daal diye
+            const initial = await axios.get(OTP_API, { headers: { 'Cache-Control': 'no-cache' } });
+            if (initial.data && initial.data.result) {
+                initial.data.result.forEach(v => {
+                    userSession.sentIds.add(`${v.number}_${v.otp}`);
                 });
             }
-        } catch (e) { console.log("Initial scan error"); }
+        } catch (e) { console.log("Init Error"); }
 
         userSession.running = true;
-        reply(`🚀 *Monitoring Started!*\nAb sirf **Naye OTPs** forward honge. Purane ignore kar diye gaye hain.`);
+        reply(`🚀 *Instant OTP Mode Active!*\nAb sirf naye OTPs bhejunga.\n🎯 *Forwarding to:* \`${userSession.target}\``);
 
-        // --- STEP 2: REAL-TIME MONITORING LOOP ---
+        // --- STEP 2: High-Speed Loop ---
         while (userSession.running) {
             try {
-                const { data } = await axios.get(OTP_API, {
-                    headers: { 'Cache-Control': 'no-cache' }
+                const response = await axios.get(OTP_API, { 
+                    headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } 
                 });
 
-                if (data && data.result) {
-                    for (const v of data.result) {
-                        const uniqueId = `${v.number}_${v.otp}_${v.service}`.trim();
+                if (response.data && response.data.result) {
+                    for (const v of response.data.result) {
+                        const uniqueId = `${v.number}_${v.otp}`;
                         
-                        // Agar yeh ID pehle se nahi hai, toh hi send karo
                         if (!userSession.sentIds.has(uniqueId)) {
                             const caption = `┏━♡━━━━━━━🪀━━━━━━━♡━┓
   🔥 *NEW OTP DETECTED* 🔥
@@ -87,26 +87,32 @@ cmd({
 │ 🔑 *OTP CODE* : *${v.otp}*
 └────────────────────┈⊷
 
-*MESSAGE DETAIL:*
-> _${v.full_message}_
-
-📢 *Source:* ${CHANNEL_LINK}
+📢 *Official Channel:* ${CHANNEL_LINK}
 > *POWERED BY KAMRAN-MD*`;
 
                             await conn.sendMessage(userSession.target, { text: caption });
                             userSession.sentIds.add(uniqueId);
+                            
+                            // RAM safe rakhne ke liye list clean karein
+                            if (userSession.sentIds.size > 200) {
+                                const first = userSession.sentIds.values().next().value;
+                                userSession.sentIds.delete(first);
+                            }
                         }
                     }
                 }
-            } catch (err) { console.log("Loop Error:", err.message); }
-            
-            await new Promise(resolve => setTimeout(resolve, 8000)); // 8 seconds delay
+            } catch (err) {
+                console.log("Fetch Error:", err.message);
+            }
+            // 5 Seconds interval for speed
+            await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
 
+    // 3. STOP
     if (subCommand === 'stop') {
         userSession.running = false;
-        userSession.sentIds.clear(); // Stop hone par list clear kar den
+        userSession.sentIds.clear();
         return reply("🛑 *OTP Monitoring Stopped.*");
     }
 });
