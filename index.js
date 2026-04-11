@@ -44,9 +44,9 @@ const {
   const path = require('path')
   const prefix = config.PREFIX
 
-  // --- OWNER & CUSTOM SETTINGS ---
+  // --- OWNER & SETTINGS ---
   const ownerNumber = ['923195068309'] 
-  const channelJid = '120363321588824009@newsletter' // Aapka Channel ID yahan dalain
+  const channelJid = '120363321588824009@newsletter' 
 
   const express = require("express");
   const app = express();
@@ -103,7 +103,7 @@ async function connectToWA() {
             }
         } else if (connection === 'open') {
             console.log('[✅] KAMRAN MD ONLINE');
-            const upMessage = `*🚀 KAMRAN-MD V12 MASTER FIXED*\n\n- *Owner:* Dr. Kamran ✅\n- *Status Views:* Active ✅\n- *Channel React:* Active ✅\n- *Auto-React:* Smart ✅\n\n_System fully functional._`;
+            const upMessage = `*🚀 KAMRAN-MD V12 SYSTEM FIXED*\n\n- *Owner:* Dr. Kamran ✅\n- *Errors:* ReferenceError Fixed ✅\n- *Status Views:* Active ✅\n\n_System fully functional._`;
             const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
             setTimeout(async () => {
                 await conn.sendMessage(inboxPath, { image: { url: `https://files.catbox.moe/ly6553.jpg` }, caption: upMessage });
@@ -123,12 +123,10 @@ async function connectToWA() {
         if (!m_raw.message) return;
         const from = m_raw.key.remoteJid;
 
-        // 1. AUTO STATUS SEEN (Views)
+        // 1. AUTO STATUS SEEN
         if (from === 'status@broadcast') {
             if (config.AUTO_STATUS_SEEN === "true") {
                 await conn.readMessages([m_raw.key]);
-                // Status par auto emoji react (Optional)
-                await conn.sendMessage(from, { react: { text: '🔥', key: m_raw.key }}, { statusJidList: [m_raw.key.participant] });
             }
             return;
         }
@@ -144,28 +142,27 @@ async function connectToWA() {
         
         const sender = m_raw.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net') : (m_raw.key.participant || m_raw.key.remoteJid);
         const senderNumber = sender.replace(/[^0-9]/g, '');
-        const isGroup = from.endsWith('@g.us');
+        const isGroup = from.endsWith('@g.us'); // <--- DEFINED HERE TO FIX ERROR
         const botNumber = conn.user.id.split(':')[0].replace(/[^0-9]/g, '');
         
-        // --- MASTER OWNER CHECK ---
+        // --- OWNER LOGIC ---
         const isOwner = ownerNumber.includes(senderNumber) || m_raw.key.fromMe || senderNumber === botNumber;
         const isCreator = isOwner; 
 
-        // 2. CHANNEL REACT & AUTO FORWARD
+        // 2. CHANNEL REACT
         if (from === channelJid && !m_raw.key.fromMe) {
             await conn.sendMessage(from, { react: { text: '❤️', key: m_raw.key }});
         }
 
         if (config.MODE === "private" && !isOwner && isCmd) return;
 
-        // 3. SMART AUTO REACT & CUSTOM REACT
+        // 3. SMART & CUSTOM REACT
         if (!isCmd) {
-            // Custom Emoji Logic
             if (body.toLowerCase().includes("kamran")) m.react('👑');
             if (body.toLowerCase().includes("bot")) m.react('🤖');
             
             if (config.AUTO_REACT === 'true') {
-                const reactions = ['❤️', '🔥', '✨', '💯', '⚡', '😇'];
+                const reactions = ['❤️', '🔥', '✨', '💯'];
                 m.react(reactions[Math.floor(Math.random() * reactions.length)]);
             }
         }
@@ -219,4 +216,3 @@ app.use(express.static(path.join(__dirname, 'lib')));
 app.get('/', (req, res) => { res.redirect('/kamran.html'); });
 app.listen(port, () => console.log(`Server listening on port ${port}`));
 setTimeout(() => { connectToWA() }, 4000);
-			
