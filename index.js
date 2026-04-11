@@ -49,7 +49,7 @@ const {
   const app = express();
   const port = process.env.PORT || 9090;
 
-  // Cache cleanup
+  // Cache Management
   const tempDir = path.join(os.tmpdir(), 'cache-temp')
   if (!fs.existsSync(tempDir)) { fs.mkdirSync(tempDir) }
   const clearTempDir = () => {
@@ -102,13 +102,14 @@ async function connectToWA() {
         } else if (connection === 'open') {
             console.log('[✅] KAMRAN MD ONLINE');
             
-            const upMessage = `*🚀 KAMRAN-MD V12 SYSTEM FIXED*\n\n- *Music/Video:* Fixed ✅\n- *Args/Query:* Fixed ✅\n- *Status/Channel:* Active ✅\n\n_Ab aapke download commands sahi kaam karenge._`;
+            // Startup Active Message with Image
+            const upMsg = `*🚀 KAMRAN-MD V12 SYSTEM FIXED*\n\n- *Stickers:* Fixed ✅\n- *Music/Video:* Fixed ✅\n- *Newsletter:* Fixed ✅\n- *Mode:* ${config.MODE}\n\n_System ab 100% working hai._`;
             const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
             
             setTimeout(async () => {
                 await conn.sendMessage(inboxPath, { 
                     image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
-                    caption: upMessage 
+                    caption: upMsg 
                 });
             }, 5000);
 
@@ -126,7 +127,7 @@ async function connectToWA() {
         if (!m_raw.message) return;
         const from = m_raw.key.remoteJid;
 
-        // 1. STATUS SEEN & REACT
+        // 1. STATUS HANDLING
         if (from === 'status@broadcast') {
             if (config.AUTO_STATUS_SEEN === "true") await conn.readMessages([m_raw.key]);
             if (config.AUTO_STATUS_REACT === "true") {
@@ -136,7 +137,7 @@ async function connectToWA() {
             return;
         }
 
-        // 2. CHANNEL REACT (120363418144382782@newsletter)
+        // 2. NEWSLETTER HANDLING (120363418144382782@newsletter)
         if (from === '120363418144382782@newsletter') {
             if (config.AUTO_REACT === "true") {
                 await conn.sendMessage(from, { react: { text: '❤️', key: m_raw.key } });
@@ -150,7 +151,7 @@ async function connectToWA() {
         const isCmd = body.startsWith(prefix);
         const command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : '';
         const args = body.trim().split(/ +/).slice(1);
-        const q = args.join(' '); // Search query fix
+        const q = args.join(' ');
         
         const sender = m_raw.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net') : (m_raw.key.participant || m_raw.key.remoteJid);
         const senderNumber = sender.split('@')[0];
@@ -167,22 +168,21 @@ async function connectToWA() {
         if (config.MODE === "inbox" && isGroup && !isOwner && isCmd) return;
         if (config.MODE === "groups" && !isGroup && !isOwner && isCmd) return;
 
-        // Command Handler logic
+        // COMMAND EXECUTION
         const events = require('./command');
         if (isCmd) {
             const cmd = events.commands.find((c) => c.pattern === command) || events.commands.find((c) => c.alias && c.alias.includes(command));
             if (cmd) {
                 if (cmd.react) conn.sendMessage(from, { react: { text: cmd.react, key: m_raw.key }});
                 
-                // Group metadata
                 const groupMetadata = isGroup ? await conn.groupMetadata(from).catch(e => {}) : ''
                 const participants = isGroup ? await groupMetadata.participants : ''
                 const groupAdmins = isGroup ? await getGroupAdmins(participants) : ''
                 const isBotAdmins = isGroup ? groupAdmins.includes(botNumber + '@s.whatsapp.net') : false
-                const isAdmins = isGroup ? groupAdmins.includes(sender) : false
+                const isAdmins = isAdmins = isGroup ? groupAdmins.includes(sender) : false
 
                 try {
-                    // Yahan arguments (q, text, args) pass ho rahe hain jo downloaders ke liye zaroori hain
+                    // Yahan sab parameters pass kar diye taake plugins fail na hon
                     cmd.function(conn, m_raw, m, { 
                         from, body, isCmd, command, args, q, text: q, sender, isOwner, isGroup, 
                         groupMetadata, participants, groupAdmins, isBotAdmins, isAdmins,
@@ -199,7 +199,7 @@ async function connectToWA() {
         }
     });
 
-    // Essential functions
+    // Essential Helper Functions (Re-added)
     conn.decodeJid = (jid) => {
         if (!jid) return jid;
         if (/:\d+@/gi.test(jid)) {
@@ -208,10 +208,13 @@ async function connectToWA() {
         } else return jid;
     };
 
-    // 6-hour Anti-Sleep Ping
-    setInterval(() => {
-        axios.get(`http://localhost:${port}`).catch(() => {});
-    }, 10 * 60 * 1000);
+    conn.getName = (jid, withoutContact = false) => {
+        jid = conn.decodeJid(jid);
+        return jid.replace('@s.whatsapp.net', '');
+    };
+
+    // Heroku Ping
+    setInterval(() => { axios.get(`http://localhost:${port}`).catch(() => {}); }, 10 * 60 * 1000);
 }
 
 app.use(express.static(path.join(__dirname, 'lib')));
@@ -219,4 +222,4 @@ app.get('/', (req, res) => { res.redirect('/kamran.html'); });
 app.listen(port, () => console.log(`Server listening on port ${port}`));
 
 setTimeout(() => { connectToWA() }, 4000);
-		
+			
