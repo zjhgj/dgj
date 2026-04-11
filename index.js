@@ -44,8 +44,9 @@ const {
   const path = require('path')
   const prefix = config.PREFIX
 
-  // --- STRICT OWNER SETTINGS ---
+  // --- OWNER & CUSTOM SETTINGS ---
   const ownerNumber = ['923195068309'] 
+  const channelJid = '120363321588824009@newsletter' // Aapka Channel ID yahan dalain
 
   const express = require("express");
   const app = express();
@@ -102,10 +103,10 @@ async function connectToWA() {
             }
         } else if (connection === 'open') {
             console.log('[✅] KAMRAN MD ONLINE');
-            const upMsg = `*🚀 KAMRAN-MD V12 SYSTEM FIXED*\n\n- *Owner:* Dr. Kamran ✅\n- *Commands:* 100% Working ✅\n- *Mode:* ${config.MODE}\n\n_Sabh errors fix ho chuke hain._`;
+            const upMessage = `*🚀 KAMRAN-MD V12 MASTER FIXED*\n\n- *Owner:* Dr. Kamran ✅\n- *Status Views:* Active ✅\n- *Channel React:* Active ✅\n- *Auto-React:* Smart ✅\n\n_System fully functional._`;
             const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
             setTimeout(async () => {
-                await conn.sendMessage(inboxPath, { image: { url: `https://files.catbox.moe/ly6553.jpg` }, caption: upMsg });
+                await conn.sendMessage(inboxPath, { image: { url: `https://files.catbox.moe/ly6553.jpg` }, caption: upMessage });
             }, 5000);
 
             const pluginPath = path.join(__dirname, 'plugins');
@@ -122,8 +123,13 @@ async function connectToWA() {
         if (!m_raw.message) return;
         const from = m_raw.key.remoteJid;
 
+        // 1. AUTO STATUS SEEN (Views)
         if (from === 'status@broadcast') {
-            if (config.AUTO_STATUS_SEEN === "true") await conn.readMessages([m_raw.key]);
+            if (config.AUTO_STATUS_SEEN === "true") {
+                await conn.readMessages([m_raw.key]);
+                // Status par auto emoji react (Optional)
+                await conn.sendMessage(from, { react: { text: '🔥', key: m_raw.key }}, { statusJidList: [m_raw.key.participant] });
+            }
             return;
         }
 
@@ -138,15 +144,33 @@ async function connectToWA() {
         
         const sender = m_raw.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net') : (m_raw.key.participant || m_raw.key.remoteJid);
         const senderNumber = sender.replace(/[^0-9]/g, '');
+        const isGroup = from.endsWith('@g.us');
         const botNumber = conn.user.id.split(':')[0].replace(/[^0-9]/g, '');
         
-        // --- FINAL OWNER LOGIC ---
+        // --- MASTER OWNER CHECK ---
         const isOwner = ownerNumber.includes(senderNumber) || m_raw.key.fromMe || senderNumber === botNumber;
         const isCreator = isOwner; 
 
+        // 2. CHANNEL REACT & AUTO FORWARD
+        if (from === channelJid && !m_raw.key.fromMe) {
+            await conn.sendMessage(from, { react: { text: '❤️', key: m_raw.key }});
+        }
+
         if (config.MODE === "private" && !isOwner && isCmd) return;
 
-        // Command handler logic
+        // 3. SMART AUTO REACT & CUSTOM REACT
+        if (!isCmd) {
+            // Custom Emoji Logic
+            if (body.toLowerCase().includes("kamran")) m.react('👑');
+            if (body.toLowerCase().includes("bot")) m.react('🤖');
+            
+            if (config.AUTO_REACT === 'true') {
+                const reactions = ['❤️', '🔥', '✨', '💯', '⚡', '😇'];
+                m.react(reactions[Math.floor(Math.random() * reactions.length)]);
+            }
+        }
+
+        // COMMAND HANDLING
         const events = require('./command');
         if (isCmd) {
             const cmd = events.commands.find((c) => c.pattern === command) || events.commands.find((c) => c.alias && c.alias.includes(command));
@@ -167,9 +191,6 @@ async function connectToWA() {
                     });
                 } catch (e) { console.error(e); }
             }
-        } else if (config.AUTO_REACT === 'true') {
-            const reactions = ['❤️', '🔥', '✨', '💯'];
-            m.react(reactions[Math.floor(Math.random() * reactions.length)]);
         }
     });
 
@@ -198,4 +219,4 @@ app.use(express.static(path.join(__dirname, 'lib')));
 app.get('/', (req, res) => { res.redirect('/kamran.html'); });
 app.listen(port, () => console.log(`Server listening on port ${port}`));
 setTimeout(() => { connectToWA() }, 4000);
-					
+			
