@@ -102,7 +102,7 @@ async function connectToWA() {
         } else if (connection === 'open') {
             console.log('[✅] KAMRAN MD ONLINE');
             
-            const upMessage = `*🚀 KAMRAN-MD V12 IS ONLINE*\n\n- *Prefix:* ${prefix}\n- *Mode:* ${config.MODE}\n- *Owner:* Dr. Kamran\n\n_Group commands issue fixed._`;
+            const upMessage = `*🚀 KAMRAN-MD V12 SYSTEM FIXED*\n\n- *Music/Video:* Fixed ✅\n- *Args/Query:* Fixed ✅\n- *Status/Channel:* Active ✅\n\n_Ab aapke download commands sahi kaam karenge._`;
             const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
             
             setTimeout(async () => {
@@ -146,7 +146,12 @@ async function connectToWA() {
         const m = sms(conn, m_raw);
         const type = getContentType(m_raw.message);
         const body = (type === 'conversation') ? m_raw.message.conversation : (type === 'extendedTextMessage') ? m_raw.message.extendedTextMessage.text : (type == 'imageMessage') && m_raw.message.imageMessage.caption ? m_raw.message.imageMessage.caption : (type == 'videoMessage') && m_raw.message.videoMessage.caption ? m_raw.message.videoMessage.caption : '';
+        
         const isCmd = body.startsWith(prefix);
+        const command = isCmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : '';
+        const args = body.trim().split(/ +/).slice(1);
+        const q = args.join(' '); // Search query fix
+        
         const sender = m_raw.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net') : (m_raw.key.participant || m_raw.key.remoteJid);
         const senderNumber = sender.split('@')[0];
         const isGroup = from.endsWith('@g.us');
@@ -157,21 +162,19 @@ async function connectToWA() {
 
         await saveMessage(m_raw);
 
-        // MODE CHECK - Agar private mode hai toh sirf owner commands chalaye
+        // MODE CHECK
         if (config.MODE === "private" && !isOwner && isCmd) return;
         if (config.MODE === "inbox" && isGroup && !isOwner && isCmd) return;
         if (config.MODE === "groups" && !isGroup && !isOwner && isCmd) return;
 
         // Command Handler logic
         const events = require('./command');
-        const cmdName = isCmd ? body.slice(prefix.length).trim().split(" ")[0].toLowerCase() : false;
-        
         if (isCmd) {
-            const cmd = events.commands.find((c) => c.pattern === (cmdName)) || events.commands.find((c) => c.alias && c.alias.includes(cmdName));
+            const cmd = events.commands.find((c) => c.pattern === command) || events.commands.find((c) => c.alias && c.alias.includes(command));
             if (cmd) {
                 if (cmd.react) conn.sendMessage(from, { react: { text: cmd.react, key: m_raw.key }});
                 
-                // Group metadata for commands
+                // Group metadata
                 const groupMetadata = isGroup ? await conn.groupMetadata(from).catch(e => {}) : ''
                 const participants = isGroup ? await groupMetadata.participants : ''
                 const groupAdmins = isGroup ? await getGroupAdmins(participants) : ''
@@ -179,8 +182,9 @@ async function connectToWA() {
                 const isAdmins = isGroup ? groupAdmins.includes(sender) : false
 
                 try {
+                    // Yahan arguments (q, text, args) pass ho rahe hain jo downloaders ke liye zaroori hain
                     cmd.function(conn, m_raw, m, { 
-                        from, body, isCmd, sender, isOwner, isGroup, 
+                        from, body, isCmd, command, args, q, text: q, sender, isOwner, isGroup, 
                         groupMetadata, participants, groupAdmins, isBotAdmins, isAdmins,
                         reply: (t) => conn.sendMessage(from, { text: t }, { quoted: m_raw }), ...mek 
                     });
@@ -195,7 +199,7 @@ async function connectToWA() {
         }
     });
 
-    // Re-adding essential functions
+    // Essential functions
     conn.decodeJid = (jid) => {
         if (!jid) return jid;
         if (/:\d+@/gi.test(jid)) {
