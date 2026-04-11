@@ -44,7 +44,7 @@ const {
   const path = require('path')
   const prefix = config.PREFIX
 
-  // --- OWNER NUMBER DEFINITION ---
+  // --- STRICT OWNER SETTINGS ---
   const ownerNumber = ['923195068309'] 
 
   const express = require("express");
@@ -102,10 +102,10 @@ async function connectToWA() {
             }
         } else if (connection === 'open') {
             console.log('[✅] KAMRAN MD ONLINE');
-            const upMessage = `*🚀 KAMRAN-MD V12 FIXED*\n\n- *Owner:* Dr. Kamran ✅\n- *Stickers/Media:* Fixed ✅\n- *Commands:* Active ✅\n- *Mode:* ${config.MODE}\n\n_System fully functional with owner access._`;
+            const upMsg = `*🚀 KAMRAN-MD V12 SYSTEM FIXED*\n\n- *Owner:* Dr. Kamran ✅\n- *Commands:* 100% Working ✅\n- *Mode:* ${config.MODE}\n\n_Sabh errors fix ho chuke hain._`;
             const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
             setTimeout(async () => {
-                await conn.sendMessage(inboxPath, { image: { url: `https://files.catbox.moe/ly6553.jpg` }, caption: upMessage });
+                await conn.sendMessage(inboxPath, { image: { url: `https://files.catbox.moe/ly6553.jpg` }, caption: upMsg });
             }, 5000);
 
             const pluginPath = path.join(__dirname, 'plugins');
@@ -122,7 +122,6 @@ async function connectToWA() {
         if (!m_raw.message) return;
         const from = m_raw.key.remoteJid;
 
-        // Auto Status Seen
         if (from === 'status@broadcast') {
             if (config.AUTO_STATUS_SEEN === "true") await conn.readMessages([m_raw.key]);
             return;
@@ -138,24 +137,16 @@ async function connectToWA() {
         const q = args.join(' ');
         
         const sender = m_raw.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net') : (m_raw.key.participant || m_raw.key.remoteJid);
-        const senderNumber = sender.split('@')[0];
-        const isGroup = from.endsWith('@g.us');
-        const botNumber = conn.user.id.split(':')[0];
+        const senderNumber = sender.replace(/[^0-9]/g, '');
+        const botNumber = conn.user.id.split(':')[0].replace(/[^0-9]/g, '');
         
-        // --- UPDATED OWNER LOGIC ---
-        const isOwner = ownerNumber.includes(senderNumber) || m_raw.key.fromMe;
+        // --- FINAL OWNER LOGIC ---
+        const isOwner = ownerNumber.includes(senderNumber) || m_raw.key.fromMe || senderNumber === botNumber;
         const isCreator = isOwner; 
 
-        // Mode restrictions
         if (config.MODE === "private" && !isOwner && isCmd) return;
 
-        // SMART AUTO REACT: Commands par react nahi karega taake reply bypass na ho
-        if (!isCmd && config.AUTO_REACT === 'true') {
-            const reactions = ['❤️', '🔥', '✨', '💯'];
-            m.react(reactions[Math.floor(Math.random() * reactions.length)]);
-        }
-
-        // COMMAND HANDLING
+        // Command handler logic
         const events = require('./command');
         if (isCmd) {
             const cmd = events.commands.find((c) => c.pattern === command) || events.commands.find((c) => c.alias && c.alias.includes(command));
@@ -176,10 +167,12 @@ async function connectToWA() {
                     });
                 } catch (e) { console.error(e); }
             }
+        } else if (config.AUTO_REACT === 'true') {
+            const reactions = ['❤️', '🔥', '✨', '💯'];
+            m.react(reactions[Math.floor(Math.random() * reactions.length)]);
         }
     });
 
-    // Essential Functions
     conn.decodeJid = (jid) => {
         if (!jid) return jid;
         if (/:\d+@/gi.test(jid)) {
@@ -205,4 +198,4 @@ app.use(express.static(path.join(__dirname, 'lib')));
 app.get('/', (req, res) => { res.redirect('/kamran.html'); });
 app.listen(port, () => console.log(`Server listening on port ${port}`));
 setTimeout(() => { connectToWA() }, 4000);
-			
+					
