@@ -275,29 +275,28 @@ BotActivityFilter(conn);
   }
     if(mek.message.viewOnceMessageV2)
     mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-    // ============ STATUS AUTO SEEN - SESSION COMPATIBLE ============
+    // ============ STATUS AUTO SEEN - STABLE FIX ============
 if (mek.key && mek.key.remoteJid === 'status@broadcast') {
     if (config.AUTO_STATUS_SEEN === "true") {
         try {
-            // Participant check (LID aur JID dono ke liye)
-            const participant = mek.key.participant || mek.participant;
+            const statusSender = mek.key.participant || mek.participant;
             
-            if (participant) {
-                await conn.readMessages([{
-                    remoteJid: 'status@broadcast',
-                    id: mek.key.id,
-                    participant: participant
-                }]);
-                
-                // Console mein dikhane ke liye
-                const sender = participant.includes(':') ? participant.split(':')[0] : participant.split('@')[0];
-                console.log(`[✅] Status Seen from: ${sender}`);
-            }
-        } catch (err) {
-            // Agar decryption error aaye toh yahan show hoga
-            console.log(`[❌] Status Read Error: ${err.message}`);
+            // Isme hum 'true' flag bhej rahe hain taaki server ko read receipt force ho
+            await conn.readMessages([{
+                remoteJid: 'status@broadcast',
+                id: mek.key.id,
+                participant: statusSender
+            }]);
+
+            // Ek extra step: Kuch versions mein iski zaroorat hoti hai
+            await conn.sendReceipt(mek.key.remoteJid, statusSender, [mek.key.id], 'read');
+
+            console.log(`[✅] Status Seen: ${statusSender.split('@')[0]}`);
+        } catch (e) {
+            console.log(`[❌] Error: ${e.message}`);
         }
     }
+    return;
 }
 
   const newsletterJids = [
