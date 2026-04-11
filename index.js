@@ -49,15 +49,13 @@ const {
   const app = express();
   const port = process.env.PORT || 9090;
 
+  // Cache cleanup
   const tempDir = path.join(os.tmpdir(), 'cache-temp')
   if (!fs.existsSync(tempDir)) { fs.mkdirSync(tempDir) }
-  
   const clearTempDir = () => {
       fs.readdir(tempDir, (err, files) => {
           if (err) throw err;
-          for (const file of files) {
-              fs.unlink(path.join(tempDir, file), err => { if (err) throw err; });
-          }
+          for (const file of files) { fs.unlink(path.join(tempDir, file), err => { if (err) throw err; }); }
       });
   }
   setInterval(clearTempDir, 5 * 60 * 1000);
@@ -69,7 +67,7 @@ if (!fs.existsSync(sessionDir)) { fs.mkdirSync(sessionDir, { recursive: true });
 async function loadSession() {
     try {
         if (!config.SESSION_ID) return null;
-        const megaFileId = config.SESSION_ID.replace("IK~", "");
+        const megaFileId = config.SESSION_ID.startsWith('IK~') ? config.SESSION_ID.replace("IK~", "") : config.SESSION_ID;
         const filer = File.fromURL(`https://mega.nz/file/${megaFileId}`);
         const data = await new Promise((resolve, reject) => {
             filer.download((err, data) => { if (err) reject(err); else resolve(data); });
@@ -102,11 +100,17 @@ async function connectToWA() {
                 setTimeout(connectToWA, 5000);
             }
         } else if (connection === 'open') {
-            console.log('[✅] KAMRAN-MD ONLINE');
+            console.log('[✅] KAMRAN MD ONLINE');
             
-            // Startup Active Message
-            const activeMsg = `*🚀 KAMRAN-MD V12 IS ACTIVE*\n\n*Prefix:* ${config.PREFIX}\n*Owner:* Dr. Kamran\n*Target:* 120363418144382782@newsletter\n\n_Bot 24/7 active rahega aur 6 ghante baad band nahi hoga._`;
-            await conn.sendMessage(conn.user.id, { text: activeMsg });
+            const upMessage = `*🚀 KAMRAN-MD V12 IS ONLINE*\n\n- *Prefix:* ${prefix}\n- *Mode:* ${config.MODE}\n- *Owner:* Dr. Kamran\n\n_Group commands issue fixed._`;
+            const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
+            
+            setTimeout(async () => {
+                await conn.sendMessage(inboxPath, { 
+                    image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
+                    caption: upMessage 
+                });
+            }, 5000);
 
             const pluginPath = path.join(__dirname, 'plugins');
             fs.readdirSync(pluginPath).forEach((plugin) => {
@@ -122,20 +126,20 @@ async function connectToWA() {
         if (!m_raw.message) return;
         const from = m_raw.key.remoteJid;
 
-        // --- 1. STATUS SEEN & REACT ---
+        // 1. STATUS SEEN & REACT
         if (from === 'status@broadcast') {
             if (config.AUTO_STATUS_SEEN === "true") await conn.readMessages([m_raw.key]);
             if (config.AUTO_STATUS_REACT === "true") {
-                const emojis = ['❤️', '🔥', '💯', '✨', '😎'];
+                const emojis = ['❤️', '🔥', '✨', '💯', '😎'];
                 await conn.sendMessage(from, { react: { text: emojis[Math.floor(Math.random() * emojis.length)], key: m_raw.key } }, { statusJidList: [m_raw.key.participant, conn.user.id.split(':')[0] + '@s.whatsapp.net'] });
             }
             return;
         }
 
-        // --- 2. CHANNEL REACT (Aapka Diya Gaya ID) ---
+        // 2. CHANNEL REACT (120363418144382782@newsletter)
         if (from === '120363418144382782@newsletter') {
             if (config.AUTO_REACT === "true") {
-                await conn.sendMessage(from, { react: { text: '✅', key: m_raw.key } });
+                await conn.sendMessage(from, { react: { text: '❤️', key: m_raw.key } });
             }
         }
 
@@ -145,36 +149,53 @@ async function connectToWA() {
         const isCmd = body.startsWith(prefix);
         const sender = m_raw.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net') : (m_raw.key.participant || m_raw.key.remoteJid);
         const senderNumber = sender.split('@')[0];
-        const isOwner = ownerNumber.includes(senderNumber) || m_raw.key.fromMe;
+        const isGroup = from.endsWith('@g.us');
+        
+        const botNumber = conn.user.id.split(':')[0];
+        const isMe = botNumber.includes(senderNumber);
+        const isOwner = ownerNumber.includes(senderNumber) || isMe;
 
         await saveMessage(m_raw);
 
-        // Owner auto-react
-        if (senderNumber.includes("923195068309") && !m.message.reactionMessage) {
-            await m.react("👑");
-        }
+        // MODE CHECK - Agar private mode hai toh sirf owner commands chalaye
+        if (config.MODE === "private" && !isOwner && isCmd) return;
+        if (config.MODE === "inbox" && isGroup && !isOwner && isCmd) return;
+        if (config.MODE === "groups" && !isGroup && !isOwner && isCmd) return;
 
-        // Command Handler
+        // Command Handler logic
         const events = require('./command');
-        const cmdName = isCmd ? body.slice(1).trim().split(" ")[0].toLowerCase() : false;
+        const cmdName = isCmd ? body.slice(prefix.length).trim().split(" ")[0].toLowerCase() : false;
+        
         if (isCmd) {
             const cmd = events.commands.find((c) => c.pattern === (cmdName)) || events.commands.find((c) => c.alias && c.alias.includes(cmdName));
             if (cmd) {
                 if (cmd.react) conn.sendMessage(from, { react: { text: cmd.react, key: m_raw.key }});
+                
+                // Group metadata for commands
+                const groupMetadata = isGroup ? await conn.groupMetadata(from).catch(e => {}) : ''
+                const participants = isGroup ? await groupMetadata.participants : ''
+                const groupAdmins = isGroup ? await getGroupAdmins(participants) : ''
+                const isBotAdmins = isGroup ? groupAdmins.includes(botNumber + '@s.whatsapp.net') : false
+                const isAdmins = isGroup ? groupAdmins.includes(sender) : false
+
                 try {
-                    cmd.function(conn, m_raw, m, { from, body, isCmd, sender, isOwner, reply: (t) => conn.sendMessage(from, { text: t }, { quoted: m_raw }), ...mek });
+                    cmd.function(conn, m_raw, m, { 
+                        from, body, isCmd, sender, isOwner, isGroup, 
+                        groupMetadata, participants, groupAdmins, isBotAdmins, isAdmins,
+                        reply: (t) => conn.sendMessage(from, { text: t }, { quoted: m_raw }), ...mek 
+                    });
                 } catch (e) { console.error(e); }
             }
         }
     });
 
-    conn.ev.on('messages.update', async (updates) => {
+    conn.ev.on('messages.update', async updates => {
         for (const update of updates) {
             if (update.update.message === null) await AntiDelete(conn, updates);
         }
     });
 
-    // --- RE-ADDING YOUR ORIGINAL FUNCTIONS ---
+    // Re-adding essential functions
     conn.decodeJid = (jid) => {
         if (!jid) return jid;
         if (/:\d+@/gi.test(jid)) {
@@ -183,31 +204,7 @@ async function connectToWA() {
         } else return jid;
     };
 
-    conn.getName = (jid, withoutContact = false) => {
-        jid = conn.decodeJid(jid);
-        withoutContact = conn.withoutContact || withoutContact;
-        let v;
-        if (jid.endsWith('@g.us')) return new Promise(async (resolve) => {
-            v = store.contacts[jid] || {};
-            if (!(v.name || v.subject)) v = await conn.groupMetadata(jid) || {};
-            resolve(v.name || v.subject || jid.replace('@g.us', ''));
-        });
-        else v = jid === '0@s.whatsapp.net' ? { jid, name: 'WhatsApp' } : jid === jidNormalizedUser(conn.user.id) ? conn.user : store.contacts[jid] || {};
-        return (withoutContact ? '' : v.name) || v.subject || v.verifiedName || jid.replace('@s.whatsapp.net', '');
-    };
-
-    conn.sendContact = async (jid, list, quoted, opts = {}) => {
-        let contacts = [];
-        for (let i of list) {
-            contacts.push({
-                displayName: await conn.getName(i + '@s.whatsapp.net'),
-                vcard: `BEGIN:VCARD\nVERSION:3.0\nN:;${await conn.getName(i + '@s.whatsapp.net')};;;\nFN:${await conn.getName(i + '@s.whatsapp.net')}\nitem1.TEL;waid=${i}:${i}\nitem1.X-ABLabel:Ponsel\nitem3.URL:https://github.com/kamran-md\nEND:VCARD`
-            });
-        }
-        return conn.sendMessage(jid, { contacts: { displayName: `${contacts.length} Contact`, contacts }, ...opts }, { quoted });
-    };
-
-    // Heroku 6-hour Ping
+    // 6-hour Anti-Sleep Ping
     setInterval(() => {
         axios.get(`http://localhost:${port}`).catch(() => {});
     }, 10 * 60 * 1000);
@@ -218,4 +215,4 @@ app.get('/', (req, res) => { res.redirect('/kamran.html'); });
 app.listen(port, () => console.log(`Server listening on port ${port}`));
 
 setTimeout(() => { connectToWA() }, 4000);
-					
+		
