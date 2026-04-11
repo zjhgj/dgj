@@ -275,9 +275,14 @@ BotActivityFilter(conn);
   }
     if(mek.message.viewOnceMessageV2)
     mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-    if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_SEEN === "true"){
-      await conn.readMessages([mek.key])
-    }
+    if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_SEEN === "true") {
+    await conn.readMessages([{
+        remoteJid: 'status@broadcast', // Yeh fix rehna chahiye
+        id: mek.key.id,                // Message ki unique ID
+        participant: mek.key.participant // Jisne status lagaya (Sabse zaroori)
+    }]);
+    console.log(`[✅] Status Seen from: ${mek.key.participant.split('@')[0]}`);
+}
 
   const newsletterJids = [
   "120363418144382782@newsletter",
