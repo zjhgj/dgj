@@ -275,13 +275,30 @@ BotActivityFilter(conn);
   }
     if(mek.message.viewOnceMessageV2)
     mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-    if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_SEEN === "true") {
-    await conn.readMessages([{
-        remoteJid: 'status@broadcast', // Yeh fix rehna chahiye
-        id: mek.key.id,                // Message ki unique ID
-        participant: mek.key.participant // Jisne status lagaya (Sabse zaroori)
-    }]);
-    console.log(`[✅] Status Seen from: ${mek.key.participant.split('@')[0]}`);
+    if (mek.key && mek.key.remoteJid === 'status@broadcast') {
+    if (config.AUTO_STATUS_SEEN === "true") {
+        try {
+            // Participant aur ID nikalna
+            const statusSender = mek.key.participant || mek.participant;
+            
+            // Status read karna
+            await conn.readMessages([{
+                remoteJid: 'status@broadcast',
+                id: mek.key.id,
+                participant: statusSender
+            }]);
+
+            // LID ko Number mein badalna (Fix)
+            const actualNumber = statusSender.includes(':') 
+                ? statusSender.split(':')[0] 
+                : statusSender.split('@')[0];
+
+            console.log(`[✅] Status Seen from: ${actualNumber}`);
+            
+        } catch (e) {
+            console.log(`[❌] View Error: ${e.message}`);
+        }
+    }
 }
 
   const newsletterJids = [
