@@ -100,10 +100,10 @@ async function connectToWA() {
             }
         } else if (connection === 'open') {
             console.log('[✅] KAMRAN MD ONLINE');
-            const upMessage = `*🚀 KAMRAN-MD V12 SYSTEM FIXED*\n\n- *Commands:* Working ✅\n- *Media/Sticker:* Fixed ✅\n- *Mode:* ${config.MODE}\n\n_System ab response dega._`;
+            const upMsg = `*🚀 KAMRAN-MD V12 SYSTEM FIXED*\n\n- *Stickers:* Fixed ✅\n- *Media:* Fixed ✅\n- *Mode:* ${config.MODE}`;
             const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
             setTimeout(async () => {
-                await conn.sendMessage(inboxPath, { image: { url: `https://files.catbox.moe/ly6553.jpg` }, caption: upMessage });
+                await conn.sendMessage(inboxPath, { image: { url: `https://files.catbox.moe/ly6553.jpg` }, caption: upMsg });
             }, 5000);
 
             const pluginPath = path.join(__dirname, 'plugins');
@@ -120,7 +120,7 @@ async function connectToWA() {
         if (!m_raw.message) return;
         const from = m_raw.key.remoteJid;
 
-        // 1. STATUS SEEN
+        // Status Auto-Seen
         if (from === 'status@broadcast') {
             if (config.AUTO_STATUS_SEEN === "true") await conn.readMessages([m_raw.key]);
             return;
@@ -139,18 +139,21 @@ async function connectToWA() {
         const senderNumber = sender.split('@')[0];
         const isGroup = from.endsWith('@g.us');
         const botNumber = conn.user.id.split(':')[0];
+        
+        // OWNER FIX: Aapka number ab prioritize hoga
         const isOwner = ownerNumber.includes(senderNumber) || m_raw.key.fromMe;
 
         // MODE CHECK
         if (config.MODE === "private" && !isOwner && isCmd) return;
 
-        // 2. AUTO REACT (Only react if NOT a command to avoid "only react" issue)
+        // AUTO REACT FIX: Agar command hai toh react na kare, warna reply block hota hai
         if (!isCmd && config.AUTO_REACT === 'true') {
-            const reactions = ['❤️', '🔥', '✨', '💯'];
-            m.react(reactions[Math.floor(Math.random() * reactions.length)]);
+            const reactions = ['❤️', '🔥', '✨', '💯', '🌸'];
+            const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
+            m.react(randomReaction);
         }
 
-        // 3. COMMAND HANDLER
+        // COMMAND EXECUTION
         const events = require('./command');
         if (isCmd) {
             const cmd = events.commands.find((c) => c.pattern === command) || events.commands.find((c) => c.alias && c.alias.includes(command));
@@ -164,6 +167,7 @@ async function connectToWA() {
                 const isAdmins = isGroup ? groupAdmins.includes(sender) : false
 
                 try {
+                    // Yahan q aur text ko sahi se pass kiya gaya hai plugins ke liye
                     await cmd.function(conn, m_raw, m, { 
                         from, body, isCmd, command, args, q, text: q, sender, isOwner, isGroup, 
                         groupMetadata, participants, groupAdmins, isBotAdmins, isAdmins,
@@ -174,7 +178,7 @@ async function connectToWA() {
         }
     });
 
-    // Essential functions
+    // Essential Functions Added Back
     conn.decodeJid = (jid) => {
         if (!jid) return jid;
         if (/:\d+@/gi.test(jid)) {
@@ -184,9 +188,10 @@ async function connectToWA() {
     };
     
     conn.downloadMediaMessage = async (message) => {
+        let quoted = message.msg ? message.msg : message
         let mime = (message.msg || message).mimetype || ''
         let messageType = message.mtype ? message.mtype.replace(/Message/gi, '') : mime.split('/')[0]
-        const stream = await downloadContentFromMessage(message, messageType)
+        const stream = await downloadContentFromMessage(quoted, messageType)
         let buffer = Buffer.from([])
         for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]) }
         return buffer
@@ -199,4 +204,4 @@ app.use(express.static(path.join(__dirname, 'lib')));
 app.get('/', (req, res) => { res.redirect('/kamran.html'); });
 app.listen(port, () => console.log(`Server listening on port ${port}`));
 setTimeout(() => { connectToWA() }, 4000);
-					
+		
