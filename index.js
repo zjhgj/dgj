@@ -43,7 +43,9 @@ const {
   const Crypto = require('crypto')
   const path = require('path')
   const prefix = config.PREFIX
-  const ownerNumber = ['923195068309']
+
+  // --- OWNER NUMBER DEFINITION ---
+  const ownerNumber = ['923195068309'] 
 
   const express = require("express");
   const app = express();
@@ -100,7 +102,7 @@ async function connectToWA() {
             }
         } else if (connection === 'open') {
             console.log('[✅] KAMRAN MD ONLINE');
-            const upMessage = `*🚀 KAMRAN-MD V12 FIXED*\n\n- *Stickers/Media:* Fixed ✅\n- *Commands:* Active ✅\n- *Auto-React:* Smart ✅\n\n_System fully functional._`;
+            const upMessage = `*🚀 KAMRAN-MD V12 FIXED*\n\n- *Owner:* Dr. Kamran ✅\n- *Stickers/Media:* Fixed ✅\n- *Commands:* Active ✅\n- *Mode:* ${config.MODE}\n\n_System fully functional with owner access._`;
             const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
             setTimeout(async () => {
                 await conn.sendMessage(inboxPath, { image: { url: `https://files.catbox.moe/ly6553.jpg` }, caption: upMessage });
@@ -140,7 +142,7 @@ async function connectToWA() {
         const isGroup = from.endsWith('@g.us');
         const botNumber = conn.user.id.split(':')[0];
         
-        // OWNER FIX: prioritizing your number
+        // --- UPDATED OWNER LOGIC ---
         const isOwner = ownerNumber.includes(senderNumber) || m_raw.key.fromMe;
         const isCreator = isOwner; 
 
@@ -203,4 +205,4 @@ app.use(express.static(path.join(__dirname, 'lib')));
 app.get('/', (req, res) => { res.redirect('/kamran.html'); });
 app.listen(port, () => console.log(`Server listening on port ${port}`));
 setTimeout(() => { connectToWA() }, 4000);
-			   
+			
