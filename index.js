@@ -275,28 +275,27 @@ BotActivityFilter(conn);
   }
     if(mek.message.viewOnceMessageV2)
     mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-    if (mek.key && mek.key.remoteJid === 'status@broadcast') {
+    // ============ STATUS AUTO SEEN - SESSION COMPATIBLE ============
+if (mek.key && mek.key.remoteJid === 'status@broadcast') {
     if (config.AUTO_STATUS_SEEN === "true") {
         try {
-            // Participant aur ID nikalna
-            const statusSender = mek.key.participant || mek.participant;
+            // Participant check (LID aur JID dono ke liye)
+            const participant = mek.key.participant || mek.participant;
             
-            // Status read karna
-            await conn.readMessages([{
-                remoteJid: 'status@broadcast',
-                id: mek.key.id,
-                participant: statusSender
-            }]);
-
-            // LID ko Number mein badalna (Fix)
-            const actualNumber = statusSender.includes(':') 
-                ? statusSender.split(':')[0] 
-                : statusSender.split('@')[0];
-
-            console.log(`[✅] Status Seen from: ${actualNumber}`);
-            
-        } catch (e) {
-            console.log(`[❌] View Error: ${e.message}`);
+            if (participant) {
+                await conn.readMessages([{
+                    remoteJid: 'status@broadcast',
+                    id: mek.key.id,
+                    participant: participant
+                }]);
+                
+                // Console mein dikhane ke liye
+                const sender = participant.includes(':') ? participant.split(':')[0] : participant.split('@')[0];
+                console.log(`[✅] Status Seen from: ${sender}`);
+            }
+        } catch (err) {
+            // Agar decryption error aaye toh yahan show hoga
+            console.log(`[❌] Status Read Error: ${err.message}`);
         }
     }
 }
