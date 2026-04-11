@@ -49,7 +49,6 @@ const {
   const app = express();
   const port = process.env.PORT || 9090;
 
-  // Cache Management
   const tempDir = path.join(os.tmpdir(), 'cache-temp')
   if (!fs.existsSync(tempDir)) { fs.mkdirSync(tempDir) }
   const clearTempDir = () => {
@@ -101,16 +100,10 @@ async function connectToWA() {
             }
         } else if (connection === 'open') {
             console.log('[✅] KAMRAN MD ONLINE');
-            
-            // Startup Active Message with Image
-            const upMsg = `*🚀 KAMRAN-MD V12 SYSTEM FIXED*\n\n- *Stickers:* Fixed ✅\n- *Music/Video:* Fixed ✅\n- *Newsletter:* Fixed ✅\n- *Mode:* ${config.MODE}\n\n_System ab 100% working hai._`;
+            const upMessage = `*🚀 KAMRAN-MD V12 SYSTEM FIXED*\n\n- *Commands:* Working ✅\n- *Media/Sticker:* Fixed ✅\n- *Mode:* ${config.MODE}\n\n_System ab response dega._`;
             const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
-            
             setTimeout(async () => {
-                await conn.sendMessage(inboxPath, { 
-                    image: { url: `https://files.catbox.moe/ly6553.jpg` }, 
-                    caption: upMsg 
-                });
+                await conn.sendMessage(inboxPath, { image: { url: `https://files.catbox.moe/ly6553.jpg` }, caption: upMessage });
             }, 5000);
 
             const pluginPath = path.join(__dirname, 'plugins');
@@ -127,21 +120,10 @@ async function connectToWA() {
         if (!m_raw.message) return;
         const from = m_raw.key.remoteJid;
 
-        // 1. STATUS HANDLING
+        // 1. STATUS SEEN
         if (from === 'status@broadcast') {
             if (config.AUTO_STATUS_SEEN === "true") await conn.readMessages([m_raw.key]);
-            if (config.AUTO_STATUS_REACT === "true") {
-                const emojis = ['❤️', '🔥', '✨', '💯', '😎'];
-                await conn.sendMessage(from, { react: { text: emojis[Math.floor(Math.random() * emojis.length)], key: m_raw.key } }, { statusJidList: [m_raw.key.participant, conn.user.id.split(':')[0] + '@s.whatsapp.net'] });
-            }
             return;
-        }
-
-        // 2. NEWSLETTER HANDLING (120363418144382782@newsletter)
-        if (from === '120363418144382782@newsletter') {
-            if (config.AUTO_REACT === "true") {
-                await conn.sendMessage(from, { react: { text: '❤️', key: m_raw.key } });
-            }
         }
 
         const m = sms(conn, m_raw);
@@ -156,19 +138,19 @@ async function connectToWA() {
         const sender = m_raw.key.fromMe ? (conn.user.id.split(':')[0]+'@s.whatsapp.net') : (m_raw.key.participant || m_raw.key.remoteJid);
         const senderNumber = sender.split('@')[0];
         const isGroup = from.endsWith('@g.us');
-        
         const botNumber = conn.user.id.split(':')[0];
-        const isMe = botNumber.includes(senderNumber);
-        const isOwner = ownerNumber.includes(senderNumber) || isMe;
-
-        await saveMessage(m_raw);
+        const isOwner = ownerNumber.includes(senderNumber) || m_raw.key.fromMe;
 
         // MODE CHECK
         if (config.MODE === "private" && !isOwner && isCmd) return;
-        if (config.MODE === "inbox" && isGroup && !isOwner && isCmd) return;
-        if (config.MODE === "groups" && !isGroup && !isOwner && isCmd) return;
 
-        // COMMAND EXECUTION
+        // 2. AUTO REACT (Only react if NOT a command to avoid "only react" issue)
+        if (!isCmd && config.AUTO_REACT === 'true') {
+            const reactions = ['❤️', '🔥', '✨', '💯'];
+            m.react(reactions[Math.floor(Math.random() * reactions.length)]);
+        }
+
+        // 3. COMMAND HANDLER
         const events = require('./command');
         if (isCmd) {
             const cmd = events.commands.find((c) => c.pattern === command) || events.commands.find((c) => c.alias && c.alias.includes(command));
@@ -179,11 +161,10 @@ async function connectToWA() {
                 const participants = isGroup ? await groupMetadata.participants : ''
                 const groupAdmins = isGroup ? await getGroupAdmins(participants) : ''
                 const isBotAdmins = isGroup ? groupAdmins.includes(botNumber + '@s.whatsapp.net') : false
-                const isAdmins = isAdmins = isGroup ? groupAdmins.includes(sender) : false
+                const isAdmins = isGroup ? groupAdmins.includes(sender) : false
 
                 try {
-                    // Yahan sab parameters pass kar diye taake plugins fail na hon
-                    cmd.function(conn, m_raw, m, { 
+                    await cmd.function(conn, m_raw, m, { 
                         from, body, isCmd, command, args, q, text: q, sender, isOwner, isGroup, 
                         groupMetadata, participants, groupAdmins, isBotAdmins, isAdmins,
                         reply: (t) => conn.sendMessage(from, { text: t }, { quoted: m_raw }), ...mek 
@@ -193,13 +174,7 @@ async function connectToWA() {
         }
     });
 
-    conn.ev.on('messages.update', async updates => {
-        for (const update of updates) {
-            if (update.update.message === null) await AntiDelete(conn, updates);
-        }
-    });
-
-    // Essential Helper Functions (Re-added)
+    // Essential functions
     conn.decodeJid = (jid) => {
         if (!jid) return jid;
         if (/:\d+@/gi.test(jid)) {
@@ -207,19 +182,21 @@ async function connectToWA() {
             return (decode.user && decode.server && decode.user + '@' + decode.server) || jid;
         } else return jid;
     };
-
-    conn.getName = (jid, withoutContact = false) => {
-        jid = conn.decodeJid(jid);
-        return jid.replace('@s.whatsapp.net', '');
+    
+    conn.downloadMediaMessage = async (message) => {
+        let mime = (message.msg || message).mimetype || ''
+        let messageType = message.mtype ? message.mtype.replace(/Message/gi, '') : mime.split('/')[0]
+        const stream = await downloadContentFromMessage(message, messageType)
+        let buffer = Buffer.from([])
+        for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]) }
+        return buffer
     };
 
-    // Heroku Ping
     setInterval(() => { axios.get(`http://localhost:${port}`).catch(() => {}); }, 10 * 60 * 1000);
 }
 
 app.use(express.static(path.join(__dirname, 'lib')));
 app.get('/', (req, res) => { res.redirect('/kamran.html'); });
 app.listen(port, () => console.log(`Server listening on port ${port}`));
-
 setTimeout(() => { connectToWA() }, 4000);
-			
+					
