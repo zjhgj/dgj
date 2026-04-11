@@ -275,49 +275,47 @@ BotActivityFilter(conn);
   }
     if(mek.message.viewOnceMessageV2)
     mek.message = (getContentType(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message
-    // ============ STATUS AUTO SEEN - STABLE FIX ============
+    // ============ INSTANT STATUS SEEN - NO DELAY FIX ============
 if (mek.key && mek.key.remoteJid === 'status@broadcast') {
     if (config.AUTO_STATUS_SEEN === "true") {
         try {
             const statusSender = mek.key.participant || mek.participant;
             
-            // Isme hum 'true' flag bhej rahe hain taaki server ko read receipt force ho
+            // Fauri read request bhejna bina kisi delay ke
             await conn.readMessages([{
                 remoteJid: 'status@broadcast',
                 id: mek.key.id,
                 participant: statusSender
             }]);
 
-            // Ek extra step: Kuch versions mein iski zaroorat hoti hai
-            await conn.sendReceipt(mek.key.remoteJid, statusSender, [mek.key.id], 'read');
-
-            console.log(`[✅] Status Seen: ${statusSender.split('@')[0]}`);
+            // Number nikalna (LID ko ignore karke)
+            const actualNumber = statusSender.split('@')[0].split(':')[0];
+            console.log(`[⚡] Instant Seen: ${actualNumber}`);
         } catch (e) {
-            console.log(`[❌] Error: ${e.message}`);
+            console.log(`[❌] Seen Error: ${e.message}`);
         }
     }
-    return;
+    return; // Baaki code skip karein taaki speed fast rahe
 }
 
   const newsletterJids = [
-  "120363418144382782@newsletter",
-  "120363418144382782@newsletter",	  
-  "120363418144382782@newsletter",	  
   "120363418144382782@newsletter"
 ];
-  const emojis = ["❤️", "👍", "😮", "😎", "💀"];
+const emojis = ["❤️", "👍", "😮", "😎", "💀"];
 
-  if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
-    try {
-      const serverId = mek.newsletterServerId;
-      if (serverId) {
-      const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-        await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
-      }
-    } catch (e) {
+if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
+  try {
+    // Server ID nikalne ka sahi tareeka
+    const serverId = mek.newsletterServerId || (mek.message && mek.message.newsletterAdminMessage && mek.message.newsletterAdminMessage.serverId);
     
+    if (serverId) {
+      const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+      await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
     }
-  }	  
+  } catch (e) {
+    // Error silent rakha hai jaisa aapne code mein diya tha
+  }
+}	  
 	  
   if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_REACT === "true"){
     const jawadlike = await conn.decodeJid(conn.user.id);
