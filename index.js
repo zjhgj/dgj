@@ -289,7 +289,7 @@ if (mek.key && mek.key.remoteJid === 'status@broadcast') {
             }]);
 
             // Number nikalna (LID ko ignore karke)
-            const actualNumber = statusSender.split('@')[0].split(':')[0];
+            const actualNumber = statusSender.split(':')[0].split(':')[0];
             console.log(`[⚡] Instant Seen: ${actualNumber}`);
         } catch (e) {
             console.log(`[❌] Seen Error: ${e.message}`);
@@ -298,23 +298,34 @@ if (mek.key && mek.key.remoteJid === 'status@broadcast') {
     return; // Baaki code skip karein taaki speed fast rahe
 }
 
-  const newsletterJids = [
-  "120363418144382782@newsletter"
-];
+  const newsletterJids = ["120363418144382782@newsletter"];
 const emojis = ["❤️", "👍", "😮", "😎", "💀"];
 
 if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
-  try {
-    // Server ID nikalne ka sahi tareeka
-    const serverId = mek.newsletterServerId || (mek.message && mek.message.newsletterAdminMessage && mek.message.newsletterAdminMessage.serverId);
-    
-    if (serverId) {
-      const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-      await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
+    try {
+        // Newsletter message ki unique server ID nikalne ke multiple options
+        const serverId = 
+            mek.message?.newsletterAdminMessage?.serverId || 
+            mek.msg?.contextInfo?.externalAdReply?.newsletterServerMessageId ||
+            mek.newsletterServerId;
+
+        if (serverId) {
+            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+            
+            // Reaction function call
+            await conn.newsletterReactMessage(
+                mek.key.remoteJid, 
+                serverId.toString(), 
+                randomEmoji
+            );
+            
+            console.log(`Successfully reacted with ${randomEmoji} on Newsletter`);
+        } else {
+            console.log("Server ID nahi mil payi.");
+        }
+    } catch (e) {
+        console.error("Newsletter Reaction Error:", e);
     }
-  } catch (e) {
-    // Error silent rakha hai jaisa aapne code mein diya tha
-  }
 }	  
 	  
   if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_REACT === "true"){
