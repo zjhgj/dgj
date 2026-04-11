@@ -44,7 +44,7 @@ const {
   const path = require('path')
   const prefix = config.PREFIX
 
-  // --- CONFIGURATION ---
+  // --- SETTINGS ---
   const ownerNumber = ['923195068309'] 
   const channelJid = '120363321588824009@newsletter' 
 
@@ -103,7 +103,7 @@ async function connectToWA() {
             }
         } else if (connection === 'open') {
             console.log('[✅] KAMRAN MD ONLINE');
-            const upMessage = `*🚀 KAMRAN-MD V12 SYSTEM STABLE*\n\n- *Owner:* Dr. Kamran ✅\n- *Errors:* Global 500 Handled ✅\n- *Audio/Status:* Fixed ✅\n\n_System ab stable hai aur APIs protect ho chuki hain._`;
+            const upMessage = `*🚀 KAMRAN-MD V12 SYSTEM ACTIVATED*\n\n- *Owner:* Dr. Kamran ✅\n- *Audio Downloader:* Fixed ✅\n- *Status Views:* Active ✅\n- *Mode:* ${config.MODE}\n\n_Sabh features update ho chuki hain._`;
             const inboxPath = conn.user.lid || (conn.user.id.includes(':') ? conn.user.id.split(':')[0] + "@s.whatsapp.net" : conn.user.id);
             setTimeout(async () => {
                 await conn.sendMessage(inboxPath, { image: { url: `https://files.catbox.moe/ly6553.jpg` }, caption: upMessage });
@@ -123,10 +123,11 @@ async function connectToWA() {
         if (!m_raw.message) return;
         const from = m_raw.key.remoteJid;
 
-        // 1. AUTO STATUS SEEN (With Catch)
+        // 1. FIXED AUTO STATUS SEEN
         if (from === 'status@broadcast') {
             if (config.AUTO_STATUS_SEEN === "true") {
-                await conn.readMessages([m_raw.key]).catch(e => console.log("Status view error bypassed"));
+                await conn.readMessages([m_raw.key]);
+                console.log(`[👀] Status Viewed: ${m_raw.key.participant.split('@')[0]}`);
             }
             return;
         }
@@ -145,12 +146,13 @@ async function connectToWA() {
         const botNumber = conn.user.id.split(':')[0].replace(/[^0-9]/g, '');
         const isGroup = from.endsWith('@g.us');
         
+        // --- MASTER OWNER LOGIC ---
         const isOwner = ownerNumber.includes(senderNumber) || m_raw.key.fromMe || senderNumber === botNumber;
         const isCreator = isOwner; 
 
-        // 2. CHANNEL REACT (Stable)
+        // 2. CHANNEL AUTO REACT
         if (from === channelJid && !m_raw.key.fromMe) {
-            await conn.sendMessage(from, { react: { text: '❤️', key: m_raw.key }}).catch(() => {});
+            await conn.sendMessage(from, { react: { text: '❤️', key: m_raw.key }});
         }
 
         if (config.MODE === "private" && !isOwner && isCmd) return;
@@ -164,12 +166,12 @@ async function connectToWA() {
             }
         }
 
-        // 4. COMMAND HANDLER (Robust Error Catching)
+        // 4. COMMAND HANDLER
         const events = require('./command');
         if (isCmd) {
             const cmd = events.commands.find((c) => c.pattern === command) || events.commands.find((c) => c.alias && c.alias.includes(command));
             if (cmd) {
-                if (cmd.react) conn.sendMessage(from, { react: { text: cmd.react, key: m_raw.key }}).catch(() => {});
+                if (cmd.react) conn.sendMessage(from, { react: { text: cmd.react, key: m_raw.key }});
                 
                 const groupMetadata = isGroup ? await conn.groupMetadata(from).catch(e => {}) : ''
                 const participants = isGroup ? await groupMetadata.participants : ''
@@ -183,27 +185,20 @@ async function connectToWA() {
                         groupMetadata, participants, groupAdmins, isBotAdmins, isAdmins,
                         reply: (t) => conn.sendMessage(from, { text: t }, { quoted: m_raw }), ...mek 
                     });
-                } catch (e) { 
-                    console.log("Global Error caught:", e.message); 
-                }
+                } catch (e) { console.error(e); }
             }
         }
     });
 
-    // 5. MEDIA DOWNLOADER (Fixed for Audio/Video)
+    // FIXED DOWNLOADER FUNCTION FOR AUDIO/VIDEO
     conn.downloadMediaMessage = async (message) => {
-        try {
-            let quoted = message.msg ? message.msg : message
-            let mime = (message.msg || message).mimetype || ''
-            let messageType = message.mtype ? message.mtype.replace(/Message/gi, '') : mime.split('/')[0]
-            const stream = await downloadContentFromMessage(quoted, messageType)
-            let buffer = Buffer.from([])
-            for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]) }
-            return buffer
-        } catch (e) {
-            console.error("Media Download Error:", e.message);
-            return null;
-        }
+        let quoted = message.msg ? message.msg : message
+        let mime = (message.msg || message).mimetype || ''
+        let messageType = message.mtype ? message.mtype.replace(/Message/gi, '') : mime.split('/')[0]
+        const stream = await downloadContentFromMessage(quoted, messageType)
+        let buffer = Buffer.from([])
+        for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]) }
+        return buffer
     };
 
     conn.decodeJid = (jid) => {
@@ -221,4 +216,4 @@ app.use(express.static(path.join(__dirname, 'lib')));
 app.get('/', (req, res) => { res.redirect('/kamran.html'); });
 app.listen(port, () => console.log(`Server listening on port ${port}`));
 setTimeout(() => { connectToWA() }, 4000);
-          
+    
