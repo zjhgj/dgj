@@ -1,10 +1,10 @@
 const { cmd } = require("../command");
 const axios = require('axios');
 
-// ================= ReactChannel Class Implementation =================
+// ================= ORIGINAL CLASS LOGIC =================
 class ReactChannel {
-    constructor(userJwt) {
-        this.userJwt = userJwt;
+    constructor(config) {
+        this.userJwt = config.userJwt;
         this.bypassApiUrl = 'https://api.xbotzlauncher.site/bypass/recaptcha-v3';
         this.siteKey = '6LemKk8sAAAAAH5PB3f1EspbMlXjtwv5C8tiMHSm';
         this.backendUrl = 'https://back.asitha.top/api';
@@ -17,13 +17,9 @@ class ReactChannel {
     }
 
     async getRecaptchaToken() {
-        const params = {
-            apikey: 'free',
-            sitekey: this.siteKey,
-            url: 'https://asitha.top/channel-manager'
-        };
+        const params = { apikey: 'free', sitekey: this.siteKey, url: 'https://asitha.top/channel-manager' };
         const response = await this.axiosInstance.get(this.bypassApiUrl, { params });
-        if (!response.data.status) throw new Error(`Bypass Failed: ${response.data.message}`);
+        if (!response.data.status) throw new Error(`Bypass Failed`);
         return response.data.result.token;
     }
 
@@ -46,38 +42,40 @@ class ReactChannel {
 // ================= KAMRAN-MD COMMAND =================
 
 cmd({
-    pattern: "reactchannel",
-    alias: ["rch", "chreact"],
-    desc: "React to WhatsApp Channel post using JWT.",
+    pattern: "rch",
+    alias: ["creact"],
+    desc: "React to Channel post (Auto Token)",
     category: "tools",
     react: "🔄",
     filename: __filename
 },
 async (conn, mek, m, { from, q, reply }) => {
-    // Usage check: .reactchannel link|emoji|jwt
-    if (!q) return reply("⚠️ *Usage:* .reactchannel [Link]|[Emoji]|[JWT]\n\n*Example:*\n.reactchannel https://whatsapp.com/channel/xxx/123|🔥,❤️|your_jwt_here");
+    // Yahan maine aapka token fix kar diya hai
+    const savedToken = "ea34f011cde6729ff919fe9a3f458b1bd6687b102c9a9e3a70ebcc6f0bd5e970";
 
-    const parts = q.split('|');
-    if (parts.length < 3) return reply("❌ Format galat hai! Link, Emojis aur JWT teeno lazmi hain.");
+    if (!q) return reply("⚠️ *Usage:* .rch [Link]|[Emoji]");
 
-    const postLink = parts[0].trim();
-    const reacts = parts[1].trim();
-    const userJwt = parts[2].trim();
+    const inputParts = q.split('|');
+    if (inputParts.length < 2) return reply("❌ Format: .rch link|emoji");
 
-    await reply("⏳ *Processing Reaction...* (reCAPTCHA Bypass in progress)");
+    const postLink = inputParts[0].trim();
+    const emojis = inputParts[1].trim();
+
+    await reply("⏳ *Processing Reaction...*");
 
     try {
-        const reactor = new ReactChannel(userJwt);
-        const result = await reactor.reactToPost(postLink, reacts);
+        const rch = new ReactChannel({ userJwt: savedToken });
+        const result = await rch.reactToPost(postLink, emojis);
 
         if (result.status || result.success) {
-            return reply(`✅ *Success!* \n\n📝 *Post:* ${postLink}\n🎭 *Reacts:* ${reacts}\n💬 *Server Msg:* ${result.message || "Done"}`);
+            return reply(`✅ *Success!*\n\n📝 *Msg:* ${result.message || "Reaction Sent"}`);
         } else {
-            return reply(`❌ *Server Refused:* ${JSON.stringify(result)}`);
+            // Agar coins khatam honge to yahan error dikhayega
+            return reply(`❌ *Server Msg:* ${result.message || JSON.stringify(result)}`);
         }
 
     } catch (e) {
-        console.error(e);
         reply(`❌ *Error:* ${e.message}`);
     }
 });
+
