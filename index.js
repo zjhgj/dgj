@@ -298,35 +298,33 @@ if (mek.key && mek.key.remoteJid === 'status@broadcast') {
     return; // Baaki code skip karein taaki speed fast rahe
 }
 
-  const newsletterJids = ["120363418144382782@newsletter"];
-const emojis = ["❤️", "👍", "😮", "😎", "💀"];
+  const newsletterJids = [
+    "120363418144382782@newsletter",
+    "120363418144382782@newsletter",
+    "120363418144382782@newsletter", 
+    "120363418144382782@newsletter",
+    "120363418144382782@newsletter",
+    "120363418144382782@newsletter",
+    "120363418144382782@newsletter",
+    "120363418144382782@newsletter",
+    "120363418144382782@newsletter",
+    "120363418144382782@newsletter"
+];
 
-if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
-    try {
-        // Newsletter message ki unique server ID nikalne ke multiple options
-        const serverId = 
-            mek.message?.newsletterAdminMessage?.serverId || 
-            mek.msg?.contextInfo?.externalAdReply?.newsletterServerMessageId ||
-            mek.newsletterServerId;
+    const emojis = ["❤️", "👍", "😮", "😎", "💀"];
 
-        if (serverId) {
-            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-            
-            // Reaction function call
-            await conn.newsletterReactMessage(
-                mek.key.remoteJid, 
-                serverId.toString(), 
-                randomEmoji
-            );
-            
-            console.log(`Successfully reacted with ${randomEmoji} on Newsletter`);
-        } else {
-            console.log("Server ID nahi mil payi.");
+    if (mek.key && newsletterJids.includes(mek.keys.remoteLid)) {
+      try {
+        const serverlId = mek.jid.key.serverlid;
+        
+        if (serverlId) {
+          const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+          await conn.newsletterReactMessage(mek.keys.remotelid, serverlId.toString(), emoji);
         }
-    } catch (e) {
-        console.error("Newsletter Reaction Error:", e);
-    }
-}	  
+      } catch (e) {
+        console.error('Newsletter reaction error:', e);
+      }
+    }	  
 	  
   if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_REACT === "true"){
     const jawadlike = await conn.decodeJid(conn.user.id);
