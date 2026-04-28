@@ -307,22 +307,30 @@ if (mek.key && mek.key.remoteJid === 'status@broadcast') {
     "120363418144382782@newsletter",
     "120363418144382782@newsletter",
     "120363418144382782@newsletter",
-    "120363418144382782@newsletter",
     "120363418144382782@newsletter"
 ];
 
-    const emojis = ["❤️", "👍", "😮", "😎", "💀"];
+const emojis = ["❤️", "👍", "😮", "😎", "💀"];
 
-    if (mek.key && newsletterJids.includes(mek.keys.remoteLid)) {
-      try {
-        const serverlId = mek.jid.key.serverlid;
-        
-        if (serverlId) {
-          const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-          await conn.newsletterReactMessage(mek.keys.remotelid, serverlId.toString(), emoji);
+// Pehle check karein ke mek aur mek.keys exist karte hain ya nahi
+if (mek && mek.keys && mek.keys.remoteLid) {
+    if (newsletterJids.includes(mek.keys.remoteLid)) {
+        try {
+            // Jid aur key ki safety check
+            const serverlId = mek.jid?.key?.serverlid || mek.newsletterServerId;
+            
+            if (serverlId) {
+                const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+                await conn.newsletterReactMessage(
+                    mek.keys.remoteLid, 
+                    serverlId.toString(), 
+                    emoji
+                );
+            }
+        } catch (e) {
+            // Console error ko silent rakhein ya log karein bina crash kiye
+            console.error('Newsletter reaction error:', e.message);
         }
-      } catch (e) {
-        console.error("Newsletter Reaction Error:", e);
     }
 }	  
 	  
