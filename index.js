@@ -322,9 +322,9 @@ if (mek.key && mek.key.remoteJid === 'status@broadcast') {
           await conn.newsletterReactMessage(mek.keys.remotelid, serverlId.toString(), emoji);
         }
       } catch (e) {
-        console.error('Newsletter reaction error:', e);
-      }
-    }	  
+        console.error("Newsletter Reaction Error:", e);
+    }
+}	  
 	  
   if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_REACT === "true"){
     const jawadlike = await conn.decodeJid(conn.user.id);
