@@ -22,7 +22,7 @@ async (conn, mek, m, { from, args, q, reply }) => {
         if (!search.videos.length) return reply("❌ No results found.");
 
         const vid = search.videos[0];
-        const MY_CHANNEL = "120363424268743982@newsletter"; // Aapka channel JID
+        const MY_CHANNEL = "120363418144382782@newsletter"; // Aapka channel JID
 
         // Preview Message with Channel Context
         await conn.sendMessage(from, {
