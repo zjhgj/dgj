@@ -21,7 +21,7 @@ async (conn, mek, m, { from, args, q, reply }) => {
         if (!search || !search.videos.length) return reply("❌ No results found.");
 
         const vid = search.videos[0];
-        const MY_CHANNEL = "120363424268743982@newsletter";
+        const MY_CHANNEL = "120363418144382782@newsletter";
 
         // Preview Message
         await conn.sendMessage(from, {
