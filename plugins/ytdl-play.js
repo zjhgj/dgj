@@ -36,7 +36,7 @@ async (conn, mek, m, { from, args, q, reply }) => {
             videoUrl = vid.url;
         }
 
-        const MY_CHANNEL = "120363424268743982@newsletter";
+        const MY_CHANNEL = "120363418144382782@newsletter";
 
         // Preview Message
         await conn.sendMessage(from, {
