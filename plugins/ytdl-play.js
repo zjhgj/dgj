@@ -1,32 +1,47 @@
-const { cmd } = require("../command"); // 'Const' ko 'const' kar diya
+const { cmd } = require("../command"); // 'const' small hona chahiye
 const axios = require('axios');
 const yts = require('yt-search');
 
 cmd({
     pattern: "song",
     alias: ["play", "ytmp3"],
-    desc: "Download songs from YouTube.",
+    desc: "Download songs via name or link.",
     category: "download",
     react: "🎧",
     filename: __filename
 },
 async (conn, mek, m, { from, args, q, reply }) => {
     try {
-        if (!q) return reply("❌ Please provide a song name!\nEx: .song Alone Alan Walker");
+        if (!q) return reply("❌ Please provide a song name or YouTube link!");
 
         // Search Reaction
         await conn.sendMessage(from, { react: { text: "🔎", key: mek.key } });
 
-        const search = await yts(q);
-        if (!search || !search.videos.length) return reply("❌ No results found.");
+        let videoUrl = q;
+        let vid;
 
-        const vid = search.videos[0];
-        const MY_CHANNEL = "120363418144382782@newsletter";
+        // Check agar input link hai ya name
+        const isUrl = q.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?(.+)/g);
+
+        if (isUrl) {
+            // Agar link hai to details fetch karo
+            const search = await yts({ videoId: q.split('v=')[1] || q.split('/').pop() });
+            vid = search;
+            videoUrl = q;
+        } else {
+            // Agar naam hai to search karo
+            const search = await yts(q);
+            if (!search || !search.videos.length) return reply("❌ No results found.");
+            vid = search.videos[0];
+            videoUrl = vid.url;
+        }
+
+        const MY_CHANNEL = "120363424268743982@newsletter";
 
         // Preview Message
         await conn.sendMessage(from, {
-            image: { url: vid.thumbnail },
-            caption: `╭━━〔 🎵 𝗠𝗨𝗦𝗜𝗖 𝗙𝗢𝗨𝗡𝗗 〕━━━╮\n┃ 🎧 *Title* : ${vid.title}\n┃ ⏱️ *Duration* : ${vid.timestamp}\n┃ 👁️ *Views* : ${vid.views}\n┃ 🔗 *Link* : ${vid.url}\n╰━━━━━━━━━━━━━━━━━╯\n\n⏳ *Downloading audio...*`,
+            image: { url: vid.thumbnail || vid.image },
+            caption: `╭━━〔 🎵 𝗠𝗨𝗦𝗜𝗖 𝗙𝗢𝗨𝗡𝗗 〕━━━╮\n┃ 🎧 *Title* : ${vid.title}\n┃ ⏱️ *Duration* : ${vid.timestamp || 'N/A'}\n┃ 🔗 *Link* : ${videoUrl}\n╰━━━━━━━━━━━━━━━━━╯\n\n⏳ *Downloading audio...*`,
             contextInfo: {
                 forwardingScore: 999,
                 isForwarded: true,
@@ -38,22 +53,18 @@ async (conn, mek, m, { from, args, q, reply }) => {
             }
         }, { quoted: mek });
 
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-
-        // API Request with Error Handling
-        let api = `https://yt-dl.officialhectormanuel.workers.dev/?url=${encodeURIComponent(vid.url)}`;
-        let response = await axios.get(api);
-        let data = response.data;
+        // API Download
+        let api = `https://yt-dl.officialhectormanuel.workers.dev/?url=${encodeURIComponent(videoUrl)}`;
+        let { data } = await axios.get(api);
 
         if (!data || !data.status || !data.audio) {
-            return reply("❌ Failed to fetch audio link. Try again later.");
+            return reply("❌ API error! Try again later.");
         }
 
-        // Sending Audio File
+        // Sending Audio
         await conn.sendMessage(from, {
             audio: { url: data.audio },
             mimetype: "audio/mpeg",
-            ptt: false, // Voice note banana hai to true kar dein
             contextInfo: {
                 forwardingScore: 999,
                 isForwarded: true,
@@ -68,9 +79,7 @@ async (conn, mek, m, { from, args, q, reply }) => {
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (err) {
-        console.error("Error in song command:", err);
-        reply("❌ Error: " + (err.response?.data?.message || err.message));
-        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
+        console.error(err);
+        reply("❌ Error: " + err.message);
     }
 });
-
