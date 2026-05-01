@@ -9,17 +9,28 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
     try {
-        // Agar user ne JID nahi di
-        if (!q) return reply("❌ Please provide a Channel JID.\nExample: .jidtolink 120363294025000000@newsletter");
+        if (!q || !q.endsWith('@newsletter')) {
+            return reply("❌ Please provide a valid Channel JID.\nExample: `.jidtolink 120363424268743982@newsletter` ");
+        }
 
-        // JID se sirf numbers nikalne ke liye (agar @newsletter saath ho)
-        let jid = q.split("@")[0];
+        // Search reaction
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // WhatsApp Channel ka direct link format
-        // Note: Newsletter JID se link banane ke liye ye format use hota hai
-        const channelLink = `https://whatsapp.com/channel/${jid}`;
+        // Direct Metadata Fetch
+        const data = await conn.newsletterMetadata("jid", q).catch(e => {
+            console.error("Metadata Error:", e);
+            return null;
+        });
 
-        let text = `✅ *CHANNEL LINK GENERATED*\n\n`;
+        if (!data || !data.invite) {
+            return reply("❌ *Server Issue:* WhatsApp ne is JID ka invite code nahi diya.\n\n*Wajah:* Shayad channel private hai ya bot ko permission nahi hai.");
+        }
+
+        const channelLink = `https://whatsapp.com/channel/${data.invite}`;
+        const channelName = data.name || "WhatsApp Channel";
+
+        let text = `✅ *CHANNEL LINK EXTRACTED*\n\n`;
+        text += `📝 *Name:* ${channelName}\n`;
         text += `🆔 *JID:* ${q}\n`;
         text += `🔗 *Link:* ${channelLink}\n\n`;
         text += `> *⚡ ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ ⚡*`;
@@ -28,18 +39,20 @@ cmd({
             text: text,
             contextInfo: {
                 externalAdReply: {
-                    title: "KAMRAN-MD CHANNEL TOOL",
-                    body: "Click to open channel",
+                    title: channelName,
+                    body: "Click to Join This Channel",
                     mediaType: 1,
                     sourceUrl: channelLink,
-                    renderLargerThumbnail: false
+                    thumbnailUrl: data.preview || "https://i.imgur.com/vHdfS5m.png", // Default image if preview fails
+                    renderLargerThumbnail: true
                 }
             }
         }, { quoted: mek });
 
+        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
+
     } catch (e) {
         console.error(e);
-        reply("❌ Invalid JID or Error occurred.");
+        reply("❌ *Error:* Kuch technical masala hai. Check karein bot sahi se connected hai ya nahi.");
     }
 });
-  
