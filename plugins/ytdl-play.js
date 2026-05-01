@@ -1,4 +1,4 @@
-const { cmd } = require("../command");
+const { cmd } = require("../command"); // 'Const' ko 'const' kar diya
 const axios = require('axios');
 const yts = require('yt-search');
 
@@ -12,29 +12,21 @@ cmd({
 },
 async (conn, mek, m, { from, args, q, reply }) => {
     try {
-        const query = q;
-        if (!query) return reply("❌ Please provide a song name!\nEx: .song Alone Alan Walker");
+        if (!q) return reply("❌ Please provide a song name!\nEx: .song Alone Alan Walker");
 
         // Search Reaction
         await conn.sendMessage(from, { react: { text: "🔎", key: mek.key } });
 
-        const search = await yts(query);
-        if (!search.videos.length) return reply("❌ No results found.");
+        const search = await yts(q);
+        if (!search || !search.videos.length) return reply("❌ No results found.");
 
         const vid = search.videos[0];
-        const MY_CHANNEL = "120363418144382782@newsletter"; // Aapka channel JID
+        const MY_CHANNEL = "120363424268743982@newsletter";
 
-        // Preview Message with Channel Context
+        // Preview Message
         await conn.sendMessage(from, {
             image: { url: vid.thumbnail },
-            caption: `╭━━〔 🎵 𝗠𝗨𝗦𝗜𝗖 𝗙𝗢𝗨𝗡𝗗 〕━━━╮
-┃ 🎧 *Title* : ${vid.title}
-┃ ⏱️ *Duration* : ${vid.timestamp}
-┃ 👁️ *Views* : ${vid.views}
-┃ 🔗 *Link* : ${vid.url}
-╰━━━━━━━━━━━━━━━━━╯
-
-⏳ *Downloading audio...*`,
+            caption: `╭━━〔 🎵 𝗠𝗨𝗦𝗜𝗖 𝗙𝗢𝗨𝗡𝗗 〕━━━╮\n┃ 🎧 *Title* : ${vid.title}\n┃ ⏱️ *Duration* : ${vid.timestamp}\n┃ 👁️ *Views* : ${vid.views}\n┃ 🔗 *Link* : ${vid.url}\n╰━━━━━━━━━━━━━━━━━╯\n\n⏳ *Downloading audio...*`,
             contextInfo: {
                 forwardingScore: 999,
                 isForwarded: true,
@@ -48,17 +40,20 @@ async (conn, mek, m, { from, args, q, reply }) => {
 
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // API download
+        // API Request with Error Handling
         let api = `https://yt-dl.officialhectormanuel.workers.dev/?url=${encodeURIComponent(vid.url)}`;
-        let { data } = await axios.get(api);
+        let response = await axios.get(api);
+        let data = response.data;
 
-        if (!data?.status) return reply("❌ API error! Try again later.");
+        if (!data || !data.status || !data.audio) {
+            return reply("❌ Failed to fetch audio link. Try again later.");
+        }
 
         // Sending Audio File
         await conn.sendMessage(from, {
             audio: { url: data.audio },
             mimetype: "audio/mpeg",
-            ptt: false,
+            ptt: false, // Voice note banana hai to true kar dein
             contextInfo: {
                 forwardingScore: 999,
                 isForwarded: true,
@@ -73,8 +68,9 @@ async (conn, mek, m, { from, args, q, reply }) => {
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (err) {
-        console.error(err);
-        reply("❌ Download failed: " + err.message);
+        console.error("Error in song command:", err);
+        reply("❌ Error: " + (err.response?.data?.message || err.message));
         await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
     }
 });
+
