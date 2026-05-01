@@ -15,33 +15,33 @@ cmd({
 
         await conn.sendMessage(from, { react: { text: "🔎", key: mek.key } });
 
-        // Force Metadata fetch with invite check
-        let res = await conn.newsletterMetadata("jid", q).catch(() => null);
-
-        // Agar metadata khali hai, toh Newsletter Query try karein
-        if (!res || !res.invite) {
-            // Kuch bots mein direct fetch newsletter ka option hota hai
-            res = await conn.getNewsletterInfoWithJid(q).catch(() => null);
+        // Sabse stable method: newsletterMetadata
+        let res;
+        try {
+            res = await conn.newsletterMetadata("jid", q);
+        } catch (err) {
+            console.error("Metadata fetch failed:", err);
+            res = null;
         }
 
+        // Agar metadata nahi milti toh iska matlab hai bot account follow nahi kar raha
         if (!res || !res.invite) {
-            return reply("❌ *Abhi bhi link nahi mil raha!*\n\n*Solution:* Bot account se ek baar is channel ko 'Follow' karein, ya phir channel ki settings mein ja kar usey 'Public' check karein.");
+            return reply("❌ *Server Issue:* WhatsApp ne invite code nahi diya.\n\n*Fix:* Pehle bot account se is channel ko manually 'Follow' karein, phir ye command dein.");
         }
 
         const channelLink = `https://whatsapp.com/channel/${res.invite}`;
+        const name = res.name || "WhatsApp Channel";
         
         let msg = `✅ *LINK GENERATED SUCCESS*\n\n`;
-        msg += `📢 *Name:* ${res.name || "KAMRAN-MD"}\n`;
+        msg += `📢 *Name:* ${name}\n`;
         msg += `🔗 *Link:* ${channelLink}\n\n`;
         msg += `> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴋᴀᴍʀᴀɴ-ᴍᴅ*`;
 
         await conn.sendMessage(from, { 
             text: msg,
             contextInfo: {
-                forwardingScore: 999,
-                isForwarded: true,
                 externalAdReply: {
-                    title: res.name || "WhatsApp Channel",
+                    title: name,
                     body: "Join Now",
                     mediaType: 1,
                     sourceUrl: channelLink,
@@ -50,6 +50,8 @@ cmd({
                 }
             }
         }, { quoted: mek });
+
+        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
         console.error(e);
