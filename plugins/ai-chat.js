@@ -1,56 +1,75 @@
-const { cmd } = require('../command');
+const { cmd } = require("../command");
 const axios = require('axios');
 
+// ================= NOVA AI LOGIC =================
+
+const headers = {
+  'User-Agent': 'okhttp/4.10.0',
+  'Accept-Encoding': 'gzip',
+  'platform': 'Android',
+  'version': '1.4.0',
+  'language': 'in',
+  'content-type': 'application/json; charset=utf-8'
+};
+
+async function novaAi(text) {
+  const payload = {
+    question_text: text,
+    conversation: {
+      conversation_items: []
+    }
+  };
+
+  const res = await axios.post('https://us-central1-nova-ai---android.cloudfunctions.net/app/ai-response/v2', payload, {
+    headers: headers
+  });
+
+  return res.data;
+}
+
+// ================= COMMAND REGISTER =================
+
 cmd({
-    pattern: "ai",
-    alias: ["blackbox", "chatgpt", "kamran"],
-    react: "🧠",
-    desc: "Ask anything from AI (Blackbox v4).",
+    pattern: "nova",
+    alias: ["ai", "ask"],
+    desc: "Chat with Nova AI assistant.",
     category: "ai",
-    use: ".ai what is javascript?",
+    react: "🤖",
     filename: __filename
-}, async (conn, mek, m, { from, reply, text }) => {
-    
-    // SAFE KEY: Crash rokne ke liye
-    const msgKey = m?.key || mek?.key || null;
-
+},
+async (conn, mek, m, { from, q, reply }) => {
     try {
-        if (!text) return reply("❓ Please provide a question!\nExample: .ai write a short poem.");
+        if (!q) return reply("❌ Please provide a question!\nExample: .nova what is photosynthesis?");
 
-        if (msgKey) await conn.sendMessage(from, { react: { text: '⏳', key: msgKey } });
-        
-        // Step 1: Send Loading Message
-        let waitMsg = await conn.sendMessage(from, { text: "🔍 *AI is thinking...*" }, { quoted: m });
+        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // Step 2: API Call (Using Blackbox v4 as it's usually faster)
-        const apiUrl = `https://arslan-apis.vercel.app/ai/blackboxv4?q=${encodeURIComponent(text)}`;
-        const res = await axios.get(apiUrl, { timeout: 30000 });
+        // API Call
+        const result = await novaAi(q);
 
-        if (!res.data || !res.data.status) {
-            // Fallback to Blackbox v1 if v4 fails
-            const fallbackUrl = `https://arslan-apis.vercel.app/ai/blackbox?q=${encodeURIComponent(text)}`;
-            const fallbackRes = await axios.get(fallbackUrl);
-            if (!fallbackRes.data?.status) throw new Error("AI service is currently unavailable.");
+        if (result && result.answer_text) {
+            let response = `*🤖 DR KAMRAN RESPONSE*\n\n${result.answer_text}\n\n> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ KAMRAN-MD`;
             
-            var aiResponse = fallbackRes.data.result;
+            await conn.sendMessage(from, { 
+                text: response,
+                contextInfo: {
+                    forwardingScore: 999,
+                    isForwarded: true,
+                    forwardedNewsletterMessageInfo: {
+                        newsletterJid: "120363424268743982@newsletter",
+                        newsletterName: "KAMRAN-MD",
+                        serverMessageId: 143
+                    }
+                }
+            }, { quoted: mek });
+
+            await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
         } else {
-            var aiResponse = res.data.result;
+            reply("❌ Sorry, I couldn't get a response from Nova AI.");
         }
-
-        let resultMsg = `🤖 *AI RESPONSE (Blackbox)*\n\n${aiResponse}\n\n> © DR KAMRAN ❤️`;
-
-        // Step 3: SAFE EDIT Logic
-        if (waitMsg && waitMsg.key) {
-            await conn.sendMessage(from, { text: resultMsg, edit: waitMsg.key });
-        } else {
-            await reply(resultMsg);
-        }
-
-        if (msgKey) await conn.sendMessage(from, { react: { text: '✅', key: msgKey } });
 
     } catch (e) {
-        console.error("AI Error:", e);
-        reply(`❌ *AI Error:* ${e.message || "Failed to get response."}`);
-        if (msgKey) await conn.sendMessage(from, { react: { text: '❌', key: msgKey } });
+        console.error(e);
+        reply("❌ Error: " + (e.response?.data?.message || e.message));
+        await conn.sendMessage(from, { react: { text: "❌", key: mek.key } });
     }
 });
