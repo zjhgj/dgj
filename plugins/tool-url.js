@@ -1,6 +1,7 @@
 const { cmd } = require("../command");
 const axios = require("axios");
 const FormData = require("form-data");
+const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 
 // ================= MEDIA COMMANDS =================
 
@@ -15,13 +16,25 @@ cmd({
 },
 async (conn, mek, m, { from, reply, quoted }) => {
     try {
-        // Check if media is quoted
-        if (!quoted) return reply("❌ Please reply to a photo or video!");
+        // Media check: Kya message photo ya video hai?
+        const isMedia = m.type === 'imageMessage' || m.type === 'videoMessage' || 
+                        (quoted && (quoted.type === 'imageMessage' || quoted.type === 'videoMessage'));
+        
+        if (!isMedia) return reply("❌ Please reply to a photo or video!");
 
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // Download media using the bot's internal downloader
-        const buffer = await m.download();
+        // FIX: Standard download logic
+        const targetM = quoted ? mek.message.extendedTextMessage.contextInfo.quotedMessage : mek.message;
+        const buffer = await downloadMediaMessage(
+            { message: targetM },
+            'buffer',
+            {},
+            { 
+                logger: console,
+                reuploadRequest: conn.updateMediaMessage
+            }
+        );
         
         let form = new FormData();
         form.append("file", buffer, { filename: "file" });
@@ -40,15 +53,10 @@ async (conn, mek, m, { from, reply, quoted }) => {
         if (!res.data.success) return reply("❌ Upload failed at server.");
 
         const link = res.data.url;
-        const MY_CHANNEL = "120363424268743982@newsletter"; // Your Channel JID
+        const MY_CHANNEL = "120363424268743982@newsletter";
 
         await conn.sendMessage(from, {
-            text: `╭━〔 🔗 𝗨𝗣𝗟𝗢𝗔𝗗𝗘𝗗 〕━╮
-┃ ✅ Upload successful
-┃ 🆔 ID : ${res.data.id}
-┃ 🌐 Link :
-┃ ${link}
-╰━━━━━━━━━━━╯`,
+            text: `╭━〔 🔗 𝗨𝗣𝗟𝗢𝗔𝗗𝗘𝗗 〕━╮\n┃ ✅ Upload successful\n┃ 🆔 ID : ${res.data.id}\n┃ 🌐 Link :\n┃ ${link}\n╰━━━━━━━━━━━╯`,
             contextInfo: {
                 forwardingScore: 999,
                 isForwarded: true,
@@ -63,8 +71,8 @@ async (conn, mek, m, { from, reply, quoted }) => {
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (err) {
-        console.error(err?.response?.data || err);
-        reply("❌ API upload error: " + (err.message || "Unknown error"));
+        console.error(err);
+        reply("❌ Error: " + (err.message || "Failed to download media"));
     }
 });
 
@@ -83,10 +91,15 @@ async (conn, mek, m, { from, reply, quoted }) => {
 
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // Download media
-        const buffer = await m.download();
+        // FIX: Standard download logic
+        const targetM = quoted ? mek.message.extendedTextMessage.contextInfo.quotedMessage : mek.message;
+        const buffer = await downloadMediaMessage(
+            { message: targetM },
+            'buffer',
+            {},
+            { logger: console, reuploadRequest: conn.updateMediaMessage }
+        );
 
-        // Sending as a document file
         await conn.sendMessage(from, {
             document: buffer,
             mimetype: quoted.mimetype || 'application/octet-stream',
