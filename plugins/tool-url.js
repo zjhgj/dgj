@@ -16,7 +16,7 @@ cmd({
 },
 async (conn, mek, m, { from, reply, quoted }) => {
     try {
-        // Media check: Kya message photo ya video hai?
+        // Check if the message or the quoted message is media
         const isMedia = m.type === 'imageMessage' || m.type === 'videoMessage' || 
                         (quoted && (quoted.type === 'imageMessage' || quoted.type === 'videoMessage'));
         
@@ -24,10 +24,15 @@ async (conn, mek, m, { from, reply, quoted }) => {
 
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // FIX: Standard download logic
-        const targetM = quoted ? mek.message.extendedTextMessage.contextInfo.quotedMessage : mek.message;
+        // Correct way to download media from quoted or direct message
+        const messageToDownload = quoted ? mek.message.extendedTextMessage.contextInfo.quotedMessage : mek.message;
+        
+        // Handling image/video separately for correct download
+        const messageType = quoted ? m.quoted.type : m.type;
+        const msgKey = messageType === 'imageMessage' ? 'image' : 'video';
+
         const buffer = await downloadMediaMessage(
-            { message: targetM },
+            { message: messageToDownload },
             'buffer',
             {},
             { 
@@ -91,10 +96,10 @@ async (conn, mek, m, { from, reply, quoted }) => {
 
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // FIX: Standard download logic
-        const targetM = quoted ? mek.message.extendedTextMessage.contextInfo.quotedMessage : mek.message;
+        const messageToDownload = quoted ? mek.message.extendedTextMessage.contextInfo.quotedMessage : mek.message;
+
         const buffer = await downloadMediaMessage(
-            { message: targetM },
+            { message: messageToDownload },
             'buffer',
             {},
             { logger: console, reuploadRequest: conn.updateMediaMessage }
