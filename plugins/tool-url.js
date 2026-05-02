@@ -5,7 +5,6 @@ const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 
 // ================= MEDIA COMMANDS =================
 
-// 1. URL Command (Media to Link)
 cmd({
     pattern: "url",
     alias: ["tourl", "upload"],
@@ -14,33 +13,24 @@ cmd({
     react: "🔗",
     filename: __filename
 },
-async (conn, mek, m, { from, reply, quoted }) => {
+async (conn, mek, m, { from, reply }) => {
     try {
-        // Check if the message or the quoted message is media
-        const isMedia = m.type === 'imageMessage' || m.type === 'videoMessage' || 
-                        (quoted && (quoted.type === 'imageMessage' || quoted.type === 'videoMessage'));
-        
-        if (!isMedia) return reply("❌ Please reply to a photo or video!");
+        // Find if there's any media (Direct or Quoted)
+        const isQuotedImage = m.quoted && (m.quoted.type === 'imageMessage' || m.quoted.msg?.mimetype?.includes('image'));
+        const isQuotedVideo = m.quoted && (m.quoted.type === 'videoMessage' || m.quoted.msg?.mimetype?.includes('video'));
+        const isDirectMedia = m.type === 'imageMessage' || m.type === 'videoMessage';
+
+        if (!isDirectMedia && !isQuotedImage && !isQuotedVideo) {
+            return reply("❌ Please reply to a photo or video!");
+        }
 
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        // Correct way to download media from quoted or direct message
-        const messageToDownload = quoted ? mek.message.extendedTextMessage.contextInfo.quotedMessage : mek.message;
+        // Download logic that handles serialized messages properly
+        const buffer = await m.download(); // Using the built-in downloader from your framework
         
-        // Handling image/video separately for correct download
-        const messageType = quoted ? m.quoted.type : m.type;
-        const msgKey = messageType === 'imageMessage' ? 'image' : 'video';
+        if (!buffer) return reply("❌ Failed to download media buffer.");
 
-        const buffer = await downloadMediaMessage(
-            { message: messageToDownload },
-            'buffer',
-            {},
-            { 
-                logger: console,
-                reuploadRequest: conn.updateMediaMessage
-            }
-        );
-        
         let form = new FormData();
         form.append("file", buffer, { filename: "file" });
 
@@ -49,9 +39,7 @@ async (conn, mek, m, { from, reply, quoted }) => {
             "https://files.lordobitotech.xyz/api/mediafiles",
             form,
             {
-                headers: {
-                    ...form.getHeaders()
-                }
+                headers: { ...form.getHeaders() }
             }
         );
 
@@ -77,45 +65,38 @@ async (conn, mek, m, { from, reply, quoted }) => {
 
     } catch (err) {
         console.error(err);
-        reply("❌ Error: " + (err.message || "Failed to download media"));
+        reply("❌ Error: " + (err.message || "Process failed"));
     }
 });
 
-// 2. Save Command (Get media as document)
+// Save Command logic remains similar but with robust download
 cmd({
     pattern: "save",
-    alias: ["get", "download"],
-    desc: "Download and save status/media as a document.",
+    alias: ["get"],
+    desc: "Save status/media as document.",
     category: "tools",
     react: "📥",
     filename: __filename
 },
-async (conn, mek, m, { from, reply, quoted }) => {
+async (conn, mek, m, { from, reply }) => {
     try {
-        if (!quoted) return reply("❌ Please reply to a status or any media!");
-
+        if (!m.quoted) return reply("❌ Please reply to a media file!");
+        
         await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
 
-        const messageToDownload = quoted ? mek.message.extendedTextMessage.contextInfo.quotedMessage : mek.message;
-
-        const buffer = await downloadMediaMessage(
-            { message: messageToDownload },
-            'buffer',
-            {},
-            { logger: console, reuploadRequest: conn.updateMediaMessage }
-        );
+        const buffer = await m.download();
+        if (!buffer) return reply("❌ Failed to download.");
 
         await conn.sendMessage(from, {
             document: buffer,
-            mimetype: quoted.mimetype || 'application/octet-stream',
-            fileName: `Saved_By_KamranMD_${Date.now()}`,
+            mimetype: m.quoted.mimetype || 'application/octet-stream',
+            fileName: `Saved_By_KamranMD`,
             caption: "> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ KAMRAN-MD"
         }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
 
     } catch (e) {
-        console.error(e);
-        reply("❌ Failed to save media.");
+        reply("❌ Error: " + e.message);
     }
 });
