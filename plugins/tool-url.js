@@ -1,102 +1,99 @@
-const { cmd } = require("../command");
-const axios = require("axios");
-const FormData = require("form-data");
-const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+const axios = require('axios');
+const FormData = require('form-data');
+const fs = require('fs-extra');
+const path = require('path');
+const { cmd } = require('../command');
 
-// ================= MEDIA COMMANDS =================
+/**
+ * Core Uploader Function
+ */
+async function uploadAmyura(filePath) {
+    const filename = path.basename(filePath);
+    const ext = path.extname(filename).toLowerCase();
+    const mimeTypes = {
+        '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.webp': 'image/webp', '.gif': 'image/gif', '.mp4': 'video/mp4',
+        '.pdf': 'application/pdf', '.mp3': 'audio/mpeg', '.zip': 'application/zip',
+        '.ogg': 'audio/ogg',
+    };
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
+
+    const form = new FormData();
+    form.append('file', fs.createReadStream(filePath), { filename, contentType });
+
+    const res = await axios.post('https://uploader.amyuracp.my.id/upload', form, {
+        headers: {
+            ...form.getHeaders(),
+            'origin': 'https://uploader.amyuracp.my.id',
+            'referer': 'https://uploader.amyuracp.my.id/',
+            'accept': 'application/json',
+        },
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        timeout: 30000,
+    });
+
+    // Extracting URL from response
+    const data = res.data;
+    const url = data?.url || data?.file_url || data?.link || data?.files;
+    
+    if (url) return url.startsWith('http') ? url : `https://uploader.amyuracp.my.id${url}`;
+    
+    // Fallback regex matching
+    const raw = JSON.stringify(data);
+    const urlMatch = raw.match(/https:\/\/uploader\.amyuracp\.my\.id\/[^\s"'<]+/);
+    if (!urlMatch) throw new Error("URL not found in response.");
+    return urlMatch[0];
+}
+
+// --- Bot Command ---
 
 cmd({
-    pattern: "url",
-    alias: ["tourl", "upload"],
-    desc: "Upload media to get a public link.",
+    pattern: "amyura",
+    alias: ["upload", "tourl", "host"],
+    react: "☁️",
+    desc: "Upload media (Image/Video/Audio/Doc) to Amyura Cloud and get a permanent link.",
     category: "tools",
-    react: "🔗",
     filename: __filename
-},
-async (conn, mek, m, { from, reply }) => {
+},           
+async (conn, mek, m, { from, reply, quoted }) => {
+    let mediaPath;
     try {
-        // Find if there's any media (Direct or Quoted)
-        const isQuotedImage = m.quoted && (m.quoted.type === 'imageMessage' || m.quoted.msg?.mimetype?.includes('image'));
-        const isQuotedVideo = m.quoted && (m.quoted.type === 'videoMessage' || m.quoted.msg?.mimetype?.includes('video'));
-        const isDirectMedia = m.type === 'imageMessage' || m.type === 'videoMessage';
+        // 1. Check if there is media to upload
+        if (!quoted) return reply("⚠️ Please reply to an image, video, audio, or document to upload.");
 
-        if (!isDirectMedia && !isQuotedImage && !isQuotedVideo) {
-            return reply("❌ Please reply to a photo or video!");
+        await conn.sendMessage(from, { react: { text: "⏳", key: m.key } });
+
+        // 2. Download Media
+        const mediaBuffer = await quoted.download();
+        const fileName = `amyura_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        mediaPath = path.join('tmp', fileName);
+        
+        // Ensure tmp directory exists
+        if (!fs.existsSync('tmp')) fs.mkdirSync('tmp');
+        
+        fs.writeFileSync(mediaPath, mediaBuffer);
+
+        // 3. Upload to Amyura
+        const resultUrl = await uploadAmyura(mediaPath);
+
+        // 4. Send Success Message
+        const caption = `✅ *UPLOAD SUCCESS*\n\n` +
+                        `🔗 *Link:* ${resultUrl}\n` +
+                        `📂 *Format:* ${path.extname(mediaPath).toUpperCase()}\n\n` +
+                        `*© ᴘᴏᴡᴇʀᴇᴅ ʙʏ DR KAMRAN*`;
+
+        await reply(caption);
+        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+
+    } catch (error) {
+        console.error("Upload Error:", error);
+        await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+        reply(`❌ *Upload Failed:* ${error.message || "Server Error"}`);
+    } finally {
+        // 5. Cleanup: Delete local file
+        if (mediaPath && fs.existsSync(mediaPath)) {
+            fs.unlinkSync(mediaPath);
         }
-
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-
-        // Download logic that handles serialized messages properly
-        const buffer = await m.download(); // Using the built-in downloader from your framework
-        
-        if (!buffer) return reply("❌ Failed to download media buffer.");
-
-        let form = new FormData();
-        form.append("file", buffer, { filename: "file" });
-
-        // API Upload
-        let res = await axios.post(
-            "https://files.lordobitotech.xyz/api/mediafiles",
-            form,
-            {
-                headers: { ...form.getHeaders() }
-            }
-        );
-
-        if (!res.data.success) return reply("❌ Upload failed at server.");
-
-        const link = res.data.url;
-        const MY_CHANNEL = "120363424268743982@newsletter";
-
-        await conn.sendMessage(from, {
-            text: `╭━〔 🔗 𝗨𝗣𝗟𝗢𝗔𝗗𝗘𝗗 〕━╮\n┃ ✅ Upload successful\n┃ 🆔 ID : ${res.data.id}\n┃ 🌐 Link :\n┃ ${link}\n╰━━━━━━━━━━━╯`,
-            contextInfo: {
-                forwardingScore: 999,
-                isForwarded: true,
-                forwardedNewsletterMessageInfo: {
-                    newsletterJid: MY_CHANNEL,
-                    newsletterName: "KAMRAN-MD",
-                    serverMessageId: 143
-                }
-            }
-        }, { quoted: mek });
-
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-
-    } catch (err) {
-        console.error(err);
-        reply("❌ Error: " + (err.message || "Process failed"));
-    }
-});
-
-// Save Command logic remains similar but with robust download
-cmd({
-    pattern: "save",
-    alias: ["get"],
-    desc: "Save status/media as document.",
-    category: "tools",
-    react: "📥",
-    filename: __filename
-},
-async (conn, mek, m, { from, reply }) => {
-    try {
-        if (!m.quoted) return reply("❌ Please reply to a media file!");
-        
-        await conn.sendMessage(from, { react: { text: "⏳", key: mek.key } });
-
-        const buffer = await m.download();
-        if (!buffer) return reply("❌ Failed to download.");
-
-        await conn.sendMessage(from, {
-            document: buffer,
-            mimetype: m.quoted.mimetype || 'application/octet-stream',
-            fileName: `Saved_By_KamranMD`,
-            caption: "> © ᴘᴏᴡᴇʀᴇᴅ ʙʏ KAMRAN-MD"
-        }, { quoted: mek });
-
-        await conn.sendMessage(from, { react: { text: "✅", key: mek.key } });
-
-    } catch (e) {
-        reply("❌ Error: " + e.message);
     }
 });
