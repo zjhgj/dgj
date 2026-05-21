@@ -299,39 +299,29 @@ if (mek.key && mek.key.remoteJid === 'status@broadcast') {
 }
 
   const newsletterJids = [
-    "120363418144382782@newsletter",
-    "120363418144382782@newsletter",
-    "120363418144382782@newsletter", 
-    "120363418144382782@newsletter",
-    "120363418144382782@newsletter",
-    "120363418144382782@newsletter",
-    "120363418144382782@newsletter",
-    "120363418144382782@newsletter",
-    "120363418144382782@newsletter"
+  "120363418144382782@newsletter",
+  "120363418144382782@newsletter",	  
+  "120363418144382782@newsletter",	  
+  "120363418144382782@newsletter"
 ];
-
 const emojis = ["❤️", "👍", "😮", "😎", "💀"];
 
-// Pehle check karein ke mek aur mek.keys exist karte hain ya nahi
-if (mek && mek.keys && mek.keys.remoteLid) {
-    if (newsletterJids.includes(mek.keys.remoteLid)) {
-        try {
-            // Jid aur key ki safety check
-            const serverlId = mek.jid?.key?.serverlid || mek.newsletterServerId;
-            
-            if (serverlId) {
-                const emoji = emojis[Math.floor(Math.random() * emojis.length)];
-                await conn.newsletterReactMessage(
-                    mek.keys.remoteLid, 
-                    serverlId.toString(), 
-                    emoji
-                );
-            }
-        } catch (e) {
-            // Console error ko silent rakhein ya log karein bina crash kiye
-            console.error('Newsletter reaction error:', e.message);
-        }
+if (mek.key && newsletterJids.includes(mek.key.remoteJid)) {
+  try {
+    // FIX: Sahi rasta jahan se server_id milegi
+    const serverId = mek.key?.server_id;
+
+    if (!serverId) {
+      console.warn('No newsletterServerId found in message:', mek);
+      return;
     }
+
+    const emoji = emojis[Math.floor(Math.random() * emojis.length)];
+    await conn.newsletterReactMessage(mek.key.remoteJid, serverId.toString(), emoji);
+    
+  } catch (e) {
+    console.error(e);
+  }
 }	  
 	  
   if (mek.key && mek.key.remoteJid === 'status@broadcast' && config.AUTO_STATUS_REACT === "true"){
