@@ -279,23 +279,35 @@ BotActivityFilter(conn);
 if (mek.key && mek.key.remoteJid === 'status@broadcast') {
     if (config.AUTO_STATUS_SEEN === "true") {
         try {
+            // Status lagane wale ka original JID (Number) nikalna
             const statusSender = mek.key.participant || mek.participant;
-            
-            // Fauri read request bhejna bina kisi delay ke
+            const participantJid = statusSender ? statusSender.split(':')[0] + '@s.whatsapp.net' : null;
+
+            // 1. Instant Status Seen Request
             await conn.readMessages([{
                 remoteJid: 'status@broadcast',
                 id: mek.key.id,
                 participant: statusSender
             }]);
 
-            // Number nikalna (LID ko ignore karke)
-            const actualNumber = statusSender.split(':')[0].split(':')[0];
+            const actualNumber = statusSender.split(':')[0];
             console.log(`[⚡] Instant Seen: ${actualNumber}`);
+
+            // 2. Auto Reply Section (Jo aapke pehle code mein tha)
+            if (s.AUTO_REPLY_STATUS === "true" && !mek.key.fromMe && participantJid) {
+                await conn.sendMessage(
+                    participantJid, // Status lagane wale ka number
+                    { text: s.STATUS_REPLY_TEXT || DEFAULT_SETTINGS.STATUS_REPLY_TEXT },
+                    { quoted: mek }
+                );
+                console.log(`[📩] Auto Reply Sent to: ${actualNumber}`);
+            }
+
         } catch (e) {
-            console.log(`[❌] Seen Error: ${e.message}`);
+            console.log(`[❌] Error in Status View/Reply: ${e.message}`);
         }
     }
-    return; // Baaki code skip karein taaki speed fast rahe
+    return; // Speed fast rakhne ke liye baki code skip
 }
 
   const newsletterJids = [
